@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molmind"
+version = "0.1.0"
+description = "MolMind formal tree: Quality-Max lipid-lowering & low-tox nomination"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "rdkit>=2023.9.1",
+  "pyyaml>=6.0",
+  "pandas>=2.0.0",
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "python-multipart>=0.0.9",
+  "httpx>=0.27.0",
+  "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apps*", "services*", "packages*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

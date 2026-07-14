@@ -1,0 +1,52 @@
+# 文档与设计草稿（不入库）
+docs/
+
+# 早期原型（正式树为 apps/services/packages；体积大且含独立 venv）
+mvp/
+mvp2/
+
+# Python 虚拟环境与构建产物
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 缓存与字节码
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 运行产出（保留目录占位可用 .gitkeep）
+output/
+**/output/*.csv
+**/output/*.note.txt
+**/output/*.md
+**/output/diagnostics/
+
+# 本地/密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 服务器部署（nginx + TLS + 生产 Compose，含证书，不入库）
+deploy_pro/
+
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# 证据自动缓存（可再生）
+data/evidence_snapshot/auto_cache.jsonl
+data/evidence_snapshot/*.jsonl.bak

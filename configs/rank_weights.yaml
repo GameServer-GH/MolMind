@@ -1,0 +1,130 @@
+# MolMind 正式版默认排序与融合权重（纳入 config_hash）
+#
+# 定榜冻结口径（正式版交卷默认）：
+#   主证据 = chembl_lipid_v1 + pubchem_tox_v1（+ 已烘焙 evidence_snapshot）
+#   nafldkb_v1 / dili_table_v1 默认不进主排名（enabled: false, ranking_weight: 0）
+#   避免弱 S_lipid + 高 conf_e 刷榜
+#
+# mode_default: auto = Quality-Max 单路径（snapshot→live 补洞→规则）；offline/online 仅调试
+mode_default: auto
+seed: 42
+top_n: 10
+top_k_for_critic: 30
+
+weights:
+  lipid: 0.40
+  tox_safety: 0.40
+  novelty: 0.10
+  evidence_confidence: 0.10
+
+gates:
+  tox_hard: 0.65
+  tox_soft: 0.45
+  lipid_min: 0.35
+  viability_proxy: 0.80  # 实验层口径说明；不参与 SI（ADR-M16）
+
+lipid_fuse:
+  rule: 0.35
+  positive_similarity: 0.30
+  evidence: 0.25
+  ml: 0.10
+
+tox_fuse:
+  alert: 0.25
+  dili: 0.30
+  admet: 0.20
+  physchem: 0.15
+  evidence: 0.10
+
+evidence:
+  enabled: true
+  # 生效 adapters 列表（仅列出参与主排名的通道）
+  adapters:
+    - chembl_lipid_v1
+    - pubchem_tox_v1
+  # 全量通道开关；未列入 adapters 或 enabled=false 的不进主排名
+  adapter_flags:
+    chembl_lipid_v1:
+      enabled: true
+      ranking_weight: 1.0
+    pubchem_tox_v1:
+      enabled: true
+      ranking_weight: 1.0
+    ot_target_v1:
+      enabled: false
+      ranking_weight: 0
+    nafldkb_v1:
+      enabled: false
+      ranking_weight: 0
+    dili_table_v1:
+      enabled: false
+      ranking_weight: 0
+  tox_analog_sim_threshold: 0.75
+  tox_analog_boost_alpha: 0.25
+  deep_query_top_m: 40          # auto/online 仅对短名单 live 查证（保 SLA）
+  bake_top_m: 80                # bake-evidence 默认烘焙短名单更大一些
+  http_timeout_sec: 4.0
+  circuit_fail_threshold: 5
+  prefer_snapshot: true         # 有本地快照则优先用，不再打外网
+  auto_cache_snapshot: true     # Online 查到的结果自动写入 snapshot
+  local_tables:
+    enabled: false              # 定榜冻结：NAFLDkb/DILIrank 默认不进主排名
+    dili_csv: data/reference/dilirank.csv
+    nafld_csv: data/reference/nafldkb.csv
+    dili_sim_threshold: 0.70
+    nafld_sim_threshold: 0.78
+    neighbor: true
+
+diversity:
+  method: scaffold
+  # 交卷：每骨架 1 席，服务效果×新颖性，避免小檗碱等同核刷榜
+  max_per_scaffold: 1
+  redundancy_lambda: 0.05
+  # 假设通路席位上限（Critic 选榜；不足时放宽回填）
+  max_per_pathway: 3
+
+ml:
+  enabled: true  # 无 manifest 模型则自动跳过
+
+llm:
+  # 机制 PDF 默认用「准确模板」（mechanism_pdf: false），避免 LLM 自由发挥导致不实阈值/证据误用。
+  # Critic 改榜默认关闭。DeepSeek Key 仍嵌入，供将来可选润色；开启 mechanism_pdf 也不会改排名。
+  enabled: true
+  mechanism_pdf: false
+  critic_enabled: false
+  critic_affects_ranking: false
+  temperature: 0
+  provider: openai_compatible
+  model: deepseek-v4-pro
+  base_url: https://api.deepseek.com/v1
+  max_tokens: 4096
+  timeout_sec: 120
+  use_cache: true
+  cache_dir: data/llm_cache
+
+critic:
+  fp_sim_threshold: 0.75
+  fp_tox_soft: 0.45
+  known_positive_sim: 0.98      # ≥ 视为库内对照药本身，移出 Top10
+  near_positive_sim: 0.60       # ≥ 下调新颖性（收紧 me-too）
+  near_positive_soft_drop: 0.65 # ≥ 软踢出 Top（覆盖 Berberine≈0.65–0.70 近邻）
+  # 分阳性更严：他汀/双胍近邻（如 Simvastatin sim≈0.49）直接软踢
+  near_positive_soft_drop_named:
+    Simvastatin: 0.45
+    Lovastatin: 0.45
+    Metformin: 0.55
+  min_novelty_top: 0.28         # 过低新颖性不利于效果×新颖性
+  min_mw_top: 180               # 踢掉烟酸等碎片/已知过小分子
+  max_family:
+    berberine: 1                # 原小檗碱家族最多 1 席
+    statin_like: 1
+    biguanide: 1
+
+quality_gates:
+  min_std_tox: 0.08
+  max_goldset_fp_in_top10: 0
+  min_scaffold_diversity_top10: 6
+  min_positive_percentile: 80
+
+sla:
+  full_library_cpu_minutes: 30

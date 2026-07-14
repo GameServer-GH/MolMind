@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" type="image/png" sizes="24x24" />
+  <title>MolMind · 化合物筛选</title>
+  <script src="./vendor/tailwindcss/tailwindcdn.js"></script>
+  <link href="./vendor/fonts/inter/inter.css" rel="stylesheet" />
+  <link href="./vendor/fonts/material-symbols/material-symbols.css" rel="stylesheet" />
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#3d6b8a",
+            "primary-soft": "#5a8fb0",
+            secondary: "#6b7a8a",
+            surface: "#eceef1",
+            "surface-dim": "#e2e4e8",
+            "on-background": "#1a1c1e",
+            "on-surface-variant": "#4a5560",
+            "outline-variant": "#c8cdd4",
+            background: "#e8eaed",
+            error: "#ba1a1a",
+            "error-container": "#ffdad6",
+            "on-error-container": "#93000a",
+            "inverse-surface": "#233144",
+            "inverse-on-surface": "#eaf1ff",
+            "secondary-fixed": "#71f8e4",
+            "tertiary-fixed-dim": "#ffb86e"
+          },
+          borderRadius: {
+            "4xl": "2rem",
+            "5xl": "2.5rem"
+          },
+          spacing: {
+            "section-padding": "80px",
+            "container-max": "1120px",
+            "margin-mobile": "20px",
+            gutter: "24px"
+          },
+          fontFamily: {
+            sans: ["Inter", "PingFang SC", "Helvetica Neue", "sans-serif"]
+          },
+          fontSize: {
+            "headline-md": ["24px", { lineHeight: "1.3", fontWeight: "600" }],
+            "body-lg": ["18px", { lineHeight: "1.65", fontWeight: "400" }],
+            "body-md": ["16px", { lineHeight: "1.55", fontWeight: "400" }],
+            "headline-xl-mobile": ["32px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-xl": ["46px", { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "label-md": ["13px", { lineHeight: "1", letterSpacing: "0.06em", fontWeight: "600" }],
+            "headline-lg": ["30px", { lineHeight: "1.2", letterSpacing: "-0.01em", fontWeight: "600" }]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #e8eaed;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255, 255, 255, 0.9) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 10%, rgba(255, 255, 255, 0.6) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(200, 205, 212, 0.35) 0%, transparent 60%);
+    }
+
+    .glass-panel {
+      background: linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.92) 0%,
+        rgba(255, 255, 255, 0.72) 45%,
+        rgba(255, 255, 255, 0.82) 100%
+      );
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      box-shadow:
+        0 12px 40px -8px rgba(0, 0, 0, 0.08),
+        0 4px 12px -4px rgba(0, 0, 0, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.4);
+    }
+
+    .glass-panel-strong {
+      background: linear-gradient(
+        160deg,
+        rgba(255, 255, 255, 0.97) 0%,
+        rgba(255, 255, 255, 0.85) 100%
+      );
+      backdrop-filter: blur(28px) saturate(200%);
+      -webkit-backdrop-filter: blur(28px) saturate(200%);
+      border: 1.5px solid rgba(255, 255, 255, 1);
+      box-shadow:
+        0 20px 50px -12px rgba(0, 0, 0, 0.1),
+        inset 0 2px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(230, 232, 235, 0.6);
+    }
+
+    .glass-btn {
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(255, 255, 255, 0.82) 100%
+      );
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 1);
+      box-shadow:
+        0 8px 24px -6px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(220, 224, 228, 0.5);
+      color: #2d4a5e;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    .glass-btn:hover:not(:disabled) {
+      transform: translateY(-1px) scale(0.98);
+      box-shadow:
+        0 14px 32px -8px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+    }
+
+    .glass-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .glass-btn-primary {
+      background: linear-gradient(279deg, #005aff 0%, #50d1ff 100%);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      box-shadow:
+        0 10px 28px -8px rgba(0, 90, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .glass-btn-primary:hover:not(:disabled) {
+      box-shadow:
+        0 16px 36px -8px rgba(0, 90, 255, 0.48),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+
+    .glass-btn-primary.is-running,
+    .glass-btn-primary.is-running:disabled {
+      background: linear-gradient(180deg, #9aa3ad 0%, #6b7280 100%);
+      box-shadow: none;
+      opacity: 1;
+      cursor: not-allowed;
+      color: #f3f4f6;
+    }
+
+    .glass-tag {
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    }
+
+    .glass-nav {
+      background: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+
+    .text-gradient {
+      background: linear-gradient(120deg, #2d4a5e, #5a8fb0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .mech-pdf-toast {
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      visibility: hidden;
+    }
+
+    .mech-pdf-toast.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+      visibility: visible;
+    }
+
+    .text-primary {
+      color: rgb(78 134 225 / var(--tw-text-opacity, 1)) !important;
+    }
+
+    .bg-primary {
+      background-color: rgb(78 134 225 / var(--tw-bg-opacity, 1)) !important;
+    }
+
+    .text-on-surface-variant,
+    .font-medium,
+    .font-semibold,
+    .text-label-md,
+    .text-headline-lg,
+    .text-on-background {
+      font-weight: bold !important;
+    }
+
+    #fileInput { display: none; }
+
+    .mode-seg {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(200, 205, 212, 0.55);
+    }
+
+    .mode-seg button {
+      flex: 1;
+      padding: 0.65rem 0.9rem;
+      border-radius: 9999px;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+      color: #4a5560;
+      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .mode-seg button[aria-pressed="true"] {
+      background: linear-gradient(279deg, #005aff 0%, #50d1ff 100%);
+      color: #fff;
+      box-shadow: 0 6px 16px -6px rgba(0, 90, 255, 0.45);
+    }
+
+    .history-overlay {
+      background: rgba(26, 28, 30, 0.35);
+      backdrop-filter: blur(6px);
+    }
+
+    .glass-status-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.04em;
+      background: linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.88) 0%,
+        rgba(255, 255, 255, 0.55) 100%
+      );
+      backdrop-filter: blur(14px) saturate(160%);
+      -webkit-backdrop-filter: blur(14px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      box-shadow:
+        0 6px 16px -6px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+      transform: translateY(-1px);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .glass-status-tag:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 10px 22px -8px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+    }
+
+    .status-pill-success {
+      color: #3eac6a;
+      box-shadow:
+        0 6px 16px -6px rgba(15, 118, 110, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .status-pill-error {
+      color: #b42318;
+      box-shadow:
+        0 6px 16px -6px rgba(180, 35, 24, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .status-pill-stopped {
+      color: #9a6700;
+      box-shadow:
+        0 6px 16px -6px rgba(154, 103, 0, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .snapshot-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+
+    .snapshot-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .snapshot-switch .track {
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      background: rgba(156, 163, 175, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+      transition: background 0.2s ease;
+      cursor: pointer;
+    }
+
+    .snapshot-switch .track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      border-radius: 9999px;
+      background: linear-gradient(180deg, #fff 0%, #f3f4f6 100%);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      transition: transform 0.2s ease;
+    }
+
+    .snapshot-switch input:checked + .track {
+      background: linear-gradient(279deg, #005aff 0%, #50d1ff 100%);
+    }
+
+    .snapshot-switch input:checked + .track::after {
+      transform: translateX(18px);
+    }
+
+    .snapshot-switch input:focus-visible + .track {
+      outline: 2px solid rgba(0, 90, 255, 0.35);
+      outline-offset: 2px;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.35); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(110, 120, 129, 0.35); border-radius: 4px; }
+  </style>
+</head>
+<body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden">
+
+  <nav class="glass-nav sticky top-4 z-50 mx-4 md:mx-auto max-w-container-max w-[calc(100%-2rem)] md:w-[90%] rounded-full px-6 py-3 flex justify-between items-center">
+    <div class="flex items-center gap-3">
+      <div class="text-headline-md text-on-background tracking-tight">MolMind</div>
+      <span id="navModeBadge" class="glass-tag px-3 py-1 rounded-full text-label-md text-primary">Quality-Max</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="reuploadBtn" type="button" title="重新上传"
+        class="hidden glass-btn h-10 px-4 rounded-full text-label-md inline-flex items-center justify-center gap-1.5" aria-label="重新上传">
+        <span class="material-symbols-outlined text-primary text-[20px]">upload_file</span>
+        <span class="hidden sm:inline">重新上传</span>
+      </button>
+      <button id="historyBtn" type="button" title="执行历史"
+        class="glass-btn w-10 h-10 rounded-full flex items-center justify-center" aria-label="执行历史">
+        <span class="material-symbols-outlined text-primary text-xl">history</span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-6 py-10 md:py-14 flex flex-col gap-8">
+
+    <div id="errorBanner" role="alert"
+      class="hidden glass-panel rounded-2xl px-4 py-3 border border-error/20 text-on-error-container text-body-md"></div>
+
+    <!-- Upload -->
+    <section id="uploadSection" class="glass-panel-strong rounded-4xl p-8 md:p-10 flex flex-col gap-8 relative overflow-hidden">
+      <span class="material-symbols-outlined absolute top-6 right-6 text-[5rem] text-primary/10 pointer-events-none select-none" aria-hidden="true">science</span>
+      <div class="relative z-10">
+        <h2 class="text-label-md text-primary tracking-widest uppercase mb-3">Screen · 化合物筛选</h2>
+        <h1 class="text-headline-xl-mobile md:text-headline-lg text-on-background mb-2">上传 SDF，输出 nomination Top N</h1>
+        <p class="text-body-md text-on-surface-variant max-w-2xl">
+          多维毒性 · GoldSet · 骨架多样性 · Evidence Facade → 预览 Top N → 下载 nomination CSV
+        </p>
+      </div>
+
+      <div id="dropzone" tabindex="0" role="button" aria-label="选择 SDF 文件"
+        class="relative z-10 glass-panel rounded-3xl border-2 border-dashed border-outline-variant/60 p-10 md:p-14 flex flex-col items-center justify-center gap-4 cursor-pointer hover:-translate-y-0.5 transition-transform duration-150 group">
+        <div class="w-16 h-16 rounded-full glass-panel-strong flex items-center justify-center group-hover:scale-105 transition-transform">
+          <span class="material-symbols-outlined text-4xl text-primary">upload_file</span>
+        </div>
+        <p class="text-body-lg text-on-surface-variant group-hover:text-primary transition-colors">点击或拖拽 SDF 文件至此处</p>
+        <span class="glass-tag px-4 py-1.5 rounded-full text-label-md text-on-surface-variant">组委会化合物库 · 单文件 .sdf</span>
+        <p id="fileName" class="hidden font-mono text-sm text-primary mt-1 break-all"></p>
+      </div>
+      <input id="fileInput" type="file" accept=".sdf" />
+
+      <div class="relative z-10 flex flex-col gap-3">
+        <span class="text-label-md text-on-surface-variant">运行模式</span>
+        <div class="mode-seg" role="group" aria-label="运行模式">
+          <button type="button" data-mode="auto" aria-pressed="true">Quality-Max</button>
+          <button type="button" data-mode="online" aria-pressed="false">在线模式</button>
+          <button type="button" data-mode="offline" aria-pressed="false">离线模式</button>
+        </div>
+        <p id="modeHint" class="text-xs text-on-surface-variant/80 leading-relaxed max-w-2xl"></p>
+        <div class="flex items-start gap-3 pt-1">
+          <label class="snapshot-switch" title="使用证据快照">
+            <input id="useSnapshot" type="checkbox" checked />
+            <span class="track"></span>
+          </label>
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-on-background">使用快照</div>
+            <p id="snapshotHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
+              开启：优先读取本地 evidence snapshot，可复现且更快。关闭：不读取快照证据，仅 live / 规则路径。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative z-10 flex flex-col sm:flex-row items-stretch sm:items-end gap-4">
+        <label class="flex flex-col gap-2 text-label-md text-on-surface-variant min-w-[140px]">
+          Top N（1–50）
+          <input id="topN" type="number" min="1" max="50" value="10" step="1"
+            class="glass-panel rounded-2xl px-4 py-3 text-body-md text-on-background outline-none focus:ring-2 focus:ring-primary/30 border-0" />
+        </label>
+        <button id="runBtn" type="button" disabled
+          class="glass-btn glass-btn-primary flex-1 sm:flex-none px-8 py-3.5 rounded-full text-label-md inline-flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[20px]">play_arrow</span>
+          <span id="runBtnLabel">开始筛选</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Running -->
+    <section id="runningSection" class="hidden glass-panel-strong rounded-4xl p-8 md:p-10 flex-col gap-6">
+      <div class="flex justify-between items-start gap-4 flex-wrap">
+        <div>
+          <h2 class="text-label-md text-primary tracking-widest uppercase mb-2">Running · 筛选进行中</h2>
+          <h3 class="text-headline-md text-on-background">执行日志与进度</h3>
+        </div>
+        <span id="runningModeBadge" class="glass-tag px-3 py-1.5 rounded-full text-label-md text-primary">Quality-Max</span>
+      </div>
+
+      <div class="w-full flex flex-col gap-2">
+        <div class="flex justify-between items-center gap-3 text-sm text-on-surface-variant">
+          <span class="flex items-center gap-2 font-medium min-w-0 flex-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-loader-2 text-primary animate-spin shrink-0"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M12 3a9 9 0 1 0 9 9" /></svg>
+            <span id="progressLabel" class="truncate" title="">正在解析、多维打分与 Critic…</span>
+          </span>
+          <span id="progressPct" class="text-primary font-semibold shrink-0">0%</span>
+        </div>
+        <div class="w-full h-2 glass-panel rounded-full overflow-hidden">
+          <div id="progressBar" class="h-full rounded-full transition-all duration-300" style="width:0%; background: linear-gradient(279deg, #005aff 0%, #50d1ff 100%);"></div>
+        </div>
+      </div>
+
+      <div class="glass-panel-strong rounded-3xl p-5 flex flex-col gap-3 bg-inverse-surface text-inverse-on-surface relative overflow-hidden" style="background: linear-gradient(160deg, rgba(35,49,68,0.96), rgba(26,36,50,0.92)); border-color: rgba(255,255,255,0.08);">
+        <div class="flex items-center gap-2 border-b border-white/10 pb-3">
+          <span class="material-symbols-outlined text-sm opacity-70">terminal</span>
+          <h3 class="text-label-md tracking-wider opacity-80">执行日志</h3>
+        </div>
+        <div id="runningLogBody" class="font-mono text-[13px] leading-relaxed overflow-y-auto h-56 flex flex-col gap-1.5 pr-2 opacity-90"></div>
+      </div>
+
+      <button id="stopBtn" type="button"
+        class="glass-btn w-full sm:w-auto self-start px-8 py-3.5 rounded-full text-label-md inline-flex items-center justify-center gap-2 border border-error/30 text-error">
+        <span class="material-symbols-outlined text-[20px]">stop_circle</span>
+        停止筛选
+      </button>
+    </section>
+
+    <!-- Results -->
+    <section id="resultsSection" class="hidden w-full flex-col gap-8">
+
+      <div class="glass-panel rounded-4xl p-6 md:p-8 flex flex-col gap-6">
+        <div class="flex justify-between items-center gap-3 flex-wrap">
+          <div>
+            <h2 class="text-label-md text-primary tracking-widest uppercase mb-1">Summary · 运行摘要</h2>
+            <h3 class="text-headline-md text-on-background">筛选诊断</h3>
+          </div>
+          <span id="summaryBadge" class="glass-tag px-3 py-1.5 rounded-full text-label-md text-primary"></span>
+        </div>
+        <div id="summary" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statRaw" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">SDF 记录</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statSkipped" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">解析跳过</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statInput" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">有效分子</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statFiltered" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">硬过滤剔除</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statEligible" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">门控后候选</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statOutput" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">输出 Top</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statStdTox" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">std_tox</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statScaffold" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">骨架数</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4">
+            <div id="statQuality" class="text-lg font-semibold tabular-nums text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">质量门禁</div>
+          </div>
+          <div class="glass-panel rounded-2xl p-4 col-span-2 sm:col-span-1">
+            <div id="statHash" class="text-xs font-mono break-all text-on-background">—</div>
+            <div class="text-xs text-on-surface-variant mt-1 tracking-wide uppercase">config_hash</div>
+          </div>
+        </div>
+        <div id="noteBanner" class="hidden glass-panel rounded-2xl px-4 py-3 text-body-md text-on-surface-variant"></div>
+        <div id="degradedBanner" class="hidden glass-panel rounded-2xl px-4 py-3 text-sm font-mono text-on-surface-variant"></div>
+      </div>
+
+      <div class="glass-panel rounded-4xl p-6 md:p-8 flex flex-col gap-6">
+        <div class="flex justify-between items-center gap-3 flex-wrap">
+          <div>
+            <h2 class="text-label-md text-primary tracking-widest uppercase mb-1">Preview · 数据预览</h2>
+            <h3 class="text-headline-md text-on-background">Nomination 结果</h3>
+          </div>
+          <span id="toolbarMeta" class="glass-tag px-3 py-1.5 rounded-full text-label-md text-on-surface-variant"></span>
+        </div>
+        <div class="overflow-x-auto rounded-3xl glass-panel max-h-[560px]">
+          <table class="w-full text-left border-collapse min-w-[1400px]">
+            <thead class="sticky top-0 z-10 bg-white/80 backdrop-blur-md text-label-md text-on-surface-variant">
+              <tr>
+                <th class="p-3 font-semibold whitespace-nowrap">#</th>
+                <th class="p-3 font-semibold whitespace-nowrap">分子 ID</th>
+                <th class="p-3 font-semibold whitespace-nowrap">CAS</th>
+                <th class="p-3 font-semibold whitespace-nowrap">InChIKey</th>
+                <th class="p-3 font-semibold whitespace-nowrap">lipid_score</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_risk</th>
+                <th class="p-3 font-bold whitespace-nowrap text-primary">final_score</th>
+                <th class="p-3 font-semibold whitespace-nowrap">novelty_score</th>
+                <th class="p-3 font-semibold whitespace-nowrap">conf_e</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_alert</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_physchem</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_dili</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_admet</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_evidence</th>
+                <th class="p-3 font-semibold whitespace-nowrap">scaffold</th>
+                <th class="p-3 font-semibold whitespace-nowrap">lipid_rationale</th>
+                <th class="p-3 font-semibold whitespace-nowrap">tox_rationale</th>
+                <th class="p-3 font-semibold whitespace-nowrap">overall_reason</th>
+                <th class="p-3 font-semibold whitespace-nowrap">run_mode</th>
+                <th class="p-3 font-semibold whitespace-nowrap">config_hash</th>
+                <th class="p-3 font-semibold whitespace-nowrap">degraded_channels</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody" class="text-sm text-on-background divide-y divide-outline-variant/30"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex flex-col md:flex-row gap-6">
+        <div class="flex-grow glass-panel-strong rounded-4xl p-6 flex flex-col gap-4 bg-inverse-surface text-inverse-on-surface relative overflow-hidden" style="background: linear-gradient(160deg, rgba(35,49,68,0.96), rgba(26,36,50,0.92)); border-color: rgba(255,255,255,0.08);">
+          <div class="flex items-center gap-2 border-b border-white/10 pb-3">
+            <span class="material-symbols-outlined text-sm opacity-70">terminal</span>
+            <h3 class="text-label-md tracking-wider opacity-80">执行日志</h3>
+          </div>
+          <div id="logBody" class="font-mono text-[13px] leading-relaxed overflow-y-auto h-44 flex flex-col gap-1.5 pr-2 opacity-90"></div>
+        </div>
+        <div class="flex flex-col gap-4 justify-end min-w-[200px]">
+          <button id="downloadLogBtn" type="button" disabled
+            class="glass-btn w-full px-6 py-4 rounded-full text-label-md inline-flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-[20px]">description</span>
+            下载运行日志
+          </button>
+          <button id="downloadBtn" type="button" disabled
+            class="glass-btn glass-btn-primary w-full px-6 py-4 rounded-full text-label-md inline-flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-[20px]">download</span>
+            下载 CSV
+          </button>
+          <button id="downloadPdfBtn" type="button" disabled
+            class="glass-btn w-full px-6 py-4 rounded-full text-label-md inline-flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-[20px]" id="downloadPdfIcon">picture_as_pdf</span>
+            <span id="downloadPdfLabel">机制假说 PDF</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 机制 PDF 完成提示条 -->
+  <div id="mechPdfToast" class="mech-pdf-toast fixed bottom-24 right-6 z-[80] pointer-events-none" aria-live="polite" aria-hidden="true">
+    <div class="glass-panel-strong rounded-2xl px-4 py-3 border border-white/70 shadow-lg flex items-center gap-3 min-w-[240px] max-w-sm">
+      <span class="material-symbols-outlined text-primary text-[22px]">task_alt</span>
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-on-background">机制假说 PDF 已生成</p>
+        <p id="mechPdfToastName" class="text-xs font-mono text-on-surface-variant/80 truncate mt-0.5"></p>
+      </div>
+    </div>
+  </div>
+
+  <footer class="w-full py-8 border-t border-black/5 flex justify-center items-center mt-auto">
+    <div class="text-sm text-on-surface-variant/70">MolMind · 化合物筛选 · Quality-Max</div>
+  </footer>
+
+  <!-- History drawer -->
+  <div id="historyOverlay" class="history-overlay fixed inset-0 z-[60] hidden" aria-hidden="true"></div>
+  <aside id="historyPanel" class="fixed top-0 right-0 z-[70] h-full w-full max-w-2xl translate-x-full transition-transform duration-300 glass-panel-strong border-l border-white/80 flex flex-col" role="dialog" aria-label="执行历史" aria-modal="true">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-black/5">
+      <div>
+        <h2 class="text-label-md text-primary tracking-widest uppercase mb-1">History</h2>
+        <h3 class="text-headline-md text-on-background">执行记录</h3>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="historyClearBtn" type="button" class="glass-btn w-10 h-10 rounded-full flex items-center justify-center" aria-label="清空执行记录" title="清空本地执行记录">
+          <span class="material-symbols-outlined">delete_sweep</span>
+        </button>
+        <button id="historyCloseBtn" type="button" class="glass-btn w-10 h-10 rounded-full flex items-center justify-center" aria-label="关闭">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+    </div>
+    <p class="px-6 pt-3 text-xs text-on-surface-variant/80">保存在浏览器本地（localStorage），最多 30 条；成功 / 失败 / 停止均可下载运行日志，仅成功可下载 CSV 与机制假说 PDF</p>
+    <div id="historyList" class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3"></div>
+  </aside>
+
+  <!-- 清空执行记录确认弹窗 -->
+  <div id="historyClearModal" class="fixed inset-0 z-[90] hidden items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="historyClearModalTitle" aria-modal="true">
+    <div id="historyClearModalBackdrop" class="absolute inset-0 bg-black/30 backdrop-blur-[2px]"></div>
+    <div class="relative z-10 w-full max-w-sm glass-panel-strong rounded-3xl p-6 border border-white/70 shadow-xl">
+      <div class="flex items-start gap-3 mb-5">
+        <span class="material-symbols-outlined text-primary text-3xl shrink-0">delete_sweep</span>
+        <div>
+          <h3 id="historyClearModalTitle" class="text-lg font-semibold text-on-background">清空执行记录？</h3>
+          <p class="text-sm text-on-surface-variant mt-1.5 leading-relaxed">将删除浏览器本地保存的全部执行记录，不可恢复。</p>
+        </div>
+      </div>
+      <div class="flex flex-col-reverse sm:flex-row gap-3 justify-end">
+        <button id="historyClearCancel" type="button" class="glass-btn px-5 py-3 rounded-full text-sm">取消</button>
+        <button id="historyClearConfirm" type="button" class="glass-btn glass-btn-primary px-5 py-3 rounded-full text-sm inline-flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">delete_forever</span>
+          确认清空
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.MOLMIND_TOP_N_MIN = 1;
+    window.MOLMIND_TOP_N_MAX = 50;
+    window.MOLMIND_SCREEN_STREAM = (top, mode, useSnapshot) =>
+      `/api/screen/stream?top=${top}&mode=${encodeURIComponent(mode)}&use_snapshot=${useSnapshot ? "true" : "false"}`;
+    window.MOLMIND_MECHANISM_STATUS = (jobId) =>
+      `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
+  </script>
+  <script src="./app.js"></script>
+</body>
+</html>

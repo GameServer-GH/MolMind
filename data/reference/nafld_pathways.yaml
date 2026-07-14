@@ -1,0 +1,52 @@
+# NAFLD/MASLD 机制通路白名单（供 mechanism 填空；不改 S_final / 排名）
+version: 1
+source: 项目来源.md + NAFLDkb targets / hepadrug FXR 叙事（仅通路口径）
+whitelist:
+  - id: DNL
+    name: 从头脂合成
+    targets: [SREBP-1c, ACC, FASN, SCD1]
+    rescue_hint: "检测 SREBP-1c / FASN / SCD1 表达；可选 ACC 抑制剂对照"
+  - id: FAO
+    name: 脂肪酸氧化
+    targets: [PPARα, AMPK, CPT1, ACOX1]
+    rescue_hint: "AMPK 抑制剂 Compound C 救援；或检测 CPT1A / ACOX1"
+  - id: PPAR
+    name: PPAR 核受体
+    targets: [PPARα, PPARδ, PPARγ]
+    rescue_hint: "PPARα 下游 CPT1A/ACOX1；或与已知 PPAR 激动剂对照"
+  - id: FXR
+    name: 法尼醇 X 受体
+    targets: [FXR, SHP, CYP7A1]
+    rescue_hint: "FXR 靶基因 SHP / CYP7A1；与奥贝胆酸类对照叙事"
+  - id: AMPK
+    name: AMPK 能量传感
+    targets: [AMPK, ACC]
+    rescue_hint: "Compound C（dorsomorphin）救援实验观察降脂是否逆转"
+  - id: THR
+    name: 甲状腺激素受体β
+    targets: [THR-β]
+    rescue_hint: "THR-β 靶基因；与 Resmetirom 类对照"
+  - id: UptakeEfflux
+    name: 脂质摄取与外排
+    targets: [CD36, FATP, MTP, ApoB]
+    rescue_hint: "检测脂滴与 ApoB 分泌相关读出"
+  - id: Autophagy
+    name: 脂噬 / 自噬
+    targets: [ULK1, LC3, LAL]
+    rescue_hint: "自噬流抑制剂（如氯喹）观察脂滴清除是否依赖自噬"
+
+# 阳性对照名 → 默认假设通路（mechanism 优先使用）
+positive_pathway_map:
+  Simvastatin: DNL
+  Lovastatin: DNL
+  Fenofibrate: PPAR
+  Pioglitazone: PPAR
+  Obeticholic Acid: FXR
+  Elafibranor: PPAR
+  Saroglitazar: PPAR
+  Resmetirom: THR
+  Metformin: AMPK
+  Berberine: AMPK
+  Ursodeoxycholic acid: FXR
+  Lanifibranor: PPAR
+  Gemfibrozil: PPAR

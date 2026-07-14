@@ -1,0 +1,34 @@
+# 假阳性 / 肝毒参考：应抬升 R_tox，不得进交付 Top 10
+version: 1
+cases:
+  - name: Amiodarone
+    role: false_positive
+    cas: "1951-25-3"
+    smiles: "CCCCC1=C(C(=O)c2ccccc2OCCCC)OC(=C1I)CCN(CC)CC"
+    expected:
+      high_tox: true
+      rank_eligible: false
+
+  - name: Diclofenac
+    role: false_positive
+    cas: "15307-86-5"
+    smiles: "O=C(O)Cc1ccccc1Nc2c(Cl)cccc2Cl"
+    expected:
+      high_tox: true
+      rank_eligible: false
+
+  - name: Ketoconazole
+    role: false_positive
+    cas: "65277-42-1"
+    smiles: "CC(=O)N1CCN(CC1)c2ccc(OCC3COC(Cn4ccnc4)(O3)c5ccc(Cl)cc5Cl)cc2"
+    expected:
+      high_tox: true
+      rank_eligible: false
+
+  - name: Troglitazone
+    role: false_positive
+    cas: "97322-87-7"
+    smiles: "Cc1c(C)c2OC(C)(COc3ccc(CC4SC(=O)NC4=O)cc3)CCc2c(C)c1O"
+    expected:
+      high_tox: true
+      rank_eligible: false

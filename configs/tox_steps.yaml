@@ -1,0 +1,16 @@
+name: toxicity_assessment
+steps:
+  - id: smarts_alerts
+    backend: chem_core
+  - id: physchem_risk
+    backend: chem_core
+  - id: dili_model
+    backend: ml_optional
+    optional: true
+  - id: admet_proxy
+    backend: ml_optional
+    optional: true
+  - id: external_tox_annotations
+    backend: evidence_facade
+    optional: true
+aggregate: weighted_risk_with_evidence_boost

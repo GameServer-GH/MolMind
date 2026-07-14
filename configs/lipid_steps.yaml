@@ -1,0 +1,15 @@
+name: lipid_potential
+steps:
+  - id: pharmacophore_smarts
+    backend: chem_core
+  - id: positive_similarity
+    backend: goldset
+  - id: pathway_target_hints
+    backend: chem_core
+  - id: external_lipid_activity
+    backend: evidence_facade
+    optional: true
+  - id: lipid_ml
+    backend: ml_optional
+    optional: true
+aggregate: fuse_lipid

@@ -1,0 +1,41 @@
+"""packages.chem_core — 化学内核导出。"""
+
+from packages.chem_core.core import (
+    HARD_ALERT_SMARTS,
+    HARD_PATTERNS,
+    LIPID_PATTERNS,
+    LIPID_PHARMACOPHORE_SMARTS,
+    PATHWAY_PATTERNS,
+    TOX_ALERT_SMARTS,
+    TOX_PATTERNS,
+    clamp,
+    compile_named,
+    compile_weighted,
+    compute_descriptors,
+    lipid_descriptor_bonus,
+    match_weighted,
+    morgan_fp,
+    murcko_scaffold_smiles,
+    physchem_risk,
+    tanimoto,
+)
+
+__all__ = [
+    "HARD_ALERT_SMARTS",
+    "HARD_PATTERNS",
+    "LIPID_PATTERNS",
+    "LIPID_PHARMACOPHORE_SMARTS",
+    "PATHWAY_PATTERNS",
+    "TOX_ALERT_SMARTS",
+    "TOX_PATTERNS",
+    "clamp",
+    "compile_named",
+    "compile_weighted",
+    "compute_descriptors",
+    "lipid_descriptor_bonus",
+    "match_weighted",
+    "morgan_fp",
+    "murcko_scaffold_smiles",
+    "physchem_risk",
+    "tanimoto",
+]

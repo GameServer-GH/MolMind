@@ -1,0 +1,19 @@
+name: druglikeness_filter
+steps:
+  - id: basic_props
+    backend: chem_core
+  - id: lipinski_ro5
+    backend: chem_core
+    params:
+      max_mw: 500.0
+      max_logp: 5.0
+      max_hbd: 5
+      max_hba: 10
+  - id: expert_redlines
+    backend: chem_core
+    params:
+      max_mw_hard: 600.0
+      max_logp_hard: 5.0
+  - id: structural_alerts
+    backend: chem_core
+on_fail: reject

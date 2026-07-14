@@ -1,0 +1,801 @@
+name,score,smiles,inchikey,source,mw
+AZD4017,0.78,CCCSc1nc(N2CCC[C@@H](CC(=O)O)C2)ccc1C(=O)NC1CCCCC1,NCDZABJPWMBMIQ-INIZCTEOSA-N,NAFLDkb_investigational,419.59
+Acarbose,0.78,C[C@H]1O[C@H](O[C@H]2[C@H](O)[C@@H](O)[C@@H](O[C@@H]([C@H](O)[C@@H](O)C=O)[C@H](O)CO)O[C@@H]2CO)[C@H](O)[C@@H](O)[C@@H]1N[C@H]1C=C(CO)[C@@H](O)[C@H](O)[C@H]1O,CEMXHAPUFJOOSV-XGWNLRGSSA-N,NAFLDkb_investigational,645.61
+Acetaminophen,0.78,CC(=O)Nc1ccc(O)cc1,RZVAJINKPMORJF-UHFFFAOYSA-N,NAFLDkb_investigational,151.16
+Acipimox,0.78,Cc1cnc(C(=O)O)c[n+]1[O-],DJQOOSBJCLSSEY-UHFFFAOYSA-N,NAFLDkb_investigational,154.12
+Allopurinol,0.78,O=c1[nH]cnc2[nH]ncc12,OFCNXPDARWKPPY-UHFFFAOYSA-N,NAFLDkb_investigational,136.11
+Alpha-lipoic acid,0.78,O=C(O)CCCC[C@@H]1CCSS1,AGBQKNBQESQNJD-SSDOTTSWSA-N,NAFLDkb_investigational,206.33
+Alpha-tocopherol,0.78,Cc1c(C)c2c(c(C)c1O)CC[C@@](C)(CCC[C@H](C)CCC[C@H](C)CCCC(C)C)O2,GVJHHUAWPYXKBD-IEOSBIPESA-N,NAFLDkb_investigational,430.72
+Amlexanox,0.78,CC(C)c1ccc2oc3nc(N)c(C(=O)O)cc3c(=O)c2c1,SGRYPYWGNKJSDL-UHFFFAOYSA-N,NAFLDkb_investigational,298.3
+Amoxicillin,0.78,CC1(C)S[C@@H]2[C@H](NC(=O)[C@H](N)c3ccc(O)cc3)C(=O)N2[C@H]1C(=O)O,LSQZJLSUYDQPKJ-NJBDSQKTSA-N,NAFLDkb_investigational,365.41
+Anthocyanin,0.78,c1ccc(-c2ccc3ccccc3[o+]2)cc1,NWKFECICNXDNOQ-UHFFFAOYSA-N,NAFLDkb_investigational,207.25
+Apararenone,0.78,CC1(C)Oc2cc(NS(C)(=O)=O)ccc2N(c2ccc(F)cc2)C1=O,AZNHWXAFPBYFGH-UHFFFAOYSA-N,NAFLDkb_investigational,364.4
+Aramchol,0.78,CCCCCCCCCCCCCCCCCCCC(=O)N[C@H]1CC[C@@]2(C)[C@@H](C1)C[C@@H](O)[C@@H]1[C@@H]2C[C@H](O)[C@]2(C)[C@@H]([C@H](C)CCC(=O)O)CC[C@@H]12,SHKXZIQNFMOPBS-OOMQYRRCSA-N,NAFLDkb_investigational,702.12
+Aspirin,0.78,CC(=O)Oc1ccccc1C(=O)O,BSYNRYMUTXBXSQ-UHFFFAOYSA-N,NAFLDkb_investigational,180.16
+Astaxanthin,0.78,CC1=C(/C=C/C(C)=C/C=C/C(C)=C/C=C/C=C(C)/C=C/C=C(C)/C=C/C2=C(C)C(=O)[C@@H](O)CC2(C)C)C(C)(C)C[C@H](O)C1=O,MQZIGYBFDRPAKN-UWFIBFSHSA-N,NAFLDkb_investigational,596.85
+Atorvastatin,0.78,CC(C)c1c(C(=O)Nc2ccccc2)c(-c2ccccc2)c(-c2ccc(F)cc2)n1CC[C@@H](O)C[C@@H](O)CC(=O)O,XUKUURHRXDUEBC-KAYWLYCHSA-N,NAFLDkb_investigational,558.65
+Avandia,0.78,CN(CCOc1ccc(CC2SC(=O)NC2=O)cc1)c1ccccn1.O=C(O)C=CC(=O)O,SUFUKZSWUHZXAV-BTJKTKAUSA-N,NAFLDkb_investigational,473.51
+Azithromycin,0.78,CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(O)C[C@@H](C)CN(C)[C@H](C)[C@@H](O)[C@]1(C)O,MQTOSJVFKKJCRP-BICOPXKESA-N,NAFLDkb_investigational,749.0
+BI 1467335,0.78,CC(C)(C)NC(=O)c1ccc(OC/C(=C/F)CN)cc1.Cl,AEMZEDNMNLIDSL-YGCVIUNWSA-N,NAFLDkb_investigational,316.8
+BMS-986251,0.78,C[C@H]1C[C@H](C(=O)O)CC[C@H]1C(=O)N1CC[C@@]2(S(=O)(=O)c3ccc(F)cc3)c3ccc(C(F)(C(F)(F)F)C(F)(F)F)cc3CC[C@@H]12,JQORWGARJVSRBA-QOTTZFGFSA-N,NAFLDkb_investigational,667.62
+Berberine,0.78,COc1ccc2cc3[n+](cc2c1OC)CCc1cc2c(cc1-3)OCO2,YBHILYKTIRIUTE-UHFFFAOYSA-N,NAFLDkb_investigational,336.37
+Bergamot,0.78,C=CC(C)(CCC=C(C)C)OC(C)=O,UWKAYLJWKGQEPM-UHFFFAOYSA-N,NAFLDkb_investigational,196.29
+Besifovir,0.78,Nc1ncc2ncn(CC3(OCP(=O)(O)O)CC3)c2n1,KDNSSKPZBDNJDF-UHFFFAOYSA-N,NAFLDkb_investigational,299.23
+Betaine,0.78,C[N+](C)(C)CC(=O)[O-],KWIUHFFTVRNATP-UHFFFAOYSA-N,NAFLDkb_investigational,117.15
+Bezafibrate,0.78,CC(C)(Oc1ccc(CCNC(=O)c2ccc(Cl)cc2)cc1)C(=O)O,IIBYAHWJQTYFKB-UHFFFAOYSA-N,NAFLDkb_investigational,361.83
+Bismuth subcitrate,0.78,O=C(O)CC(O)(CC(=O)O)C(=O)O.[Bi].[K],ZBCVUEHBBZTSOB-UHFFFAOYSA-N,NAFLDkb_investigational,440.2
+CC-90001,0.78,C[C@@H]1CC[C@@H](Nc2nc(NC(C)(C)C)ncc2C(N)=O)C[C@H]1O,QBBRJRLJWXRSHQ-CKYFFXLPSA-N,NAFLDkb_investigational,321.43
+CF102,0.78,CNC(=O)[C@H]1O[C@@H](n2cnc3c(NCc4cccc(I)c4)nc(Cl)nc32)[C@H](O)[C@@H]1O,IPSYPUKKXMNCNQ-PFHKOEEOSA-N,NAFLDkb_investigational,544.74
+CLA,0.78,CCCCCCC=CC=CCCCCCCCC(=O)O,JBYXPOFIGCOSSB-UHFFFAOYSA-N,NAFLDkb_investigational,280.45
+CP-945598,0.78,CCNC1(C(N)=O)CCN(c2ncnc3c2nc(-c2ccccc2Cl)n3-c2ccc(Cl)cc2)CC1,UNAZAADNBYXMIV-UHFFFAOYSA-N,NAFLDkb_investigational,510.43
+Calcitriol,0.78,C=C1/C(=C\C=C2/CCC[C@]3(C)[C@@H]([C@H](C)CCCC(C)(C)O)CC[C@@H]23)C[C@@H](O)C[C@@H]1O,GMRQFYUYWCNGIN-NKMMMXOESA-N,NAFLDkb_investigational,416.65
+Canagliflozin,0.78,Cc1ccc([C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)cc1Cc1ccc(-c2ccc(F)cc2)s1,XTNGUQKDFGDXSJ-ZXGKGEBGSA-N,NAFLDkb_investigational,444.52
+Celsentri,0.78,Cc1nnc(C(C)C)n1[C@@H]1C[C@H]2CC[C@@H](C1)N2CC[C@H](NC(=O)C1CCC(F)(F)CC1)c1ccccc1,GSNHKUDZZFZSJB-QYOOZWMWSA-N,NAFLDkb_investigational,513.68
+Cenicriviroc,0.78,CCCCOCCOc1ccc(-c2ccc3c(c2)C=C(C(=O)Nc2ccc(S(=O)Cc4cncn4CCC)cc2)CCCN3CC(C)C)cc1,PNDKCRDVVKJPKG-UHFFFAOYSA-N,NAFLDkb_investigational,696.96
+Cholestyramine,0.78,CCc1ccc(C(C)CCc2ccc([N+](C)(C)C)cc2)cc1,HGMSJMJPXGGEBP-UHFFFAOYSA-N,NAFLDkb_investigational,296.48
+Chromium picolinate,0.78,O=C([O-])c1ccccn1.O=C([O-])c1ccccn1.O=C([O-])c1ccccn1.[Cr+3],CBDQOLKNTOMMTL-UHFFFAOYSA-K,NAFLDkb_investigational,418.31
+Cilofexor,0.78,O=C(O)c1ccnc(N2CC(O)(c3ccc(OCc4c(-c5c(Cl)cccc5Cl)noc4C4CC4)cc3Cl)C2)c1,KZSKGLFYQAYZCO-UHFFFAOYSA-N,NAFLDkb_investigational,586.86
+Cilostazol,0.78,O=C1CCc2cc(OCCCCc3nnnn3C3CCCCC3)ccc2N1,RRGUKTPIGVIEKM-UHFFFAOYSA-N,NAFLDkb_investigational,369.47
+Citrulline,0.78,NC(=O)NCCC[C@H](N)C(=O)O,RHGKLRLOHDJJDR-BYPYZUCNSA-N,NAFLDkb_investigational,175.19
+Coenzyme Q10,0.78,COC1=C(OC)C(=O)C(C/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CC/C=C(\C)CCC=C(C)C)=C(C)C1=O,ACTIUHUUMQJHFO-UPTCCGCDSA-N,NAFLDkb_investigational,863.36
+Colesevelam,0.78,C=CCN.C=CCNCCCCCCCCCC.C=CCNCCCCCC[N+](C)(C)C.ClCC1CO1.[Cl-],NXOLVMFMAFCDSR-UHFFFAOYSA-M,NAFLDkb_investigational,581.8
+Cranberry,0.78,O=S(=O)(O)c1ccc2c(/N=N/c3ccc(S(=O)(=O)O)c4ccccc34)c(O)c(S(=O)(=O)O)cc2c1.[Na],KSQCYWPBMKMMHA-QUABFQRHSA-N,NAFLDkb_investigational,561.53
+Curcumin,0.78,COc1cc(/C=C/C(=O)CC(=O)/C=C/c2ccc(O)c(OC)c2)ccc1O,VFLDPWHFBUODDF-FCXRPNKRSA-N,NAFLDkb_investigational,368.39
+Cysteamine bitartrate,0.78,NCCS.O=C(O)[C@H](O)[C@@H](O)C(=O)O,NSKJTUFFDRENDM-ZVGUSBNCSA-N,NAFLDkb_investigational,227.24
+DHA,0.78,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCC(=O)O,MBMBGCFOFBJSGT-KUBAVDMBSA-N,NAFLDkb_investigational,328.5
+DHA-EE,0.78,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCC(=O)OCC,ITNKVODZACVXDS-YNUSHXQLSA-N,NAFLDkb_investigational,356.55
+Dabigatran Etexilate,0.78,CCCCCCOC(=O)NC(=N)c1ccc(NCc2nc3cc(C(=O)N(CCC(=O)OCC)c4ccccn4)ccc3n2C)cc1,KSGXQBZTULBEEQ-UHFFFAOYSA-N,NAFLDkb_investigational,627.75
+Dapagliflozin,0.78,CCOc1ccc(Cc2cc([C@@H]3O[C@H](CO)[C@@H](O)[C@H](O)[C@H]3O)ccc2Cl)cc1,JVHXJTBJCFBINQ-ADAARDCZSA-N,NAFLDkb_investigational,408.88
+Deferasirox,0.78,O=C(O)c1ccc(-n2nc(-c3ccccc3O)nc2-c2ccccc2O)cc1,BOFQWVMAQOTZIW-UHFFFAOYSA-N,NAFLDkb_investigational,373.37
+Delta-tocotrienol,0.78,CC(C)=CCC/C(C)=C/CC/C(C)=C/CC[C@]1(C)CCc2cc(O)cc(C)c2O1,ODADKLYLWWCHNB-LDYBVBFYSA-N,NAFLDkb_investigational,396.62
+Diacerein,0.78,CC(=O)Oc1cccc2c1C(=O)c1c(OC(C)=O)cc(C(=O)O)cc1C2=O,TYNLGDBUJLVSMA-UHFFFAOYSA-N,NAFLDkb_investigational,368.3
+Diamel,0.78,CCCNC(=O)NS(=O)(=O)c1ccc(Cl)cc1,RKWGIWYCVPQPMF-UHFFFAOYSA-N,NAFLDkb_investigational,276.75
+Diammonium glycyrrhizate,0.78,CC1(C)[C@@H](O[C@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)CC[C@]2(C)[C@H]3C(=O)C=C4[C@H]5C[C@@](C)(C(=O)O)CC[C@]5(C)CC[C@@]4(C)[C@]3(C)CC[C@@H]12.N,ILRKKHJEINIICQ-LEEOIRFPSA-N,NAFLDkb_investigational,839.97
+Diane-35,0.78,C#C[C@]1(O)CC[C@H]2[C@@H]3CCc4cc(O)ccc4[C@H]3CC[C@@]21C.CC(=O)O[C@]1(C(C)=O)CC[C@H]2[C@@H]3C=C(Cl)C4=CC(=O)[C@@H]5C[C@@H]5[C@]4(C)[C@H]3CC[C@@]21C,RWYFURDDADFSHT-BGWUALDMSA-N,NAFLDkb_investigational,713.36
+Digoxin,0.78,C[C@H]1O[C@@H](O[C@H]2[C@@H](O)C[C@H](O[C@H]3[C@@H](O)C[C@H](O[C@H]4CC[C@@]5(C)[C@H](CC[C@@H]6[C@@H]5C[C@@H](O)[C@]5(C)[C@@H](C7=CC(=O)OC7)CC[C@]65O)C4)O[C@@H]3C)O[C@@H]2C)C[C@H](O)[C@@H]1O,LTMHDMANZUZIPE-PUGKRICDSA-N,NAFLDkb_investigational,780.95
+Dihydromyricetin,0.78,O=C1c2c(O)cc(O)cc2O[C@H](c2cc(O)c(O)c(O)c2)[C@H]1O,KJXSIXMJHKAJOD-LSDHHAIUSA-N,NAFLDkb_investigational,320.25
+Doxycycline,0.78,C[C@H]1c2cccc(O)c2C(=O)C2=C(O)[C@]3(O)C(=O)C(C(N)=O)=C(O)[C@@H](N(C)C)[C@@H]3[C@@H](O)[C@@H]21,JBIWCJUYHHGXTC-AKNGSSGZSA-N,NAFLDkb_investigational,444.44
+EDP-305,0.78,CC[C@H]1[C@@H](O)[C@@H]2[C@H](CC[C@]3(C)[C@@H]([C@H](C)CCNC(=O)NS(=O)(=O)c4ccc(C(C)(C)C)cc4)CC[C@@H]23)[C@@]2(C)CC[C@@H](O)C[C@@H]12,SJKLCUGQVVYDCX-HRNVLBFRSA-N,NAFLDkb_investigational,630.94
+EPA-E,0.78,CCCCCCCCCCCCCCCCCCCC(=O)OCC,YBKSMWBLSBAFBQ-UHFFFAOYSA-N,NAFLDkb_investigational,340.59
+Elafibranor,0.78,CSc1ccc(C(=O)/C=C/c2cc(C)c(OC(C)(C)C(=O)O)c(C)c2)cc1,AFLFKFHDSCQHOL-IZZDOVSWSA-N,NAFLDkb_investigational,384.5
+Elobixibat,0.78,CCCCC1(CCCC)CN(c2ccccc2)c2cc(SC)c(OCC(=O)N[C@@H](C(=O)NCC(=O)O)c3ccccc3)cc2S(=O)(=O)C1,XFLQIRAKKLNXRQ-UUWRZZSWSA-N,NAFLDkb_investigational,695.9
+Eltrombopag,0.78,CC1=NN(c2ccc(C)c(C)c2)C(=O)/C1=N\Nc1cccc(-c2cccc(C(=O)O)c2)c1O,XDXWLKQMMKQXPV-QYQHSDTDSA-N,NAFLDkb_investigational,442.48
+Empagliflozin,0.78,OC[C@H]1O[C@@H](c2ccc(Cl)c(Cc3ccc(O[C@H]4CCOC4)cc3)c2)[C@H](O)[C@@H](O)[C@@H]1O,OBWASQILIWPZMG-QZMOQZSNSA-N,NAFLDkb_investigational,450.92
+Emricasan,0.78,C[C@H](NC(=O)C(=O)Nc1ccccc1C(C)(C)C)C(=O)N[C@@H](CC(=O)O)C(=O)COc1c(F)c(F)cc(F)c1F,SCVHJVCATBPIHN-SJCJKPOMSA-N,NAFLDkb_investigational,569.51
+Ergocalciferol,0.78,C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([C@H](C)/C=C/[C@H](C)C(C)C)CC[C@@H]12,MECHNRXZTMCUDQ-RKHKHRCZSA-N,NAFLDkb_investigational,396.66
+Estradiol,0.78,C[C@]12CC[C@@H]3c4ccc(O)cc4CC[C@H]3[C@@H]1CC[C@@H]2O,VOXZDWNPVJITMN-ZBRFXRBCSA-N,NAFLDkb_investigational,272.39
+Evogliptin,0.78,CC(C)(C)OC[C@@H]1C(=O)NCCN1C(=O)C[C@H](N)Cc1cc(F)c(F)cc1F,LCDDAGSJHKEABN-MLGOLLRUSA-N,NAFLDkb_investigational,401.43
+Ezetimibe,0.78,O=C1[C@H](CC[C@H](O)c2ccc(F)cc2)[C@@H](c2ccc(O)cc2)N1c1ccc(F)cc1,OLNTVTPDXPETLC-XPWALMASSA-N,NAFLDkb_investigational,409.43
+FTZ,0.78,Fc1cccc(Cl)c1CNc1n[nH]c(-c2ccco2)n1,AHOHWELPUXLPOF-UHFFFAOYSA-N,NAFLDkb_investigational,292.7
+Fenofibrate,0.78,CC(C)OC(=O)C(C)(C)Oc1ccc(C(=O)c2ccc(Cl)cc2)cc1,YMTINGFKWWXKFG-UHFFFAOYSA-N,NAFLDkb_investigational,360.84
+Fenretinide,0.78,CC1=C(/C=C/C(C)=C/C=C/C(C)=C/C(=O)Nc2ccc(O)cc2)C(C)(C)CCC1,AKJHMTWEGVYYSE-FXILSDISSA-N,NAFLDkb_investigational,391.56
+Firsocostat,0.78,COc1ccccc1[C@H](Cn1c(=O)n(C(C)(C)C(=O)O)c(=O)c2c(C)c(-c3ncco3)sc21)OC1CCOCC1,ZZWWXIBKLBMSCS-FQEVSTJZSA-N,NAFLDkb_investigational,569.64
+Flaxseed,0.78,COc1cc(C[C@@H](CO)[C@H](CO)Cc2ccc(O)c(OC)c2)ccc1O.OC[C@H]1O[C@@H](O)[C@H](O)[C@@H](O)[C@@H]1O,MJYQFWSXKFLTAY-OVEQLNGDSA-N,NAFLDkb_investigational,542.58
+Fluconazole,0.78,OC(Cn1cncn1)(Cn1cncn1)c1ccc(F)cc1F,RFHAOTPXVQNOHP-UHFFFAOYSA-N,NAFLDkb_investigational,306.28
+Folic acid,0.78,Nc1nc2[nH]cc(CNc3ccc(C(=O)N[C@@H](CCC(=O)O)C(=O)O)cc3)nc-2c(=O)n1,OVBPIULPVIDEAO-LBPRGKRZSA-N,NAFLDkb_investigational,441.4
+Fructose,0.78,O=C(CO)[C@@H](O)[C@H](O)[C@H](O)CO,BJHIKXHVCXFQLS-UYFOZJQFSA-N,NAFLDkb_investigational,180.16
+Fucoidan,0.78,C[C@@H]1O[C@H](C)[C@@H](O)[C@H](O)[C@@H]1OS(=O)(=O)O,NLMDZXKCTWKRSQ-IBISWUOJSA-N,NAFLDkb_investigational,242.25
+GB1211,0.78,OCC1OC(Sc2cncc(Br)c2)C(O)C(n2cc(-c3cc(F)c(F)c(F)c3)nn2)C1O,FNCLKJPMEFPXOR-UHFFFAOYSA-N,NAFLDkb_investigational,533.33
+Garlic,0.78,C=CCS(=O)CC(N)C(=O)O.C=CCSS(=O)CC=C,NEVNZJWAVFPOQZ-UHFFFAOYSA-N,NAFLDkb_investigational,339.5
+Gemcabene,0.78,CC(C)(CCCCOCCCCC(C)(C)C(=O)O)C(=O)O,SDMBRCRVFFHJKR-UHFFFAOYSA-N,NAFLDkb_investigational,302.41
+Gemfibrozil,0.78,Cc1ccc(C)c(OCCCC(C)(C)C(=O)O)c1,HEMJJKBWTPKOJG-UHFFFAOYSA-N,NAFLDkb_investigational,250.34
+Genistein,0.78,O=c1c(-c2ccc(O)cc2)coc2cc(O)cc(O)c12,TZBJGXHYKVUXJN-UHFFFAOYSA-N,NAFLDkb_investigational,270.24
+Ginger,0.78,CCCCC/C=C/C(=O)CCc1ccc(O)c(OC)c1.CCCCCC(C)CC(=O)CCc1ccc(O)c(OC)c1,QCVRFSPGUWEKFC-ILHSMLOTSA-N,NAFLDkb_investigational,568.8
+Ginseng,0.78,CC1(C)CCC2(C(=O)OC3OC(CO)C(O)C(O)C3O)CCC3(CO)C(=CCC4C5(C)CC(O)C(O)C(C)(C(=O)OC6OC(CO)C(O)C(O)C6O)C5CCC43C)C2C1,YDQIRODFTJGGMP-UHFFFAOYSA-N,NAFLDkb_investigational,842.97
+Gliclazide,0.78,Cc1ccc(S(=O)(=O)NC(=O)NN2CC3CCCC3C2)cc1,BOVGTQGAOIONJV-UHFFFAOYSA-N,NAFLDkb_investigational,323.42
+Glimepiride,0.78,CCC1=C(C)CN(C(=O)NCCc2ccc(S(=O)(=O)NC(=O)N[C@H]3CC[C@H](C)CC3)cc2)C1=O,WIGIZIANZCJQQY-RUCARUNLSA-N,NAFLDkb_investigational,490.63
+Glucomannan,0.78,OC[C@H]1O[C@@H](O)[C@@H](O)[C@@H](O)C1O[C@@H]1O[C@H](CO)[C@@H](O[C@@H]2O[C@H](CO)[C@@H](O[C@@H]3O[C@H](CO)[C@@H](O)[C@H](O)[C@@H]3O)[C@H](O)[C@H]2O)[C@H](O)[C@@H]1O,LUEWUZLMQUOBSB-FSKGGBMCSA-N,NAFLDkb_investigational,666.58
+Glucophage,0.78,CN(C)C(=N)NC(=N)N.Cl,OETHQSJEHLVLGH-UHFFFAOYSA-N,NAFLDkb_investigational,165.63
+Glutathione,0.78,N[C@@H](CCC(=O)N[C@@H](CS)C(=O)NCC(=O)O)C(=O)O,RWSXRVCMGQZWBV-WDSKDSINSA-N,NAFLDkb_investigational,307.33
+Growth Hormone,0.78,O=C(O)c1ccc(O)c(O)c1,YQUVCSBJEUQKSH-UHFFFAOYSA-N,NAFLDkb_investigational,154.12
+Guanabenz,0.78,NC(N)=NN=Cc1c(Cl)cccc1Cl,WDZVGELJXXEGPV-YIXHJXPBSA-N,NAFLDkb_investigational,231.09
+HPN-01,0.78,NC(=O)c1cc(-c2ccc(Cl)cc2)cc(-c2ccc(S(N)(=O)=O)cc2)c1N,XJLFMRGTLRIXDT-UHFFFAOYSA-N,NAFLDkb_investigational,401.88
+Hesperidin,0.78,COc1ccc([C@@H]2CC(=O)c3c(O)cc(O[C@@H]4O[C@H](CO[C@@H]5O[C@@H](C)[C@H](O)[C@@H](O)[C@H]5O)[C@@H](O)[C@H](O)[C@H]4O)cc3O2)cc1O,QUQPHWDTPGMPEX-QJBIFVCTSA-N,NAFLDkb_investigational,610.57
+Hydroxy citric acid,0.78,O.O=C(O)CC(O)(CC(=O)O)C(=O)O,YASYEJJMZJALEJ-UHFFFAOYSA-N,NAFLDkb_investigational,210.14
+Hydroxytyrosol,0.78,OCCc1ccc(O)c(O)c1,JUUBCHWRXWPFFH-UHFFFAOYSA-N,NAFLDkb_investigational,154.16
+INT-767,0.78,CC[C@H]1[C@@H](O)[C@@H]2[C@H](CC[C@]3(C)[C@@H]([C@H](C)CCOS(=O)(=O)O)CC[C@@H]23)[C@@]2(C)CC[C@@H](O)C[C@@H]12.[Na],DQIGKAIZUNNJGO-PMWRKVJASA-N,NAFLDkb_investigational,495.68
+Icosabutate,0.78,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCCCOC(CC)C(=O)O,VOGXDRFFBBLZBT-AAQCHOMXSA-N,NAFLDkb_investigational,374.57
+Idebenone,0.78,COC1=C(OC)C(=O)C(CCCCCCCCCCCCO)=C(C)C1=O,VMHWZDULLBLUMS-UHFFFAOYSA-N,NAFLDkb_investigational,366.5
+Ipragliflozin,0.78,OC[C@H]1O[C@@H](c2ccc(F)c(Cc3cc4ccccc4s3)c2)[C@H](O)[C@@H](O)[C@@H]1O,AHFWIQIYAXSLBA-RQXATKFSSA-N,NAFLDkb_investigational,404.46
+Itraconazole,0.78,CCC(C)n1ncn(-c2ccc(N3CCN(c4ccc(OC[C@H]5CO[C@](Cn6cncn6)(c6ccc(Cl)cc6Cl)O5)cc4)CC3)cc2)c1=O,VHVPQPYKVGDNFY-ZPGVKDDISA-N,NAFLDkb_investigational,705.65
+JKB-121,0.78,C=C1CC[C@@]2(O)[C@H]3Cc4ccc(O)c5c4[C@@]2(CCN3CC2CC2)[C@H]1O5,WJBLNOPPDWQMCH-MBPVOVBZSA-N,NAFLDkb_investigational,339.44
+Kestose,0.78,OC[C@H]1O[C@@](CO)(OC[C@H]2O[C@@](CO)(O[C@H]3O[C@H](CO)[C@@H](O)[C@H](O)[C@H]3O)[C@@H](O)[C@@H]2O)[C@@H](O)[C@@H]1O,ODEHMIGXGLNAKK-OESPXIITSA-N,NAFLDkb_investigational,504.44
+L-Carnitine,0.78,C[N+](C)(C)C[C@H](O)CC(=O)[O-],PHIQHXFUZVPYII-ZCFIWIBFSA-N,NAFLDkb_investigational,161.2
+LCQ908,0.78,O=C(O)C[C@H]1CC[C@H](c2ccc(-c3ccc(Nc4ccc(C(F)(F)F)nc4)cn3)cc2)CC1,GXALXAKNHIROPE-QAQDUYKDSA-N,NAFLDkb_investigational,455.48
+LYS006,0.78,NC(CC(=O)O)Cn1nnc(-c2ccc(Oc3ncc(Cl)cc3F)cc2)n1,ZEGMEJVULDALSH-UHFFFAOYSA-N,NAFLDkb_investigational,392.78
+Lactulose,0.78,O=C(CO)[C@@H](O)[C@H](O[C@@H]1O[C@H](CO)[C@H](O)[C@H](O)[C@H]1O)[C@H](O)CO,PFCRQPBOOFTZGQ-VZXVHDRGSA-N,NAFLDkb_investigational,342.3
+Lanifibranor,0.78,O=C(O)CCCc1cc2cc(Cl)ccc2n1S(=O)(=O)c1ccc2ncsc2c1,OQDQIFQRNZIEEJ-UHFFFAOYSA-N,NAFLDkb_investigational,434.93
+Levothyroxine,0.78,N[C@@H](Cc1cc(I)c(Oc2cc(I)c(O)c(I)c2)c(I)c1)C(=O)O,XUIIKFGFIJCVMT-LBPRGKRZSA-N,NAFLDkb_investigational,776.87
+Licogliflozin,0.78,CCc1ccc([C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)cc1Cc1ccc2c(c1)OCCO2,XFJAMQQAAMJFGB-ZQGJOIPISA-N,NAFLDkb_investigational,416.47
+Linagliptin,0.78,CC#CCn1c(N2CCC[C@@H](N)C2)nc2c1c(=O)n(Cc1nc(C)c3ccccc3n1)c(=O)n2C,LTXREWYXXSTFRX-QGZVFWFLSA-N,NAFLDkb_investigational,472.55
+Lisinopril,0.78,NCCCC[C@H](N[C@@H](CCc1ccccc1)C(=O)O)C(=O)N1CCC[C@H]1C(=O)O,RLAWWYSOJDYHDC-BZSNNMDCSA-N,NAFLDkb_investigational,405.5
+Lobeglitazone,0.78,COc1ccc(Oc2cc(N(C)CCOc3ccc(CC4SC(=O)NC4=O)cc3)ncn2)cc1,CHHXEZSCHQVSRE-UHFFFAOYSA-N,NAFLDkb_investigational,480.55
+Losartan,0.78,CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1,PSIFNNKUMBGKDQ-UHFFFAOYSA-N,NAFLDkb_investigational,422.92
+Lovaza,0.78,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCC(=O)OCC.CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)OCC,DTMGIJFHGGCSLO-FIAQIACWSA-N,NAFLDkb_investigational,687.06
+Lubiprostone,0.78,CCCCC(F)(F)[C@@]1(O)CC[C@H]2[C@@H](CC(=O)[C@@H]2CCCCCCC(=O)O)O1,WGFOBBZOWHGYQH-MXHNKVEKSA-N,NAFLDkb_investigational,390.47
+Luseogliflozin,0.78,CCOc1ccc(Cc2cc([C@@H]3S[C@H](CO)[C@@H](O)[C@H](O)[C@H]3O)c(OC)cc2C)cc1,WHSOLWOTCHFFBK-ZQGJOIPISA-N,NAFLDkb_investigational,434.55
+MK-4074,0.78,COc1cc(C(=O)N2CCC3(CC2)CC(=O)c2cc(-c4cncc(C(=O)O)c4)ccc2O3)cc2c1c(C)cn2C1CC1,WDBNGXLHMZSUEI-UHFFFAOYSA-N,NAFLDkb_investigational,565.63
+MN-001,0.78,CCCc1c(SCCCOc2ccc(C(C)=O)c(OCCCC(=O)O)c2CCC)ccc(C(C)=O)c1O,KPWYNAGOBXLMSE-UHFFFAOYSA-N,NAFLDkb_investigational,530.68
+MSDC-0602K,0.78,COc1cccc(C(=O)COc2ccc(CC3SC(=O)NC3=O)cc2)c1.[K],WUPYCVYXBXCSQK-UHFFFAOYSA-N,NAFLDkb_investigational,410.51
+Mazindol,0.78,OC1(c2ccc(Cl)cc2)c2ccccc2C2=NCCN21,ZPXSCAKFGYXMGA-UHFFFAOYSA-N,NAFLDkb_investigational,284.75
+Melatonin,0.78,COc1ccc2[nH]cc(CCNC(C)=O)c2c1,DRLFMBDRBRZALE-UHFFFAOYSA-N,NAFLDkb_investigational,232.28
+Metadoxine,0.78,Cc1ncc(CO)c(CO)c1O.O=C1CC[C@@H](C(=O)O)N1,RYKKQQUKJJGFMN-HVDRVSQOSA-N,NAFLDkb_investigational,298.3
+Metformin,0.78,CN(C)C(=N)NC(=N)N,XZWYZXLIPXDOLR-UHFFFAOYSA-N,NAFLDkb_investigational,129.17
+Miricorilant,0.78,O=c1[nH]c(=O)c(Cc2cccc(C(F)(F)F)c2)c([C@H]2CC[C@H](c3ccccc3)CC2)[nH]1,GVVUZBSCYAVFTI-IYARVYRRSA-N,NAFLDkb_investigational,428.45
+MitoQ,0.78,COC1=C(OC)C(=O)C(CCCCCCCCCC[P+](c2ccccc2)(c2ccccc2)c2ccccc2)=C(C)C1=O,OIIMUKXVVLRCAF-UHFFFAOYSA-N,NAFLDkb_investigational,583.73
+Moxonidine,0.78,COc1nc(C)nc(Cl)c1NC1=NCCN1,WPNJAUFVNXKLIM-UHFFFAOYSA-N,NAFLDkb_investigational,241.68
+N-acetyl cysteine,0.78,CC(=O)NC(CS)C(=O)O,PWKSKIMOESPYIA-UHFFFAOYSA-N,NAFLDkb_investigational,163.2
+Niacin,0.78,O=C(O)c1cccnc1,PVNIIMVLHYAWGP-UHFFFAOYSA-N,NAFLDkb_investigational,123.11
+Nicotinamide,0.78,NC(=O)c1cccnc1,DFPAKSUCGFBDDF-UHFFFAOYSA-N,NAFLDkb_investigational,122.13
+Nidufexor,0.78,Cn1nc(C(=O)N(Cc2ccccc2)Cc2ccc(C(=O)O)cc2)c2c1-c1cc(Cl)ccc1OC2,JYTIXGYXBIBOMN-UHFFFAOYSA-N,NAFLDkb_investigational,487.94
+Nitazoxanide,0.78,CC(=O)Oc1ccccc1C(=O)Nc1ncc([N+](=O)[O-])s1,YQNQNVDNTFHQSW-UHFFFAOYSA-N,NAFLDkb_investigational,307.29
+Nivocasan,0.78,CC(C)[C@@]1(C(=O)N[C@H]2CC(=O)O[C@]2(O)CF)CC(c2nccc3ccccc23)=NO1,VYFGDLGHHBUDTQ-ZLGUVYLKSA-N,NAFLDkb_investigational,415.42
+Norursodeoxycholic acid,0.78,C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C,QYYDXDSPYPOWRO-JHMCBHKWSA-N,NAFLDkb_investigational,378.55
+Obeticholic Acid,0.78,CC[C@H]1[C@@H](O)[C@@H]2[C@H](CC[C@]3(C)[C@@H]([C@H](C)CCC(=O)O)CC[C@@H]23)[C@@]2(C)CC[C@@H](O)C[C@@H]12,ZXERDUOLZKYMJM-ZWECCWDJSA-N,NAFLDkb_investigational,420.63
+Odevixibat,0.78,CCCCC1(CCCC)CN(c2ccccc2)c2cc(SC)c(OCC(=O)N[C@@H](C(=O)N[C@@H](CC)C(=O)O)c3ccc(O)cc3)cc2S(=O)(=O)N1,XULSCZPZVQIMFM-IPZQJPLYSA-N,NAFLDkb_investigational,740.95
+Oleanolic Acid,0.78,CC1(C)CC[C@]2(C(=O)O)CC[C@]3(C)C(=CC[C@@H]4[C@@]5(C)CC[C@H](O)C(C)(C)[C@@H]5CC[C@]43C)[C@@H]2C1,MIJYXULNPSFWEK-GTOFXWBISA-N,NAFLDkb_investigational,456.71
+Oleoylethanolamide,0.78,CCCCCCCC/C=C\CCCCCCCC(=O)NCCO,BOWVQLFMWHZBEF-KTKRTIGZSA-N,NAFLDkb_investigational,325.54
+Oltipraz,0.78,Cc1c(-c2cnccn2)ssc1=S,CKNAQFVBEHDJQV-UHFFFAOYSA-N,NAFLDkb_investigational,226.35
+Omeprazole,0.78,COc1ccc2[nH]c(S(=O)Cc3ncc(C)c(OC)c3C)nc2c1,SUBDBMMJDZJVOS-UHFFFAOYSA-N,NAFLDkb_investigational,345.42
+Orlistat,0.78,CCCCCCCCCCC[C@@H](C[C@@H]1OC(=O)[C@H]1CCCCCC)OC(=O)[C@H](CC(C)C)NC=O,AHLBNYSZXLDEJQ-FWEHEUNISA-N,NAFLDkb_investigational,495.75
+PF-05221304,0.78,COc1cc(C(=O)N2CCC3(CC2)CC(=O)c2c(cnn2C(C)C)C3)cc(-c2ccc(C(=O)O)cc2)n1,LXZMHBHEXAELHH-UHFFFAOYSA-N,NAFLDkb_investigational,502.57
+Palatinose,0.78,O=C(CO)[C@@H](O)[C@H](O)[C@H](O)CO[C@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O,RJPPRBMGVWEZRR-WTZPKTTFSA-N,NAFLDkb_investigational,342.3
+Pantoprazole,0.78,COc1ccnc(CS(=O)c2nc3ccc(OC(F)F)cc3[nH]2)c1OC,IQPSEEYGBUAQFF-UHFFFAOYSA-N,NAFLDkb_investigational,383.38
+Pemafibrate,0.78,CC[C@@H](Oc1cccc(CN(CCCOc2ccc(OC)cc2)c2nc3ccccc3o2)c1)C(=O)O,ZHKNLJLMDFQVHJ-RUZDIDTESA-N,NAFLDkb_investigational,490.56
+Pentoxifylline,0.78,CC(=O)CCCCn1c(=O)c2c(ncn2C)n(C)c1=O,BYPFEZZEUUWMEJ-UHFFFAOYSA-N,NAFLDkb_investigational,278.31
+Perindopril,0.78,CCC[C@H](N[C@@H](C)C(=O)N1[C@H](C(=O)O)C[C@@H]2CCCC[C@@H]21)C(=O)OCC,IPVQLZZIHOAWMC-QXKUPLGCSA-N,NAFLDkb_investigational,368.47
+Phentermine,0.78,CC(C)(N)Cc1ccccc1,DHHVAGZRUROJKS-UHFFFAOYSA-N,NAFLDkb_investigational,149.24
+Phosphatidylcholine,0.78,CCCCC/C=C\C/C=C\CCCCCCCC(=O)O[C@H](COC(=O)CCCCCCCCCCCCCCCCC)COP(=O)([O-])OCC[N+](C)(C)C,FORFDCPQKJHEBF-VPUSDGANSA-N,NAFLDkb_investigational,786.13
+Phytosterol,0.78,CC[C@H](CC[C@@H](C)[C@H]1CC[C@H]2[C@@H]3CC=C4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@]12C)C(C)C,KZJWDPNRJALLNS-VJSFXXLFSA-N,NAFLDkb_investigational,414.72
+Pioglitazone,0.78,CCc1ccc(CCOc2ccc(C[C@H]3SC(=O)NC3=O)cc2)nc1,HYAFETHFCAUJAY-QGZVFWFLSA-N,NAFLDkb_investigational,356.45
+Piperine,0.78,O=C(/C=C/C=C/c1ccc2c(c1)OCO2)N1CCCCC1,MXXWOMGUGJBKIW-YPCIICBESA-N,NAFLDkb_investigational,285.34
+Pitavastatin,0.78,O=C(O)C[C@H](O)C[C@H](O)/C=C/c1c(C2CC2)nc2ccccc2c1-c1ccc(F)cc1,VGYFMXBACGZSIL-MCBHFWOFSA-N,NAFLDkb_investigational,421.47
+Proanthocyanidin,0.78,COc1c(O)cc([C@H]2Oc3c(c(O)cc(O)c3[C@H]3c4c(O)cc(O)cc4O[C@H](c4ccc(O)cc4)[C@@H]3O)C[C@H]2O)cc1O,JPFCOVZKLAXXOE-NFJBMHMQSA-N,NAFLDkb_investigational,592.55
+Proglumide,0.78,CCCN(CCC)C(=O)C(CCC(=O)O)NC(=O)c1ccccc1,DGMKFQYCZXERLX-UHFFFAOYSA-N,NAFLDkb_investigational,334.42
+Px-104,0.78,O=C(O)c1ccc([C@@H]2C[C@H]2c2ccc(OCc3c(-c4c(Cl)cccc4Cl)noc3C3CC3)cc2Cl)cc1,XBUXXJUEBFDQHD-SFTDATJTSA-N,NAFLDkb_investigational,554.86
+Quercetin,0.78,O=c1c(O)c(-c2ccc(O)c(O)c2)oc2cc(O)cc(O)c12,REFJWTPEDVJJIY-UHFFFAOYSA-N,NAFLDkb_investigational,302.24
+Quinidine,0.78,C=C[C@H]1CN2CC[C@H]1C[C@@H]2[C@@H](O)c1ccnc2ccc(OC)cc12,LOUPRKONTZGTKE-LHHVKLHASA-N,NAFLDkb_investigational,324.42
+Raltegravir,0.78,Cc1nnc(C(=O)NC(C)(C)c2nc(C(=O)NCc3ccc(F)cc3)c(O)c(=O)n2C)o1,CZFFBEXEKNGXKS-UHFFFAOYSA-N,NAFLDkb_investigational,444.42
+Ranolazine,0.78,COc1ccccc1OCC(O)CN1CCN(CC(=O)Nc2c(C)cccc2C)CC1,XKLMZUWKNUAPSZ-UHFFFAOYSA-N,NAFLDkb_investigational,427.55
+Remogliflozin,0.78,Cc1c(Cc2ccc(OC(C)C)cc2)c(O[C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)nn1C(C)C,GSINGUMRKGRYJP-VZWAGXQNSA-N,NAFLDkb_investigational,450.53
+Resmetirom,0.78,CC(C)c1cc(Oc2c(Cl)cc(-n3nc(C#N)c(=O)[nH]c3=O)cc2Cl)n[nH]c1=O,FDBYIYFVSAHJLY-UHFFFAOYSA-N,NAFLDkb_investigational,435.23
+Resveratrol,0.78,Oc1ccc(/C=C/c2cc(O)cc(O)c2)cc1,LUKBXSAWLPMMSZ-OWOJBTEDSA-N,NAFLDkb_investigational,228.25
+Rifampicin,0.78,CO[C@H]1/C=C/O[C@@]2(C)Oc3c(C)c(O)c4c(O)c(c(/C=N/N5CCN(C)CC5)c(O)c4c3C2=O)NC(=O)/C(C)=C\C=C\[C@H](C)[C@H](O)[C@@H](C)[C@@H](O)[C@@H](C)[C@H](OC(C)=O)[C@@H]1C,JQXXHWHPUNPDRT-WLSIYKJHSA-N,NAFLDkb_investigational,822.95
+Rifaximin,0.78,CO[C@H]1/C=C/O[C@@]2(C)Oc3c(C)c(O)c4c(O)c(c5c(nc6cc(C)ccn65)c4c3C2=O)NC(=O)/C(C)=C\C=C\[C@H](C)[C@H](O)[C@@H](C)[C@@H](O)[C@@H](C)[C@H](OC(C)=O)[C@@H]1C,NZCRJKRKKOLAOJ-XRCRFVBUSA-N,NAFLDkb_investigational,785.89
+Rimonabant,0.78,Cc1c(C(=O)NN2CCCCC2)nn(-c2ccc(Cl)cc2Cl)c1-c1ccc(Cl)cc1,JZCPYUJPEARBJL-UHFFFAOYSA-N,NAFLDkb_investigational,463.8
+Roflumilast,0.78,O=C(Nc1c(Cl)cncc1Cl)c1ccc(OC(F)F)c(OCC2CC2)c1,MNDBXUUTURYVHR-UHFFFAOYSA-N,NAFLDkb_investigational,403.21
+Rosemary,0.78,O=C(O)[C@H]1O[C@@H](Oc2cc(-c3cc(=O)c4c(O)cc(O)cc4o3)ccc2O)[C@H](O)[C@@H](O)[C@@H]1O,JDOFZOKGCYYUER-ZFORQUDYSA-N,NAFLDkb_investigational,462.36
+Rosiglitazone,0.78,CN(CCOC1CCC(CC2SC(=O)NC2=O)CC1)C1CCCCN1,CZHAQHXDBPAXKQ-UHFFFAOYSA-N,NAFLDkb_investigational,369.53
+Rosuvastatin,0.78,CC(C)c1nc(N(C)S(C)(=O)=O)nc(-c2ccc(F)cc2)c1/C=C/[C@@H](O)C[C@@H](O)CC(=O)O,BPRHUIZQVSMCRT-VEUZHWNKSA-N,NAFLDkb_investigational,481.55
+S-adenosyl-L-methionine,0.78,C[S+](CC[C@H](N)C(=O)[O-])C[C@H]1O[C@@H](n2cnc3c(N)ncnc32)[C@H](O)[C@@H]1O,MEFKEPWMEQBLKI-AIRLBKTGSA-N,NAFLDkb_investigational,398.45
+Salsalate,0.78,O=C(Oc1ccccc1C(=O)O)c1ccccc1O,WVYADZUPLLSGPU-UHFFFAOYSA-N,NAFLDkb_investigational,258.23
+Saroglitazar,0.78,CCO[C@@H](Cc1ccc(OCCn2c(C)ccc2-c2ccc(SC)cc2)cc1)C(=O)O,MRWFZSLZNUJVQW-DEOSSOPVSA-N,NAFLDkb_investigational,439.58
+Seladelpar,0.78,CCO[C@H](COc1ccc(C(F)(F)F)cc1)CSc1ccc(OCC(=O)O)c(C)c1,JWHYSEDOYMYMNM-QGZVFWFLSA-N,NAFLDkb_investigational,444.47
+Selonsertib,0.78,Cc1cc(F)c(C(=O)Nc2cccc(-c3nncn3C(C)C)n2)cc1-n1cnc(C2CC2)c1,YIDDLAAKOYYGJG-UHFFFAOYSA-N,NAFLDkb_investigational,445.5
+Sibutramine,0.78,CC(C)CC(N(C)C)C1(c2ccc(Cl)cc2)CCC1,UNAANXDKBXWMLN-UHFFFAOYSA-N,NAFLDkb_investigational,279.86
+Silymarin,0.78,COc1cc(C2Oc3cc(C4Oc5cc(O)cc(O)c5C(=O)C4O)ccc3OC2CO)ccc1O,SEBFKMXJBCUCAI-UHFFFAOYSA-N,NAFLDkb_investigational,482.44
+Sitagliptin,0.78,N[C@@H](CC(=O)N1CCn2c(nnc2C(F)(F)F)C1)Cc1cc(F)c(F)cc1F,MFFMDFFZMYYVKS-SECBINFHSA-N,NAFLDkb_investigational,407.32
+Solithromycin,0.78,CC[C@H]1OC(=O)[C@@](C)(F)C(=O)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(OC)C[C@@H](C)C(=O)[C@H](C)[C@H]2N(CCCCn3cc(-c4cccc(N)c4)nn3)C(=O)O[C@]12C,IXXFZUPTQVDPPK-ZAWHAJPISA-N,NAFLDkb_investigational,845.02
+Spironolactone,0.78,CC(=O)S[C@@H]1CC2=CC(=O)CC[C@]2(C)[C@H]2CC[C@@]3(C)[C@@H](CC[C@@]34CCC(=O)O4)[C@H]12,LXMSZDCAJNLERA-ZHYRCANASA-N,NAFLDkb_investigational,416.58
+Spirulina,0.78,CC1=C(/C=C/C(C)=C/C=C/C(C)=C/C=C/C=C(C)/C=C/C=C(C)/C=C/C=C(C)/C=C/[C@H](O[C@@H]2O[C@@H](C)[C@H](O)[C@@H](O)[C@H]2O)C(C)(C)O)C(C)(C)C[C@H](O)C1,MUCOHWBULSBLLZ-ALZSAHPVSA-N,NAFLDkb_investigational,731.03
+Sulfonylurea,0.78,NC(=O)N=S(=O)=O.NC(=O)N=S(=O)=O,YDMLDADNVSAMLD-UHFFFAOYSA-N,NAFLDkb_investigational,244.21
+Sulforaphane,0.78,CS(=O)CCCCN=C=S,SUVMJBTUFCVSAD-UHFFFAOYSA-N,NAFLDkb_investigational,177.29
+TERN-101,0.78,Cn1cc(C(=O)O)c2ccc(N3CCC(OCc4c(-c5c(Cl)cccc5Cl)noc4C4CC4)CC3)cc21,RPVDFHPBGBMWID-UHFFFAOYSA-N,NAFLDkb_investigational,540.45
+TRO19622,0.78,CC(C)CCC[C@@H](C)[C@H]1CC[C@H]2[C@@H]3CCC4=C/C(=N/O)CC[C@]4(C)[C@H]3CC[C@]12C,QNTASHOAVRSLMD-SIWSWZRQSA-N,NAFLDkb_investigational,399.66
+TVB-2640,0.78,Cc1nc(-c2cc(C(=O)N3CCC(c4ccc(C#N)cc4)CC3)c(C)cc2C2CCC2)n[nH]1,BBGOSBDSLYHMRA-UHFFFAOYSA-N,NAFLDkb_investigational,439.56
+Telmisartan,0.78,CCCc1nc2c(C)cc(-c3nc4ccccc4n3C)cc2n1Cc1ccc(-c2ccccc2C(=O)O)cc1,RMMXLENWKUUMAY-UHFFFAOYSA-N,NAFLDkb_investigational,514.63
+Teneligliptin,0.78,Cc1cc(N2CCN([C@@H]3CN[C@H](C(=O)N4CCSC4)C3)CC2)n(-c2ccccc2)n1,WGRQANOPCQRCME-PMACEKPBSA-N,NAFLDkb_investigational,426.59
+Testosterone Undecanoate,0.78,CCCCCCCCCCC(=O)O[C@H]1CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3CC[C@]12C,UDSFVOAUHKGBEK-CNQKSJKFSA-N,NAFLDkb_investigational,456.71
+Thioctic acid,0.78,O=C(O)CCCCC1CCSS1,AGBQKNBQESQNJD-UHFFFAOYSA-N,NAFLDkb_investigational,206.33
+Thyme,0.78,C=CC(C)(O)CCC=C(C)C.CC(C)C12CCC(C)(O)C1C2.CC1=CCC(C(C)(C)O)CC1.Cc1ccc(C(C)C)c(O)c1.Cc1ccc(C(C)C)cc1,VOHUWOUGEDDNDQ-UHFFFAOYSA-N,NAFLDkb_investigational,747.2
+Tocotrienol,0.78,CC(C)=CCCC(C)=CCCC(C)=CCCC1(C)CCc2cc(O)ccc2O1,GJJVAFUKOBZPCB-UHFFFAOYSA-N,NAFLDkb_investigational,382.59
+Tofogliflozin,0.78,CCc1ccc(Cc2ccc3c(c2)[C@]2(OC3)O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)cc1,VWVKUNOPTJGDOB-BDHVOXNPSA-N,NAFLDkb_investigational,386.44
+Tranilast,0.78,COc1ccc(C=CC(=O)Nc2ccccc2C(=O)O)cc1OC,NZHGWWWHIYHZNX-UHFFFAOYSA-N,NAFLDkb_investigational,327.34
+Trehalose,0.78,OC[C@H]1O[C@H](O[C@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)[C@H](O)[C@@H](O)[C@@H]1O,HDTRYLNUVZCQOY-LIZSDCNHSA-N,NAFLDkb_investigational,342.3
+Troglitazone,0.78,Cc1c(C)c2c(c(C)c1O)CCC(C)(COc1ccc(CC3SC(=O)NC3=O)cc1)O2,GXPHKUHSUJUWKP-UHFFFAOYSA-N,NAFLDkb_investigational,441.55
+Tropifexor,0.78,O=C(O)c1cc(F)c2nc(N3[C@@H]4CC[C@H]3C[C@@H](OCc3c(-c5ccccc5OC(F)(F)F)noc3C3CC3)C4)sc2c1,VYLOOGHLKSNNEK-PIIMJCKOSA-N,NAFLDkb_investigational,603.59
+Ursodeoxycholic acid,0.78,C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C,RUDATBOHQWOJDD-UZVSRGJWSA-N,NAFLDkb_investigational,392.58
+VK-2809,0.78,Cc1cc(OCP2(=O)OCC[C@@H](c3cccc(Cl)c3)O2)cc(C)c1Cc1ccc(O)c(C(C)C)c1,LGGPZDRLTDGYSQ-GYKKGXIBSA-N,NAFLDkb_investigational,514.99
+VK2809,0.78,Cc1cc(OC[P@@]2(=O)OCC[C@@H](c3cccc(Cl)c3)O2)cc(C)c1Cc1ccc(O)c(C(C)C)c1,LGGPZDRLTDGYSQ-JADSYQMUSA-N,NAFLDkb_investigational,514.99
+Vigabatrin,0.78,C=CC(N)CCC(=O)O,PJDFLNIOAUIZSL-UHFFFAOYSA-N,NAFLDkb_investigational,129.16
+Vildagliptin,0.78,N#C[C@@H]1CCCN1C(=O)CNC12CC3CC(CC(O)(C3)C1)C2,SYOKIDBDQMKNDQ-XWTIBIIYSA-N,NAFLDkb_investigational,303.41
+Vitamin B6,0.78,Cc1ncc(CO)c(CO)c1O,LXNHXLLTXMVWPM-UHFFFAOYSA-N,NAFLDkb_investigational,169.18
+Vitamin C,0.78,O=C1O[C@H]([C@@H](O)CO)C(O)=C1O,CIWBSHSKHKDKBQ-JLAZNSOCSA-N,NAFLDkb_investigational,176.12
+Vitamin D,0.78,C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([C@H](C)CCCC(C)C)CC[C@@H]12,QYSXJUFSXHHAJI-YRZJJWOYSA-N,NAFLDkb_investigational,384.65
+Volixibat,0.78,CCCC[C@]1(CC)CS(=O)(=O)c2ccc(N(C)C)cc2[C@@H](c2cccc(NC(=O)N[C@@H]3O[C@H](COS(=O)(=O)O)[C@@H](O)[C@H](OCc4ccccc4)[C@H]3O)c2)[C@H]1O,ULVBLFBUTQMAGZ-RTNCXNSASA-N,NAFLDkb_investigational,805.97
+Zucchini,0.78,CC1(C)[C@H](OC(=O)c2ccc(N)cc2)CC[C@]2(C)C3=CC[C@@]4(C)[C@@H]5C[C@](C)(COC(=O)c6ccccc6)CC[C@]5(C)CC[C@]4(C)C3=CC[C@@H]12,VKNUHXUEPNYSDN-GJSTXJOSSA-N,NAFLDkb_investigational,663.94
+"(1S)-1-(3-chlorophenyl)-2-oxo-2-[(1,3,4-trioxo-1,2,3,4-tetrahydroisoquinolin-5-yl)amino]ethyl acetate",0.65,CC(=O)O[C@H](C(=O)Nc1cccc2c1C(=O)C(=O)NC2=O)c1cccc(Cl)c1,OVSAMUIBGQSLDC-INIZCTEOSA-N,NAFLDkb_repositioning,400.77
+"(1S)-2-oxo-1-phenyl-2-[(1,3,4-trioxo-1,2,3,4-tetrahydroisoquinolin-5-yl)amino]ethyl acetate",0.65,CC(=O)O[C@H](C(=O)Nc1cccc2c1C(=O)C(=O)NC2=O)c1ccccc1,NKBDSMREMMRFSI-INIZCTEOSA-N,NAFLDkb_repositioning,366.33
+(2S)-2-(4-chlorophenoxy)-3-phenylpropanoic acid,0.65,O=C(O)[C@H](Cc1ccccc1)Oc1ccc(Cl)cc1,CPBLTMSKPQDJPW-AWEZNQCLSA-N,NAFLDkb_repositioning,276.72
+(2S)-2-(4-ethylphenoxy)-3-phenylpropanoic acid,0.65,CCc1ccc(O[C@@H](Cc2ccccc2)C(=O)O)cc1,CJMVTSLLWMPEKQ-INIZCTEOSA-N,NAFLDkb_repositioning,270.33
+(2S)-2-(biphenyl-4-yloxy)-3-phenylpropanoic acid,0.65,O=C(O)[C@H](Cc1ccccc1)Oc1ccc(-c2ccccc2)cc1,TZTPJJNNACUQQR-FQEVSTJZSA-N,NAFLDkb_repositioning,318.37
+(2S)-2-ETHOXY-3-{4-[2-(10H-PHENOXAZIN-10-YL)ETHOXY]PHENYL}PROPANOIC ACID,0.65,CCO[C@@H](Cc1ccc(OCCN2c3ccccc3Oc3ccccc32)cc1)C(=O)O,WMUIIGVAWPWQAW-DEOSSOPVSA-N,NAFLDkb_repositioning,419.48
+(2S)-2-{3-[({[2-fluoro-4-(trifluoromethyl)phenyl]carbonyl}amino)methyl]-4-methoxybenzyl}butanoic acid,0.65,CC[C@@H](Cc1ccc(OC)c(CNC(=O)c2ccc(C(F)(F)F)cc2F)c1)C(=O)O,BDLLIPYDNFENMY-ZDUSSCGKSA-N,NAFLDkb_repositioning,427.39
+"(2S)-3-(1-{[2-(2-CHLOROPHENYL)-5-METHYL-1,3-OXAZOL-4-YL]METHYL}-1H-INDOL-5-YL)-2-ETHOXYPROPANOIC ACID",0.65,CCO[C@@H](Cc1ccc2c(ccn2Cc2nc(-c3ccccc3Cl)oc2C)c1)C(=O)O,PAWOPJKHTZCKMT-QFIPXVFZSA-N,NAFLDkb_repositioning,438.91
+"(4S,5E,7Z,10Z,13Z,16Z,19Z)-4-hydroxydocosa-5,7,10,13,16,19-hexaenoic acid",0.65,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\C=C\[C@@H](O)CCC(=O)O,IFRKCNPQVIJFAQ-HBUOOPIGSA-N,NAFLDkb_repositioning,344.5
+"(5E,14E)-11-oxoprosta-5,9,12,14-tetraen-1-oic acid",0.65,CCCCC/C=C/C=C1\C(=O)C=C[C@@H]1C/C=C/CCCC(=O)O,VHRUMKCAEVRUBK-XOVNXQNQSA-N,NAFLDkb_repositioning,316.44
+"(5R,6E,8Z,11Z,14Z,17Z)-5-hydroxyicosa-6,8,11,14,17-pentaenoic acid",0.65,CC/C=C\C/C=C\C/C=C\C/C=C\C=C\[C@H](O)CCCC(=O)O,FTAGQROYQYQRHF-CBVHGRPESA-N,NAFLDkb_repositioning,318.46
+"(8E,10S,12Z)-10-hydroxy-6-oxooctadeca-8,12-dienoic acid",0.65,CCCCC/C=C\C[C@H](O)/C=C/CC(=O)CCCCC(=O)O,OJFOOCZBVPQYRS-PSDPTOBYSA-N,NAFLDkb_repositioning,310.43
+"(8R,9Z,12Z)-8-hydroxy-6-oxooctadeca-9,12-dienoic acid",0.65,CCCCC/C=C\C/C=C\[C@H](O)CC(=O)CCCCC(=O)O,MLHUENSFQCPBQH-ZBKJIUGYSA-N,NAFLDkb_repositioning,310.43
+"(8alpha,10alpha,13alpha,17beta)-17-[(4-hydroxyphenyl)carbonyl]androsta-3,5-diene-3-carboxylic acid",0.65,C[C@]12CC[C@H]3[C@@H](CC=C4C=C(C(=O)O)CC[C@@]43C)[C@@H]1CC[C@@H]2C(=O)c1ccc(O)cc1,RPNNXCYIESWDSC-JRZBRKEGSA-N,NAFLDkb_repositioning,420.55
+"(9Z,11E,13S)-13-hydroxyoctadeca-9,11-dienoic acid",0.65,CCCCC[C@H](O)/C=C/C=C\CCCCCCCC(=O)O,HNICUWMFWZBIFP-IRQZEAMPSA-N,NAFLDkb_repositioning,296.45
+(R)-3-hydroxytetradecanoic acid,0.65,CCCCCCCCCCC[C@@H](O)CC(=O)O,ATRNZOYKSNPPBF-CYBMUJFWSA-N,NAFLDkb_repositioning,244.37
+(S)-3-(4-(2-Carbazol-9-Yl-Ethoxy)-Phenyl)-2-Ethoxy-Propionic Acid,0.65,CCO[C@@H](Cc1ccc(OCCn2c3ccccc3c3ccccc32)cc1)C(=O)O,WUZIMDSVRIBNNI-DEOSSOPVSA-N,NAFLDkb_repositioning,403.48
+"1,4-Dithiothreitol",0.65,O[C@@H](CS)[C@@H](O)CS,VHJLVAABSRFDPM-IMJSIDKUSA-N,NAFLDkb_repositioning,154.26
+1-(4-HEXYLPHENYL)PROP-2-EN-1-ONE,0.65,C=CC(=O)c1ccc(CCCCCC)cc1,IINHTEWASPUCMH-UHFFFAOYSA-N,NAFLDkb_repositioning,216.32
+"1-METHYL-3-TRIFLUOROMETHYL-1H-THIENO[2,3-C]PYRAZOLE-5-CARBOXYLIC ACID (2-MERCAPTO-ETHYL)-AMIDE",0.65,Cn1nc(C(F)(F)F)c2cc(C(=O)NCCS)sc21,HDKGQVZBBSICLG-UHFFFAOYSA-N,NAFLDkb_repositioning,309.34
+"1-METHYL-5-(2-PHENOXYMETHYL-PYRROLIDINE-1-SULFONYL)-1H-INDOLE-2,3-DIONE",0.65,CN1C(=O)C(=O)c2cc(S(=O)(=O)N3CCC[C@H]3COc3ccccc3)ccc21,PFAYCUAUBOGVDX-AWEZNQCLSA-N,NAFLDkb_repositioning,400.46
+"2,3,5,6-Tetrafluoro-4-Methoxy-Benzamide",0.65,COc1c(F)c(F)c(C(N)=O)c(F)c1F,JTXPTSGPUNTKSM-UHFFFAOYSA-N,NAFLDkb_repositioning,223.12
+"2-({[3-(3,4-dihydroisoquinolin-2(1H)-ylsulfonyl)phenyl]carbonyl}amino)benzoic acid",0.65,O=C(Nc1ccccc1C(=O)O)c1cccc(S(=O)(=O)N2CCc3ccccc3C2)c1,GYILVHHTCYNIOS-UHFFFAOYSA-N,NAFLDkb_repositioning,436.49
+2-HYDROXY-5-(2-MERCAPTO-ETHYLSULFAMOYL)-BENZOIC ACID,0.65,O=C(O)c1cc(S(=O)(=O)NCCS)ccc1O,UCQUNSCHVXCSCJ-UHFFFAOYSA-N,NAFLDkb_repositioning,277.32
+2-Methoxyestradiol,0.65,COc1cc2c(cc1O)CC[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12,CQOQDQWUFQDJMK-SSTWWWIQSA-N,NAFLDkb_repositioning,302.41
+"2-[(2,4-DICHLOROBENZOYL)AMINO]-5-(PYRIMIDIN-2-YLOXY)BENZOIC ACID",0.65,O=C(Nc1ccc(Oc2ncccn2)cc1C(=O)O)c1ccc(Cl)cc1Cl,VNDRRWBKNSHALL-UHFFFAOYSA-N,NAFLDkb_repositioning,404.21
+"2-[4-(2,4-Dichlorophenoxy)Phenoxy]Propanoic Acid",0.65,C[C@@H](Oc1ccc(Oc2ccc(Cl)cc2Cl)cc1)C(=O)O,OOLBCHYXZDXLDS-SECBINFHSA-N,NAFLDkb_repositioning,327.16
+"2-[4-(4-Hydroxy-3-Isopropyl-Phenoxy)-3,5-Dimethyl-Phenyl]-2h-[1,2,4]Triazine-3,5-Dione",0.65,Cc1cc(-n2ncc(=O)[nH]c2=O)cc(C)c1Oc1ccc(O)c(C(C)C)c1,RXQAVKWRCZYGMV-UHFFFAOYSA-N,NAFLDkb_repositioning,367.41
+2-chloro-5-nitro-N-phenylbenzamide,0.65,O=C(Nc1ccccc1)c1cc([N+](=O)[O-])ccc1Cl,DNTSIBUQMRRYIU-UHFFFAOYSA-N,NAFLDkb_repositioning,276.68
+2-{5-[3-(6-BENZOYL-1-PROPYLNAPHTHALEN-2-YLOXY)PROPOXY]INDOL-1-YL}ETHANOIC ACID,0.65,CCCc1c(OCCCOc2ccc3c(ccn3CC(=O)O)c2)ccc2cc(C(=O)c3ccccc3)ccc12,ZXWVCCFKIRBLDP-UHFFFAOYSA-N,NAFLDkb_repositioning,521.61
+2-{5-[3-(7-PROPYL-3-TRIFLUOROMETHYLBENZO[D]ISOXAZOL-6-YLOXY)PROPOXY]INDOL-1-YL}ETHANOIC ACID,0.65,CCCc1c(OCCCOc2ccc3c(ccn3CC(=O)O)c2)ccc2c(C(F)(F)F)noc12,TWVYNPULGKGJOS-UHFFFAOYSA-N,NAFLDkb_repositioning,476.45
+3-(5-methoxy-1H-indol-3-yl)propanoic acid,0.65,COc1ccc2[nH]cc(CCC(=O)O)c2c1,ZLSZCJIWILJKMR-UHFFFAOYSA-N,NAFLDkb_repositioning,219.24
+3-FLUORO-N-[1-(4-FLUOROPHENYL)-3-(2-THIENYL)-1H-PYRAZOL-5-YL]BENZENESULFONAMIDE,0.65,O=S(=O)(Nc1cc(-c2cccs2)nn1-c1ccc(F)cc1)c1cccc(F)c1,GULUFDCOGAXLEP-UHFFFAOYSA-N,NAFLDkb_repositioning,417.46
+3-[5-(2-nitropent-1-en-1-yl)furan-2-yl]benzoic acid,0.65,CCC/C(=C/c1ccc(-c2cccc(C(=O)O)c2)o1)[N+](=O)[O-],IRHZCQDCMUWUKV-RAXLEYEMSA-N,NAFLDkb_repositioning,301.3
+3-{6-[(8-HYDROXY-QUINOLINE-2-CARBONYL)-AMINO]-2-THIOPHEN-2-YL-HEXANOYLAMINO}-4-OXO-BUTYRI ACID,0.65,O=C[C@H](CC(=O)O)NC(=O)[C@@H](CCCCNC(=O)c1ccc2cccc(O)c2n1)c1cccs1,QXMPYGCWDMKRMF-IRXDYDNUSA-N,NAFLDkb_repositioning,483.55
+"4'-Methylene-5,8,10-trideazaaminopterin",0.65,C=C(CC(NC(=O)c1ccc(CCc2ccc3nc(N)nc(N)c3c2)cc1)C(=O)O)C(=O)O,NAWXUBYGYWOOIX-UHFFFAOYSA-N,NAFLDkb_repositioning,449.47
+4-[5-(2-CARBOXY-1-FORMYL-ETHYLCARBAMOYL)-PYRIDIN-3-YL]-BENZOIC ACID,0.65,O=C[C@H](CC(=O)O)NC(=O)c1cncc(-c2ccc(C(=O)O)cc2)c1,JNRAPROKLOUIRA-AWEZNQCLSA-N,NAFLDkb_repositioning,342.31
+5-[4-(1-Carboxymethyl-2-Oxo-Propylcarbamoyl)-Benzylsulfamoyl]-2-Hydroxy-Benzoic Acid,0.65,CC(=O)[C@H](CC(=O)O)NC(=O)c1ccc(CNS(=O)(=O)c2ccc(O)c(C(=O)O)c2)cc1,LBAHOXPDTNUYCX-INIZCTEOSA-N,NAFLDkb_repositioning,464.45
+"6-[3-(4-Morpholinyl)Propyl]-2-(3-Nitrophenyl)-5-Thioxo-5,6,-Dihydro-7h-Thienol[2',3':4,5]Pyrrolo[1,2-C]Imidazol-7-One",0.65,O=C1c2cc3sc(-c4cccc([N+](=O)[O-])c4)cc3n2C(=S)N1CCCN1CCOCC1,UXGUZFZBZPPZGL-UHFFFAOYSA-N,NAFLDkb_repositioning,456.55
+9(S)-HODE,0.65,CCCCC/C=C\C=C\[C@@H](O)CCCCCCCC(=O)O,NPDSHTNEKLQQIJ-UINYOVNOSA-N,NAFLDkb_repositioning,296.45
+ALT-2074,0.65,CC1(C)CN[Se]c2ccccc21,FXRYWOJYVGJZLE-UHFFFAOYSA-N,NAFLDkb_repositioning,226.18
+AMD-070,0.65,NCCCCN(Cc1nc2ccccc2[nH]1)[C@H]1CCCc2cccnc21,WVLHHLRVNDMIAR-IBGZPJMESA-N,NAFLDkb_repositioning,349.48
+AMG-131,0.65,O=S(=O)(Nc1cc(Cl)c(Oc2cnc3ccccc3c2)c(Cl)c1)c1ccc(Cl)cc1Cl,NMRWDFUZLLQSBN-UHFFFAOYSA-N,NAFLDkb_repositioning,514.22
+AMG-222,0.65,C[C@@H](CC1(c2nn[nH]n2)c2ccc(C(=O)N(C)C)cc2CCc2cc(C(=O)N(C)C)ccc21)NCC(=O)N1CCC[C@H]1C#N,NVSWJKWHLUTHLP-CPJSRVTESA-N,NAFLDkb_repositioning,597.72
+AN-9,0.65,CCCC(=O)OCOC(=O)C(C)(C)C,GYKLFBYWXZYSOW-UHFFFAOYSA-N,NAFLDkb_repositioning,202.25
+AR-9281,0.65,CC(=O)N1CCC(NC(=O)NC23CC4CC(CC(C4)C2)C3)CC1,HUDQLWBKJOMXSZ-UHFFFAOYSA-N,NAFLDkb_repositioning,319.45
+ATL-2502,0.65,CC12C=CC(=O)C=C1CCC1C2C(O)CC2(C)C1CCC2(O)C(=O)COC(=O)c1cccc(S(=O)(=O)[O-])c1.[Na+],RWFZSORKWFPGNE-UHFFFAOYSA-M,NAFLDkb_repositioning,566.6
+ATP,0.65,Nc1ncnc2c1ncn2[C@@H]1O[C@H](COP(=O)(O)OP(=O)(O)OP(=O)(O)O)[C@@H](O)[C@H]1O,ZKHQWZAMYRWXGA-KQYNXXCUSA-N,NAFLDkb_repositioning,507.18
+Abafungin,0.65,Cc1ccc(Oc2ccccc2-c2csc(N=C3NCCCN3)n2)c(C)c1,TYBHXIFFPVFXQW-UHFFFAOYSA-N,NAFLDkb_repositioning,378.5
+Abexinostat,0.65,CN(C)Cc1c(C(=O)NCCOc2ccc(C(=O)NO)cc2)oc2ccccc12,MAUCONCHVWBMHK-UHFFFAOYSA-N,NAFLDkb_repositioning,397.43
+Acadesine,0.65,NC(=O)c1ncn([C@@H]2O[C@H](CO)[C@@H](O)[C@H]2O)c1N,RTRQQBHATOEIAF-UUOKFMHZSA-N,NAFLDkb_repositioning,258.23
+Acebutolol,0.65,CCCC(=O)Nc1ccc(OCC(O)CNC(C)C)c(C(C)=O)c1,GOEMGAFJFRBGGG-UHFFFAOYSA-N,NAFLDkb_repositioning,336.43
+Aceclofenac,0.65,O=C(O)COC(=O)Cc1ccccc1Nc1c(Cl)cccc1Cl,MNIPYSSQXLZQLJ-UHFFFAOYSA-N,NAFLDkb_repositioning,354.19
+Acemetacin,0.65,COc1ccc2c(c1)c(CC(=O)OCC(=O)O)c(C)n2C(=O)c1ccc(Cl)cc1,FSQKKOOTNAMONP-UHFFFAOYSA-N,NAFLDkb_repositioning,415.83
+Acenocoumarol,0.65,CC(=O)CC(c1ccc([N+](=O)[O-])cc1)c1c(O)c2ccccc2oc1=O,VABCILAOYCMVPS-UHFFFAOYSA-N,NAFLDkb_repositioning,353.33
+Acetohexamide,0.65,CC(=O)c1ccc(S(=O)(=O)NC(=O)NC2CCCCC2)cc1,VGZSUPCWNCWDAN-UHFFFAOYSA-N,NAFLDkb_repositioning,324.4
+Acetylcarnitine,0.65,CC(=O)O[C@H](CC(=O)[O-])C[N+](C)(C)C,RDHQFKQIGNGIED-MRVPVSSYSA-N,NAFLDkb_repositioning,203.24
+Adapalene,0.65,COc1ccc(-c2ccc3cc(C(=O)O)ccc3c2)cc1C12CC3CC(CC(C3)C1)C2,LZCDAPDGXCYOEH-UHFFFAOYSA-N,NAFLDkb_repositioning,412.53
+Adenine,0.65,Nc1ncnc2nc[nH]c12,GFFGJBXGBJISGV-UHFFFAOYSA-N,NAFLDkb_repositioning,135.13
+Adenosine phosphate,0.65,Nc1ncnc2c1ncn2[C@@H]1O[C@H](COP(=O)(O)O)[C@@H](O)[C@H]1O,UDMBCSSLTHHNCD-KQYNXXCUSA-N,NAFLDkb_repositioning,347.22
+Agmatine,0.65,N=C(N)NCCCCN,QYPPJABKJHAVHS-UHFFFAOYSA-N,NAFLDkb_repositioning,130.2
+Alclofenac,0.65,C=CCOc1ccc(CC(=O)O)cc1Cl,ARHWPKZXBHOEEE-UHFFFAOYSA-N,NAFLDkb_repositioning,226.66
+Alclometasone,0.65,C[C@@H]1C[C@H]2[C@H]3[C@H]([C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)CO)[C@@]1(C)C=CC(=O)C=C1C[C@H]3Cl,FJXOGVLKCZQRDN-PHCHRAKRSA-N,NAFLDkb_repositioning,408.92
+Aleglitazar,0.65,CO[C@@H](Cc1ccc(OCCc2nc(-c3ccccc3)oc2C)c2ccsc12)C(=O)O,DAYKLWSKQJBGCS-NRFANRHFSA-N,NAFLDkb_repositioning,437.52
+Alendronic acid,0.65,NCCCC(O)(P(=O)(O)O)P(=O)(O)O,OGSPWJRAVKPPFI-UHFFFAOYSA-N,NAFLDkb_repositioning,249.1
+Alfacalcidol,0.65,C=C1/C(=C\C=C2/CCC[C@]3(C)[C@@H]([C@H](C)CCCC(C)C)CC[C@@H]23)C[C@@H](O)C[C@@H]1O,OFHCOWSQAMBJIW-AVJTYSNKSA-N,NAFLDkb_repositioning,400.65
+Alfuzosin,0.65,COc1cc2nc(N(C)CCCNC(=O)C3CCCO3)nc(N)c2cc1OC,WNMJYKCGWZFFKR-UHFFFAOYSA-N,NAFLDkb_repositioning,389.46
+Aliskiren,0.65,COCCCOc1cc(C[C@@H](C[C@H](N)[C@@H](O)C[C@H](C(=O)NCC(C)(C)C(N)=O)C(C)C)C(C)C)ccc1OC,UXOWGYHJODZGMF-QORCZRPOSA-N,NAFLDkb_repositioning,551.77
+Allantoin,0.65,NC(=O)NC1NC(=O)NC1=O,POJWUDADGALRAB-UHFFFAOYSA-N,NAFLDkb_repositioning,158.12
+Alogliptin,0.65,Cn1c(=O)cc(N2CCC[C@@H](N)C2)n(Cc2ccccc2C#N)c1=O,ZSBOMTDTBDDKMP-OAHLLOKOSA-N,NAFLDkb_repositioning,339.4
+Alosetron,0.65,Cc1[nH]cnc1CN1CCc2c(c3ccccc3n2C)C1=O,JSWZEAMFRNKZNL-UHFFFAOYSA-N,NAFLDkb_repositioning,294.36
+Alprazolam,0.65,Cc1nnc2n1-c1ccc(Cl)cc1C(c1ccccc1)=NC2,VREFGVBLTWBCJP-UHFFFAOYSA-N,NAFLDkb_repositioning,308.77
+Alprenolol,0.65,C=CCc1ccccc1OCC(O)CNC(C)C,PAZJSJFMUHDSTF-UHFFFAOYSA-N,NAFLDkb_repositioning,249.35
+Aluminum sulfate,0.65,O=S(=O)([O-])[O-].O=S(=O)([O-])[O-].O=S(=O)([O-])[O-].[Al+3].[Al+3],DIZPMCHEQGEION-UHFFFAOYSA-H,NAFLDkb_repositioning,342.15
+Alverine,0.65,CCN(CCCc1ccccc1)CCCc1ccccc1,ZPFXAOWNKLFJDN-UHFFFAOYSA-N,NAFLDkb_repositioning,281.44
+Alvespimycin,0.65,CO[C@H]1/C=C\C=C(/C)C(=O)NC2=CC(=O)C(NCCN(C)C)=C(C[C@@H](C)C[C@H](OC)[C@H](O)[C@@H](C)/C=C(\C)[C@@H]1OC(N)=O)C2=O,KUFRQPKVAWMTJO-LMZWQJSESA-N,NAFLDkb_repositioning,616.76
+Alvocidib,0.65,CN1CC[C@H](c2c(O)cc(O)c3c(=O)cc(-c4ccccc4Cl)oc23)[C@H](O)C1,BIIVYFLTOXDAOV-YVEFUNNKSA-N,NAFLDkb_repositioning,401.85
+Ambrisentan,0.65,COC(c1ccccc1)(c1ccccc1)[C@H](Oc1nc(C)cc(C)n1)C(=O)O,OUJTZYPIHDYQMC-LJQANCHMSA-N,NAFLDkb_repositioning,378.43
+Ambroxol,0.65,Nc1c(Br)cc(Br)cc1CN[C@H]1CC[C@H](O)CC1,JBDGDEWWOUBZPM-XYPYZODXSA-N,NAFLDkb_repositioning,378.11
+Amcinonide,0.65,CC(=O)OCC(=O)[C@@]12OC3(CCCC3)O[C@@H]1C[C@H]1[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]12C,ILKJAFIWWBXGDU-MOGDOJJUSA-N,NAFLDkb_repositioning,502.58
+Amelubant,0.65,CCOC(=O)NC(=N)c1ccc(OCc2cccc(COc3ccc(C(C)(C)c4ccc(O)cc4)cc3)c2)cc1,SBVYURPQULDJTI-UHFFFAOYSA-N,NAFLDkb_repositioning,538.64
+Amibegron,0.65,CCOC(=O)COc1ccc2c(c1)C[C@@H](NC[C@H](O)c1cccc(Cl)c1)CC2,RDJQCOBTKKAQAH-FPOVZHCZSA-N,NAFLDkb_repositioning,403.91
+Amifostine,0.65,NCCCNCCSP(=O)(O)O,JKOQGQFVAUAYPM-UHFFFAOYSA-N,NAFLDkb_repositioning,214.23
+Amikacin,0.65,NCC[C@H](O)C(=O)N[C@@H]1C[C@H](N)[C@@H](O[C@H]2O[C@H](CN)[C@@H](O)[C@H](O)[C@H]2O)[C@H](O)[C@H]1O[C@H]1O[C@H](CO)[C@@H](O)[C@H](N)[C@H]1O,LKCWBDHBTVXHDL-RMDFUYIESA-N,NAFLDkb_repositioning,585.61
+Amiloride,0.65,N=C(N)NC(=O)c1nc(Cl)c(N)nc1N,XSDQTOBWRPYKKA-UHFFFAOYSA-N,NAFLDkb_repositioning,229.63
+Amiloxate,0.65,COc1ccc(/C=C/C(=O)OCCC(C)C)cc1,UBNYRXMKIIGMKK-RMKNXTFCSA-N,NAFLDkb_repositioning,248.32
+Amineptine,0.65,O=C(O)CCCCCCNC1c2ccccc2CCc2ccccc21,ONNOFKFOZAJDHT-UHFFFAOYSA-N,NAFLDkb_repositioning,337.46
+Aminophenazone,0.65,Cc1c(N(C)C)c(=O)n(-c2ccccc2)n1C,RMMXTBMQSGEXHJ-UHFFFAOYSA-N,NAFLDkb_repositioning,231.3
+Aminophylline,0.65,Cn1c(=O)c2[nH]cnc2n(C)c1=O.Cn1c(=O)c2[nH]cnc2n(C)c1=O.NCCN,FQPFAHBPWDRTLU-UHFFFAOYSA-N,NAFLDkb_repositioning,420.43
+Amiodarone,0.65,CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1,IYIKLHRQXLHMJQ-UHFFFAOYSA-N,NAFLDkb_repositioning,645.32
+Amitifadine,0.65,Clc1ccc([C@]23CNC[C@H]2C3)cc1Cl,BSMNRYCSBFHEMQ-KCJUWKMLSA-N,NAFLDkb_repositioning,228.12
+Amitriptyline,0.65,CN(C)CCC=C1c2ccccc2CCc2ccccc21,KRMDCWKBEZIMAB-UHFFFAOYSA-N,NAFLDkb_repositioning,277.41
+Amlodipine,0.65,CCOC(=O)C1=C(COCCN)NC(C)=C(C(=O)OC)C1c1ccccc1Cl,HTIQEAQVCYTUBX-UHFFFAOYSA-N,NAFLDkb_repositioning,408.88
+Amodiaquine,0.65,CCN(CC)Cc1cc(Nc2ccnc3cc(Cl)ccc23)ccc1O,OVCDSSHSILBFBN-UHFFFAOYSA-N,NAFLDkb_repositioning,355.87
+Amoxapine,0.65,Clc1ccc2c(c1)C(N1CCNCC1)=Nc1ccccc1O2,QWGDMFLQWFTERH-UHFFFAOYSA-N,NAFLDkb_repositioning,313.79
+Amphetamine,0.65,CC(N)Cc1ccccc1,KWTSXDURSIMDCE-UHFFFAOYSA-N,NAFLDkb_repositioning,135.21
+Amrinone,0.65,Nc1cc(-c2ccncc2)c[nH]c1=O,RNLQIBCLLYYYFJ-UHFFFAOYSA-N,NAFLDkb_repositioning,187.2
+Amrubicin,0.65,CC(=O)[C@]1(N)Cc2c(O)c3c(c(O)c2[C@@H](O[C@H]2C[C@H](O)[C@H](O)CO2)C1)C(=O)c1ccccc1C3=O,VJZITPJGSQKZMX-XDPRQOKASA-N,NAFLDkb_repositioning,483.47
+Amyl Nitrite,0.65,CCCCCON=O,CSDTZUBPSYWZDX-UHFFFAOYSA-N,NAFLDkb_repositioning,117.15
+Amylmetacresol,0.65,CCCCCc1ccc(C)cc1O,CKGWFZQGEQJZIL-UHFFFAOYSA-N,NAFLDkb_repositioning,178.27
+Anacetrapib,0.65,COc1cc(F)c(C(C)C)cc1-c1ccc(C(F)(F)F)cc1CN1C(=O)O[C@H](c2cc(C(F)(F)F)cc(C(F)(F)F)c2)[C@@H]1C,MZZLGJHLQGUVPN-HAWMADMCSA-N,NAFLDkb_repositioning,637.51
+Anagrelide,0.65,O=C1CN2Cc3c(ccc(Cl)c3Cl)N=C2N1,OTBXOEAOVRKTNQ-UHFFFAOYSA-N,NAFLDkb_repositioning,256.09
+Andrographolide,0.65,C=C1CC[C@@H]2[C@](C)(CO)[C@H](O)CC[C@@]2(C)[C@@H]1C/C=C1/C(=O)OC[C@H]1O,BOJKULTULYSRAS-OTESTREVSA-N,NAFLDkb_repositioning,350.46
+Anisindione,0.65,COc1ccc(C2C(=O)c3ccccc3C2=O)cc1,XRCFXMGQEVUZFC-UHFFFAOYSA-N,NAFLDkb_repositioning,252.27
+Anthralin,0.65,O=C1c2c(O)cccc2Cc2cccc(O)c21,NUZWLKWWNNJHPT-UHFFFAOYSA-N,NAFLDkb_repositioning,226.23
+Antrafenine,0.65,O=C(OCCN1CCN(c2cccc(C(F)(F)F)c2)CC1)c1ccccc1Nc1ccnc2cc(C(F)(F)F)ccc12,NWGGKKGAFZIVBJ-UHFFFAOYSA-N,NAFLDkb_repositioning,588.55
+Apixaban,0.65,COc1ccc(-n2nc(C(N)=O)c3c2C(=O)N(c2ccc(N4CCCCC4=O)cc2)CC3)cc1,QNZCBYKSOIHPEH-UHFFFAOYSA-N,NAFLDkb_repositioning,459.51
+Aplaviroc,0.65,CCCCN1C(=O)[C@@H]([C@H](O)C2CCCCC2)NC(=O)C12CCN(Cc1ccc(Oc3ccc(C(=O)O)cc3)cc1)CC2,GWNOTCOIYUNTQP-FQLXRVMXSA-N,NAFLDkb_repositioning,577.72
+Apoptone,0.65,C#C[C@]1(O)CC[C@H]2[C@@H]3CC[C@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@@]21C,CKAXZOYFIHQCBN-JRRMKBMNSA-N,NAFLDkb_repositioning,316.49
+Apramycin,0.65,CN[C@@H]1[C@@H](O[C@H]2O[C@H](CO)[C@@H](N)[C@H](O)[C@H]2O)O[C@H]2C[C@@H](N)[C@@H](O[C@H]3[C@H](O)[C@@H](O)[C@H](N)C[C@@H]3N)O[C@@H]2[C@@H]1O,XZNUGFQTQHRASN-XQENGBIVSA-N,NAFLDkb_repositioning,539.58
+Apremilast,0.65,CCOc1cc([C@@H](CS(C)(=O)=O)N2C(=O)c3cccc(NC(C)=O)c3C2=O)ccc1OC,IMOZEMNVLZVGJZ-QGZVFWFLSA-N,NAFLDkb_repositioning,460.51
+Aptazapine,0.65,CN1CCN2c3ccccc3Cn3cccc3C2C1,MNHDDERDSNZCCK-UHFFFAOYSA-N,NAFLDkb_repositioning,253.35
+Arachidonic Acid,0.65,CCCCC/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)O,YZXBAPSDXZZRGB-DOFZRALJSA-N,NAFLDkb_repositioning,304.47
+Aranidipine,0.65,COC(=O)C1=C(C)NC(C)=C(C(=O)OCC(C)=O)C1c1ccccc1[N+](=O)[O-],NCUCGYYHUFIYNU-UHFFFAOYSA-N,NAFLDkb_repositioning,388.38
+Arbekacin,0.65,NCC[C@H](O)C(=O)N[C@@H]1C[C@H](N)[C@@H](O[C@H]2O[C@H](CN)CC[C@H]2N)[C@H](O)[C@H]1O[C@H]1O[C@H](CO)[C@@H](O)[C@H](N)[C@H]1O,MKKYBZZTJQGVCD-XTCKQBCOSA-N,NAFLDkb_repositioning,552.63
+Arbutin,0.65,OC[C@H]1O[C@@H](Oc2ccc(O)cc2)[C@H](O)[C@@H](O)[C@@H]1O,BJRNKVDFDLYUGJ-RMPHRYRLSA-N,NAFLDkb_repositioning,272.25
+Arformoterol,0.65,COc1ccc(C[C@@H](C)NC[C@H](O)c2ccc(O)c(NC=O)c2)cc1,BPZSYCZIITTYBL-YJYMSZOUSA-N,NAFLDkb_repositioning,344.41
+Argatroban,0.65,CC1CNc2c(cccc2S(=O)(=O)N[C@@H](CCCNC(=N)N)C(=O)N2CC[C@@H](C)C[C@@H]2C(=O)O)C1,KXNPVXPOPUZYGB-IOVMHBDKSA-N,NAFLDkb_repositioning,508.65
+Arginine,0.65,N=C(N)NCCC[C@H](N)C(=O)O,ODKSFYDXXFIFQN-BYPYZUCNSA-N,NAFLDkb_repositioning,174.2
+Arhalofenate,0.65,CC(=O)NCCOC(=O)[C@H](Oc1cccc(C(F)(F)F)c1)c1ccc(Cl)cc1,BJBCSGQLZQGGIQ-QGZVFWFLSA-N,NAFLDkb_repositioning,415.8
+Arimoclomol,0.65,[O-][n+]1cccc(C(Cl)=NOC[C@H](O)CN2CCCCC2)c1,SGEIEGAXKLMUIZ-CYBMUJFWSA-N,NAFLDkb_repositioning,313.79
+Armodafinil,0.65,NC(=O)C[S@@](=O)C(c1ccccc1)c1ccccc1,YFGHCGITMMYXAQ-LJQANCHMSA-N,NAFLDkb_repositioning,273.36
+Arotinolol,0.65,CC(C)(C)NCC(O)CSc1nc(-c2ccc(C(N)=O)s2)cs1,BHIAIPWSVYSKJS-UHFFFAOYSA-N,NAFLDkb_repositioning,371.55
+Arverapamil,0.65,COc1ccc(CCNCCC[C@](C#N)(c2ccc(OC)c(OC)c2)C(C)C)cc1OC,UPKQNCPKPOLASS-AREMUKBSSA-N,NAFLDkb_repositioning,440.58
+Arylacenamide,0.65,CCN(C/C=C\c1ccc(C2CCCCC2)c(Cl)c1)C1CCCCC1.Cl,HKHPCMBPASXYGP-KVVVOXFISA-N,NAFLDkb_repositioning,396.45
+Arzoxifene,0.65,COc1ccc(-c2sc3cc(O)ccc3c2Oc2ccc(OCCN3CCCCC3)cc2)cc1,MCGDSOGUHLTADD-UHFFFAOYSA-N,NAFLDkb_repositioning,475.61
+Asimadoline,0.65,CN(C(=O)C(c1ccccc1)c1ccccc1)[C@H](CN1CC[C@H](O)C1)c1ccccc1,JHLHNYVMZCADTC-LOSJGSFVSA-N,NAFLDkb_repositioning,414.55
+Asparagine,0.65,NC(=O)C[C@H](N)C(=O)O,DCXYFEDJOCDNAF-REOHCLBHSA-N,NAFLDkb_repositioning,132.12
+Atenolol,0.65,CC(C)NCC(O)COc1ccc(CC(N)=O)cc1,METKIMKYRPQLGS-UHFFFAOYSA-N,NAFLDkb_repositioning,266.34
+Atiprimod,0.65,CCCC1(CCC)CCC2(CCN(CCCN(CC)CC)C2)CC1,SERHTTSLBVGRBY-UHFFFAOYSA-N,NAFLDkb_repositioning,336.61
+Atovaquone,0.65,O=C1C(O)=C([C@H]2CC[C@H](c3ccc(Cl)cc3)CC2)C(=O)c2ccccc21,KUCQYCKVKVOKAY-CTYIDZIISA-N,NAFLDkb_repositioning,366.84
+Auranofin,0.65,CC[P](CC)(CC)=[Au][S][C@@H]1O[C@H](COC(C)=O)[C@@H](OC(C)=O)[C@H](OC(C)=O)[C@H]1OC(C)=O,AUJRCFUBUPVWSZ-XTZHGVARSA-M,NAFLDkb_repositioning,678.49
+Aurothioglucose,0.65,OC[C@H]1O[C@H]([S][Au])[C@H](O)[C@@H](O)[C@@H]1O,XHVAWZZCDCWGBK-WYRLRVFGSA-M,NAFLDkb_repositioning,392.18
+Avacopan,0.65,Cc1ccc(NC(=O)[C@H]2CCCN(C(=O)c3c(C)cccc3F)[C@H]2c2ccc(NC3CCCC3)cc2)cc1C(F)(F)F,PUKBOVABABRILL-YZNIXAGQSA-N,NAFLDkb_repositioning,581.65
+Avanafil,0.65,COc1ccc(CNc2nc(N3CCC[C@H]3CO)ncc2C(=O)NCc2ncccn2)cc1Cl,WEAJZXNPAWBCOA-INIZCTEOSA-N,NAFLDkb_repositioning,483.96
+Avibactam,0.65,NC(=O)[C@@H]1CC[C@@H]2CN1C(=O)N2OS(=O)(=O)O,NDCUAPJVLWFHHB-UHNVWZDZSA-N,NAFLDkb_repositioning,265.25
+Azathioprine,0.65,Cn1cnc([N+](=O)[O-])c1Sc1ncnc2nc[nH]c12,LMEKQMALGUDUQG-UHFFFAOYSA-N,NAFLDkb_repositioning,277.27
+Azelnidipine,0.65,CC1=C(C(=O)OC(C)C)C(c2cccc([N+](=O)[O-])c2)C(C(=O)OC2CN(C(c3ccccc3)c3ccccc3)C2)=C(N)N1,ZKFQEACEUNWPMT-UHFFFAOYSA-N,NAFLDkb_repositioning,582.66
+Azemiglitazone,0.65,COc1cccc(C(=O)COc2ccc(CC3SC(=O)NC3=O)cc2)c1,YAUMOGALQJYOJQ-UHFFFAOYSA-N,NAFLDkb_repositioning,371.41
+Azilsartan medoxomil,0.65,CCOc1nc2cccc(C(=O)OCc3oc(=O)oc3C)c2n1Cc1ccc(-c2ccccc2-c2noc(=O)[nH]2)cc1,QJFSABGVXDWMIW-UHFFFAOYSA-N,NAFLDkb_repositioning,568.54
+Azimilide,0.65,CN1CCN(CCCCN2C(=O)CN(N=Cc3ccc(-c4ccc(Cl)cc4)o3)C2=O)CC1,MREBEPTUUMTTIA-UHFFFAOYSA-N,NAFLDkb_repositioning,457.96
+Bacampicillin,0.65,CCOC(=O)OC(C)OC(=O)[C@@H]1N2C(=O)[C@@H](NC(=O)[C@H](N)c3ccccc3)[C@H]2SC1(C)C,PFOLLRNADZZWEX-FFGRCDKISA-N,NAFLDkb_repositioning,465.53
+Baclofen,0.65,NCC(CC(=O)O)c1ccc(Cl)cc1,KPYSYYIEGFHWSV-UHFFFAOYSA-N,NAFLDkb_repositioning,213.66
+Balsalazide,0.65,O=C(O)CCNC(=O)c1ccc(/N=N/c2ccc(O)c(C(=O)O)c2)cc1,IPOKCKJONYRRHP-FMQUCBEESA-N,NAFLDkb_repositioning,357.32
+Bardoxolone,0.65,CC1(C)CC[C@]2(C(=O)O)CC[C@]3(C)[C@H](C(=O)C=C4[C@@]5(C)C=C(C#N)C(=O)C(C)(C)[C@@H]5CC[C@]43C)[C@@H]2C1,TXGZJQLMVSIZEI-UQMAOPSPSA-N,NAFLDkb_repositioning,491.67
+Bardoxolone methyl,0.65,COC(=O)[C@]12CCC(C)(C)C[C@H]1[C@H]1C(=O)C=C3[C@@]4(C)C=C(C#N)C(=O)C(C)(C)[C@@H]4CC[C@@]3(C)[C@]1(C)CC2,WPTTVJLTNAWYAO-KPOXMGGZSA-N,NAFLDkb_repositioning,505.7
+Baricitinib,0.65,CCS(=O)(=O)N1CC(CC#N)(n2cc(-c3ncnc4[nH]ccc34)cn2)C1,XUZMWHLSFXCVMG-UHFFFAOYSA-N,NAFLDkb_repositioning,371.43
+Barnidipine,0.65,COC(=O)C1=C(C)NC(C)=C(C(=O)O[C@H]2CCN(Cc3ccccc3)C2)[C@H]1c1cccc([N+](=O)[O-])c1,VXMOONUMYLCFJD-DHLKQENFSA-N,NAFLDkb_repositioning,491.54
+Bazedoxifene,0.65,Cc1c(-c2ccc(O)cc2)n(Cc2ccc(OCCN3CCCCCC3)cc2)c2ccc(O)cc12,UCJGJABZCDBEDK-UHFFFAOYSA-N,NAFLDkb_repositioning,470.61
+Becatecarin,0.65,CCN(CC)CCN1C(=O)c2c(c3c4cccc(Cl)c4n([C@@H]4O[C@H](CO)[C@@H](OC)[C@H](O)[C@H]4O)c3c3[nH]c4c(Cl)cccc4c23)C1=O,JSKFWUPVIZYJMR-UDOAKELVSA-N,NAFLDkb_repositioning,669.56
+Beclomethasone dipropionate,0.65,CCC(=O)OCC(=O)[C@@]1(OC(=O)CC)[C@@H](C)C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(Cl)[C@@H](O)C[C@@]21C,KUVIULQEHSCUHY-XYWKZLDCSA-N,NAFLDkb_repositioning,521.05
+Belinostat,0.65,O=C(/C=C/c1cccc(S(=O)(=O)Nc2ccccc2)c1)NO,NCNRHFGMJRPRSK-MDZDMXLPSA-N,NAFLDkb_repositioning,318.35
+Belumosudil,0.65,CC(C)NC(=O)COc1cccc(-c2nc(Nc3ccc4[nH]ncc4c3)c3ccccc3n2)c1,GKHIVNAUVKXIIY-UHFFFAOYSA-N,NAFLDkb_repositioning,452.52
+Bempedoic acid,0.65,CC(C)(CCCCCC(O)CCCCCC(C)(C)C(=O)O)C(=O)O,HYHMLYSLQUKXKP-UHFFFAOYSA-N,NAFLDkb_repositioning,344.49
+Benazepril,0.65,CCOC(=O)[C@H](CCc1ccccc1)N[C@H]1CCc2ccccc2N(CC(=O)O)C1=O,XPCFTKFZXHTYIP-PMACEKPBSA-N,NAFLDkb_repositioning,424.5
+Bendazac,0.65,O=C(O)COc1nn(Cc2ccccc2)c2ccccc12,BYFMCKSPFYVMOU-UHFFFAOYSA-N,NAFLDkb_repositioning,282.3
+Bendroflumethiazide,0.65,NS(=O)(=O)c1cc2c(cc1C(F)(F)F)NC(Cc1ccccc1)NS2(=O)=O,HDWIHXWEUNVBIY-UHFFFAOYSA-N,NAFLDkb_repositioning,421.42
+Benidipine,0.65,COC(=O)C1=C(C)NC(C)=C(C(=O)O[C@@H]2CCCN(Cc3ccccc3)C2)[C@@H]1c1cccc([N+](=O)[O-])c1,QZVNQOLPLYWLHQ-ZEQKJWHPSA-N,NAFLDkb_repositioning,505.57
+Benmoxin,0.65,CC(NNC(=O)c1ccccc1)c1ccccc1,BEWNZPMDJIGBED-UHFFFAOYSA-N,NAFLDkb_repositioning,240.31
+Benserazide,0.65,NC(CO)C(=O)NNCc1ccc(O)c(O)c1O,BNQDCRGUHNALGH-UHFFFAOYSA-N,NAFLDkb_repositioning,257.25
+Benzethonium,0.65,CC(C)(C)CC(C)(C)c1ccc(OCCOCC[N+](C)(C)Cc2ccccc2)cc1,SIYLLGKDQZGJHK-UHFFFAOYSA-N,NAFLDkb_repositioning,412.64
+Benzphetamine,0.65,C[C@@H](Cc1ccccc1)N(C)Cc1ccccc1,YXKTVDFXDRQTKV-HNNXBMFYSA-N,NAFLDkb_repositioning,239.36
+Benzthiazide,0.65,NS(=O)(=O)c1cc2c(cc1Cl)N=C(CSCc1ccccc1)NS2(=O)=O,NDTSRXAMMQDVSW-UHFFFAOYSA-N,NAFLDkb_repositioning,431.95
+Benzydamine,0.65,CN(C)CCCOc1nn(Cc2ccccc2)c2ccccc12,CNBGNNVCVSKAQZ-UHFFFAOYSA-N,NAFLDkb_repositioning,309.41
+Benzylpenicillin,0.65,CC1(C)S[C@@H]2[C@H](NC(=O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O,JGSARLDLIJGVTE-MBNYWOFBSA-N,NAFLDkb_repositioning,334.4
+Bepridil,0.65,CC(C)COCC(CN(Cc1ccccc1)c1ccccc1)N1CCCC1,UIEATEWHFDRYRU-UHFFFAOYSA-N,NAFLDkb_repositioning,366.55
+Beraprost,0.65,CC#CCC(C)[C@H](O)/C=C/[C@@H]1[C@H]2c3cccc(CCCC(=O)O)c3O[C@H]2C[C@H]1O,CTPOHARTNNSRSR-APJZLKAGSA-N,NAFLDkb_repositioning,398.5
+Besifloxacin,0.65,N[C@@H]1CCCCN(c2c(F)cc3c(=O)c(C(=O)O)cn(C4CC4)c3c2Cl)C1,QFFGVLORLPOAEC-SNVBAGLBSA-N,NAFLDkb_repositioning,393.85
+Beta carotene,0.65,CC1=C(/C=C/C(C)=C/C=C/C(C)=C/C=C/C=C(C)/C=C/C=C(C)/C=C/C2=C(C)CCCC2(C)C)C(C)(C)CCC1,OENHQHLEOONYIE-JLTXGRSLSA-N,NAFLDkb_repositioning,536.89
+Betamethasone,0.65,C[C@H]1C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)CO,UREBDLICKHMUKA-DVTGEIKXSA-N,NAFLDkb_repositioning,392.47
+Betamethasone phosphate,0.65,C[C@H]1C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)COP(=O)(O)O,VQODGRNSFPNSQE-DVTGEIKXSA-N,NAFLDkb_repositioning,472.45
+Betaxolol,0.65,CC(C)NCC(O)COc1ccc(CCOCC2CC2)cc1,NWIUTZDMDHAVTP-UHFFFAOYSA-N,NAFLDkb_repositioning,307.43
+Bethanidine,0.65,C/N=C(\NC)NCc1ccccc1,NIVZHWNOUVJHKV-UHFFFAOYSA-N,NAFLDkb_repositioning,177.25
+Betrixaban,0.65,COc1ccc(NC(=O)c2ccc(C(=N)N(C)C)cc2)c(C(=O)Nc2ccc(Cl)cn2)c1,XHOLNRLADUSQLD-UHFFFAOYSA-N,NAFLDkb_repositioning,451.91
+Bevantolol,0.65,COc1ccc(CCNCC(O)COc2cccc(C)c2)cc1OC,HXLAFSUPPDYFEO-UHFFFAOYSA-N,NAFLDkb_repositioning,345.44
+Bicifadine,0.65,Cc1ccc(C23CNCC2C3)cc1,OFYVIGTWSQPCLF-UHFFFAOYSA-N,NAFLDkb_repositioning,173.26
+Bicisate,0.65,CCOC(=O)[C@H](CS)NCCN[C@@H](CS)C(=O)OCC,RZQNBTMGBODDSK-UWVGGRQHSA-N,NAFLDkb_repositioning,324.47
+Bimatoprost,0.65,CCNC(=O)CCC/C=C\C[C@@H]1[C@@H](/C=C/[C@@H](O)CCc2ccccc2)[C@H](O)C[C@@H]1O,AQOKCDNYWBIDND-FTOWTWDKSA-N,NAFLDkb_repositioning,415.57
+Binimetinib,0.65,Cn1cnc2c(F)c(Nc3ccc(Br)cc3F)c(C(=O)NOCCO)cc21,ACWZRVQXLIRSDF-UHFFFAOYSA-N,NAFLDkb_repositioning,441.23
+Biotin,0.65,O=C(O)CCCC[C@@H]1SC[C@@H]2NC(=O)N[C@@H]21,YBJHBAHKTGYVGT-ZKWXMUAHSA-N,NAFLDkb_repositioning,244.32
+Bisacodyl,0.65,CC(=O)Oc1ccc(C(c2ccc(OC(C)=O)cc2)c2ccccn2)cc1,KHOITXIGCFIULA-UHFFFAOYSA-N,NAFLDkb_repositioning,361.4
+Bisegliptin,0.65,CCOC(=O)C12CCC(NCC(=O)N3C[C@@H](F)C[C@H]3C#N)(CC1)CC2,AKFNKZFJBFQFAA-DIOPXHOYSA-N,NAFLDkb_repositioning,351.42
+Bismuth subsalicylate,0.65,O=C1[O][Bi]([OH])[O]c2ccccc21,ZREIPSZUJIFJNP-UHFFFAOYSA-K,NAFLDkb_repositioning,362.09
+Bisoprolol,0.65,CC(C)NCC(O)COc1ccc(COCCOC(C)C)cc1,VHYCDWMUTMEGQY-UHFFFAOYSA-N,NAFLDkb_repositioning,325.45
+Bisoxatin,0.65,O=C1Nc2ccccc2OC1(c1ccc(O)cc1)c1ccc(O)cc1,BPKUDUSVDVLOPY-UHFFFAOYSA-N,NAFLDkb_repositioning,333.34
+Bopindolol,0.65,Cc1cc2c(OCC(CNC(C)(C)C)OC(=O)c3ccccc3)cccc2[nH]1,UUOJIACWOAYWEZ-UHFFFAOYSA-N,NAFLDkb_repositioning,380.49
+Bortezomib,0.65,CC(C)C[C@H](NC(=O)[C@H](Cc1ccccc1)NC(=O)c1cnccn1)B(O)O,GXJABQQUPOEUTA-RDJZCZTQSA-N,NAFLDkb_repositioning,384.25
+Bosentan,0.65,COc1ccccc1Oc1c(NS(=O)(=O)c2ccc(C(C)(C)C)cc2)nc(-c2ncccn2)nc1OCCO,GJPICJJJRGTNOD-UHFFFAOYSA-N,NAFLDkb_repositioning,551.63
+Brexanolone,0.65,CC(=O)[C@H]1CC[C@H]2[C@@H]3CC[C@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C,AURFZBICLPNKBZ-SYBPFIFISA-N,NAFLDkb_repositioning,318.5
+Brimonidine,0.65,Brc1c(NC2=NCCN2)ccc2nccnc12,XYLJNLCSTIOKRM-UHFFFAOYSA-N,NAFLDkb_repositioning,292.14
+Brinzolamide,0.65,CCN[C@H]1CN(CCCOC)S(=O)(=O)c2sc(S(N)(=O)=O)cc21,HCRKCZRJWPKOAR-JTQLQIEISA-N,NAFLDkb_repositioning,383.52
+Bromfenac,0.65,Nc1c(CC(=O)O)cccc1C(=O)c1ccc(Br)cc1,ZBPLOVFIXSTCRZ-UHFFFAOYSA-N,NAFLDkb_repositioning,334.17
+Bromocriptine,0.65,CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]2(O)O[C@](NC(=O)[C@@H]3C=C4c5cccc6[nH]c(Br)c(c56)C[C@H]4N(C)C3)(C(C)C)C(=O)N12,OZVBMTJYIDMWIL-AYFBDAFISA-N,NAFLDkb_repositioning,654.61
+Budesonide,0.65,CCCC1O[C@@H]2C[C@H]3[C@@H]4CCC5=CC(=O)C=C[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1,VOVIALXJUBGFJZ-KWVAZRHASA-N,NAFLDkb_repositioning,430.54
+Budiodarone,0.65,CC[C@H](C)OC(=O)Cc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1,ZXOSVKYCXLTVGS-KRWDZBQOSA-N,NAFLDkb_repositioning,703.36
+Bufexamac,0.65,CCCCOc1ccc(CC(=O)NO)cc1,MXJWRABVEGLYDG-UHFFFAOYSA-N,NAFLDkb_repositioning,223.27
+Bupranolol,0.65,Cc1ccc(Cl)c(OCC(O)CNC(C)(C)C)c1,HQIRNZOQPUAHHV-UHFFFAOYSA-N,NAFLDkb_repositioning,271.79
+Bupropion,0.65,CC(NC(C)(C)C)C(=O)c1cccc(Cl)c1,SNPPWIUOZRMYNY-UHFFFAOYSA-N,NAFLDkb_repositioning,239.75
+Busulfan,0.65,CS(=O)(=O)OCCCCOS(C)(=O)=O,COVZYZSDYWQREU-UHFFFAOYSA-N,NAFLDkb_repositioning,246.31
+CP-122721,0.65,COc1ccc(OC(F)(F)F)cc1CN[C@H]1CCCN[C@H]1c1ccccc1,ZIWFCOIGUNPHPM-HKUYNNGSSA-N,NAFLDkb_repositioning,380.41
+Cabazitaxel,0.65,CO[C@H]1C(=O)[C@]2(C)[C@@H](OC)C[C@H]3OC[C@@]3(OC(C)=O)[C@H]2[C@H](OC(=O)c2ccccc2)[C@]2(O)C[C@H](OC(=O)[C@H](O)[C@@H](NC(=O)OC(C)(C)C)c3ccccc3)C(C)=C1C2(C)C,BMQGVNUXMIRLCK-OAGWZNDDSA-N,NAFLDkb_repositioning,835.94
+Caffeine,0.65,Cn1c(=O)c2c(ncn2C)n(C)c1=O,RYYVLZVUVIJVGH-UHFFFAOYSA-N,NAFLDkb_repositioning,194.19
+Calcifediol,0.65,C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([C@H](C)CCCC(C)(C)O)CC[C@@H]12,JWUBBDSIWDLEOM-DTOXIADCSA-N,NAFLDkb_repositioning,400.65
+Calcium glubionate anhydrous,0.65,O=C([O][Ca][O]C(=O)[C@H](O)[C@@H](O)[C@H](O[C@@H]1O[C@H](CO)[C@H](O)[C@H](O)[C@H]1O)[C@H](O)CO)[C@H](O)[C@@H](O)[C@H](O)[C@H](O)CO,YPCRNBPOUVJVMU-LCGAVOCYSA-L,NAFLDkb_repositioning,592.51
+Calcium glucoheptonate,0.65,O=C([O-])C(O)[C@H](O)[C@@H](O)[C@H](O)[C@H](O)CO.O=C([O-])C(O)[C@H](O)[C@@H](O)[C@H](O)[C@H](O)CO.[Ca+2],FATUQANACHZLRT-KMRXSBRUSA-L,NAFLDkb_repositioning,490.42
+Caldaret,0.65,Cc1ccc(N2CCNCC2)c(S(=O)(=O)O)c1,DCDFLGVJWQIRGH-UHFFFAOYSA-N,NAFLDkb_repositioning,256.33
+Camazepam,0.65,CN(C)C(=O)OC1N=C(c2ccccc2)c2cc(Cl)ccc2N(C)C1=O,PXBVEXGRHZFEOF-UHFFFAOYSA-N,NAFLDkb_repositioning,371.82
+Camptothecin,0.65,CC[C@@]1(O)C(=O)OCc2c1cc1n(c2=O)Cc2cc3ccccc3nc2-1,VSJKWCGYPAHWDS-FQEVSTJZSA-N,NAFLDkb_repositioning,348.36
+Candesartan,0.65,CCOc1nc2cccc(C(=O)O)c2n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1,HTQMVQVXFRQIKW-UHFFFAOYSA-N,NAFLDkb_repositioning,440.46
+Candesartan cilexetil,0.65,CCOc1nc2cccc(C(=O)OC(C)OC(=O)OC3CCCCC3)c2n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1,GHOSNRCGJFBJIB-UHFFFAOYSA-N,NAFLDkb_repositioning,610.67
+Cangrelor,0.65,CSCCNc1nc(SCCC(F)(F)F)nc2c1ncn2[C@@H]1O[C@H](COP(=O)(O)OP(=O)(O)C(Cl)(Cl)P(=O)(O)O)[C@@H](O)[C@H]1O,PAEBIVWUMLRPSK-IDTAVKCVSA-N,NAFLDkb_repositioning,776.37
+Cannabidiol,0.65,C=C(C)[C@@H]1CCC(C)=C[C@H]1c1c(O)cc(CCCCC)cc1O,QHMBSVQNZZTUGM-ZWKOTPCHSA-N,NAFLDkb_repositioning,314.47
+Cannabinor,0.65,CCCCCCC(C)(C)c1cc(O)c([C@H]2CC(=O)[C@H]3C[C@@H]2C3(C)C)c(OC(=O)/C=C/C(=O)O)c1,GSTZHANFXAKPSE-MXTREEOPSA-N,NAFLDkb_repositioning,470.61
+Cantharidin,0.65,C[C@@]12C(=O)OC(=O)[C@]1(C)[C@H]1CC[C@@H]2O1,DHZBEENLJMYSHQ-XCVPVQRUSA-N,NAFLDkb_repositioning,196.2
+Capric acid,0.65,CCCCCCCCCC(=O)O,GHVNFZFCNZKVNT-UHFFFAOYSA-N,NAFLDkb_repositioning,172.27
+Caprylic acid,0.65,CCCCCCCC(=O)O,WWZKQHOCKIZLMA-UHFFFAOYSA-N,NAFLDkb_repositioning,144.21
+Captopril,0.65,C[C@H](CS)C(=O)N1CCC[C@H]1C(=O)O,FAKRSMQSSFJEIM-RQJHMYQMSA-N,NAFLDkb_repositioning,217.29
+Carbazochrome,0.65,CN1CC(O)C2=C/C(=N/NC(N)=O)C(=O)C=C21,XSXCZNVKFKNLPR-SDQBBNPISA-N,NAFLDkb_repositioning,236.23
+Carbocisteine,0.65,N[C@@H](CSCC(=O)O)C(=O)O,GBFLZEXEOZUWRN-VKHMYHEASA-N,NAFLDkb_repositioning,179.2
+Cardarine,0.65,Cc1cc(SCc2sc(-c3ccc(C(F)(F)F)cc3)nc2C)ccc1OCC(=O)O,YDBLKRPLXZNVNB-UHFFFAOYSA-N,NAFLDkb_repositioning,453.51
+Carfilzomib,0.65,CC(C)C[C@H](NC(=O)[C@H](CCc1ccccc1)NC(=O)CN1CCOCC1)C(=O)N[C@@H](Cc1ccccc1)C(=O)N[C@@H](CC(C)C)C(=O)[C@@]1(C)CO1,BLMPQMFVWMYDKT-NZTKNTHTSA-N,NAFLDkb_repositioning,719.92
+Caroxazone,0.65,NC(=O)CN1Cc2ccccc2OC1=O,KYCBWEZLKCTALM-UHFFFAOYSA-N,NAFLDkb_repositioning,206.2
+Carprofen,0.65,CC(C(=O)O)c1ccc2c(c1)[nH]c1ccc(Cl)cc12,PUXBGTOOZJQSKH-UHFFFAOYSA-N,NAFLDkb_repositioning,273.72
+Carteolol,0.65,CC(C)(C)NCC(O)COc1cccc2c1CCC(=O)N2,LWAFSWPYPHEXKX-UHFFFAOYSA-N,NAFLDkb_repositioning,292.38
+Carvedilol,0.65,COc1ccccc1OCCNCC(O)COc1cccc2[nH]c3ccccc3c12,OGHNVEJMJSYVRP-UHFFFAOYSA-N,NAFLDkb_repositioning,406.48
+Cefacetrile,0.65,CC(=O)OCC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)CC#N)[C@H]2SC1,RRYMAQUWDLIUPV-BXKDBHETSA-N,NAFLDkb_repositioning,339.33
+Cefaclor,0.65,N[C@@H](C(=O)N[C@@H]1C(=O)N2C(C(=O)O)=C(Cl)CS[C@H]12)c1ccccc1,QYIYFLOTGYLRGG-GPCCPHFNSA-N,NAFLDkb_repositioning,367.81
+Cefadroxil,0.65,CC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)[C@H](N)c3ccc(O)cc3)[C@H]2SC1,BOEGTKLJZSQCCD-UEKVPHQBSA-N,NAFLDkb_repositioning,363.4
+Cefazolin,0.65,Cc1nnc(SCC2=C(C(=O)O)N3C(=O)[C@@H](NC(=O)Cn4cnnn4)[C@H]3SC2)s1,MLYYVTUWGNIJIB-BXKDBHETSA-N,NAFLDkb_repositioning,454.52
+Cefdinir,0.65,C=CC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)/C(=N\O)c3csc(N)n3)[C@H]2SC1,RTXOFQZKPXMALH-GHXIOONMSA-N,NAFLDkb_repositioning,395.42
+Cefditoren,0.65,CO/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)O)=C(/C=C\c3scnc3C)CS[C@H]12)c1csc(N)n1,KMIPKYQIOVAHOP-YLGJWRNMSA-N,NAFLDkb_repositioning,506.59
+Cefepime,0.65,CO/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)[O-])=C(C[N+]3(C)CCCC3)CS[C@H]12)c1csc(N)n1,HVFLCNVBZFFHBT-ZKDACBOMSA-N,NAFLDkb_repositioning,480.57
+Cefixime,0.65,C=CC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)/C(=N\OCC(=O)O)c3csc(N)n3)[C@H]2SC1,OKBVVJOGVLARMR-QSWIMTSFSA-N,NAFLDkb_repositioning,453.46
+Cefonicid,0.65,O=C(O)C1=C(CSc2nnnn2CS(=O)(=O)O)CS[C@@H]2[C@H](NC(=O)[C@H](O)c3ccccc3)C(=O)N12,DYAIAHUQIPBDIP-AXAPSJFSSA-N,NAFLDkb_repositioning,542.58
+Cefoperazone,0.65,CCN1CCN(C(=O)N[C@@H](C(=O)N[C@@H]2C(=O)N3C(C(=O)O)=C(CSc4nnnn4C)CS[C@H]23)c2ccc(O)cc2)C(=O)C1=O,GCFBRXLSHGKWDP-XCGNWRKASA-N,NAFLDkb_repositioning,645.68
+Cefotetan,0.65,CO[C@@]1(NC(=O)C2SC(=C(C(N)=O)C(=O)O)S2)C(=O)N2C(C(=O)O)=C(CSc3nnnn3C)CS[C@@H]21,SRZNHPXWXCNNDU-RHBCBLIFSA-N,NAFLDkb_repositioning,575.63
+Cefprozil,0.65,CC=CC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)[C@H](N)c3ccc(O)cc3)[C@H]2SC1,WDLWHQDACQUCJR-PBFPGSCMSA-N,NAFLDkb_repositioning,389.43
+Cefroxadine,0.65,COC1=C(C(=O)O)N2C(=O)[C@@H](NC(=O)[C@H](N)C3=CCC=CC3)[C@H]2SC1,RDMOROXKXONCAL-UEKVPHQBSA-N,NAFLDkb_repositioning,365.41
+Ceftazidime,0.65,CC(C)(O/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)[O-])=C(C[n+]3ccccc3)CS[C@H]12)c1csc(N)n1)C(=O)O,ORFOPKXBNMVMKC-DWVKKRMSSA-N,NAFLDkb_repositioning,546.59
+Ceftobiprole,0.65,Nc1nc(/C(=N/O)C(=O)N[C@@H]2C(=O)N3C(C(=O)O)=C(/C=C4\CCN([C@@H]5CCNC5)C4=O)CS[C@H]23)ns1,VOAZJEPQLGBXGO-SDAWRPRTSA-N,NAFLDkb_repositioning,534.58
+Ceftolozane,0.65,Cn1c(N)c(NC(=O)NCCN)c[n+]1CC1=C(C(=O)[O-])N2C(=O)[C@@H](NC(=O)/C(=N\OC(C)(C)C(=O)O)c3nsc(N)n3)[C@H]2SC1,JHFNIHVVXRKLEF-DCZLAGFPSA-N,NAFLDkb_repositioning,666.7
+Ceftriaxone,0.65,CO/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)O)=C(CSc3nc(=O)c(=O)[nH]n3C)CS[C@H]12)c1csc(N)n1,VAAUVRVFOQPIGI-SPQHTLEESA-N,NAFLDkb_repositioning,554.59
+Cefuroxime,0.65,CO/N=C(\C(=O)N[C@@H]1C(=O)N2C(C(=O)O)=C(COC(N)=O)CS[C@H]12)c1ccco1,JFPVXVDWJQMJEE-IZRZKJBUSA-N,NAFLDkb_repositioning,424.39
+Celecoxib,0.65,Cc1ccc(-c2cc(C(F)(F)F)nn2-c2ccc(S(N)(=O)=O)cc2)cc1,RZEKVGVHFLEQIL-UHFFFAOYSA-N,NAFLDkb_repositioning,381.38
+Celiprolol,0.65,CCN(CC)C(=O)Nc1ccc(OCC(O)CNC(C)(C)C)c(C(C)=O)c1,JOATXPAWOHTVSZ-UHFFFAOYSA-N,NAFLDkb_repositioning,379.5
+Cenisertib,0.65,Cc1cc(Nc2ncc(F)c(N[C@H]3[C@@H](C(N)=O)[C@@H]4C=C[C@H]3C4)n2)ccc1N1CCN(C)CC1,KSOVGRCOLZZTPF-QMKUDKLTSA-N,NAFLDkb_repositioning,451.55
+Cerivastatin,0.65,COCc1c(C(C)C)nc(C(C)C)c(/C=C/[C@@H](O)C[C@@H](O)CC(=O)O)c1-c1ccc(F)cc1,SEERZIQQUAZTOL-ANMDKAQQSA-N,NAFLDkb_repositioning,459.56
+Cerulenin,0.65,C/C=C/C/C=C/CCC(=O)[C@H]1O[C@H]1C(N)=O,GVEZIHKRYBHEFX-NQQPLRFYSA-N,NAFLDkb_repositioning,223.27
+Cetilistat,0.65,CCCCCCCCCCCCCCCCOc1nc2ccc(C)cc2c(=O)o1,MVCQKIKWYUURMU-UHFFFAOYSA-N,NAFLDkb_repositioning,401.59
+Cetirizine,0.65,O=C(O)COCCN1CCN(C(c2ccccc2)c2ccc(Cl)cc2)CC1,ZKLPARSLTMPFCP-UHFFFAOYSA-N,NAFLDkb_repositioning,388.9
+Cetylpyridinium,0.65,CCCCCCCCCCCCCCCC[n+]1ccccc1,NEUSVAOJNUQRTM-UHFFFAOYSA-N,NAFLDkb_repositioning,304.54
+Chenodeoxycholic acid,0.65,C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C,RUDATBOHQWOJDD-BSWAIDMHSA-N,NAFLDkb_repositioning,392.58
+Chloramphenicol succinate,0.65,O=C(O)CCC(=O)OC[C@@H](NC(=O)C(Cl)Cl)[C@H](O)c1ccc([N+](=O)[O-])cc1,LIRCDOVJWUGTMW-ZWNOBZJWSA-N,NAFLDkb_repositioning,423.21
+Chlorobutanol,0.65,CC(C)(O)C(Cl)(Cl)Cl,OSASVXMJTNOKOY-UHFFFAOYSA-N,NAFLDkb_repositioning,177.46
+Chloroquine,0.65,CCN(CC)CCCC(C)Nc1ccnc2cc(Cl)ccc12,WHTVZRBIWZFKQO-UHFFFAOYSA-N,NAFLDkb_repositioning,319.88
+Chlorothiazide,0.65,NS(=O)(=O)c1cc2c(cc1Cl)NC=NS2(=O)=O,JBMKAUGHUNFTOL-UHFFFAOYSA-N,NAFLDkb_repositioning,295.73
+Chlorphentermine,0.65,CC(C)(N)Cc1ccc(Cl)cc1,ZCKAMNXUHHNZLN-UHFFFAOYSA-N,NAFLDkb_repositioning,183.68
+Chlorthalidone,0.65,NS(=O)(=O)c1cc(C2(O)NC(=O)c3ccccc32)ccc1Cl,JIVPVXMEBJLZRO-UHFFFAOYSA-N,NAFLDkb_repositioning,338.77
+Chlorzoxazone,0.65,O=c1[nH]c2cc(Cl)ccc2o1,TZFWDZFKRBELIQ-UHFFFAOYSA-N,NAFLDkb_repositioning,169.57
+Cholic Acid,0.65,C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C,BHQCQFFYRZLCQQ-OELDTZBJSA-N,NAFLDkb_repositioning,408.58
+Choline magnesium trisalicylate,0.65,C[N+](C)(C)CCO.O=C([O-])c1ccccc1O.O=C([O-])c1ccccc1O.O=C([O-])c1ccccc1O.[Mg+2],FQCQGOZEWWPOKI-UHFFFAOYSA-K,NAFLDkb_repositioning,539.82
+Choline salicylate,0.65,C[N+](C)(C)CCO.O=C([O-])c1ccccc1O,UDKCHVLMFQVBAA-UHFFFAOYSA-M,NAFLDkb_repositioning,241.29
+Ciclesonide,0.65,CC(C)C(=O)OCC(=O)[C@@]12O[C@H](C3CCCCC3)O[C@@H]1C[C@H]1[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@H]3[C@@H](O)C[C@@]12C,LUKZNWIVRBCLON-GXOBDPJESA-N,NAFLDkb_repositioning,540.7
+Ciclopirox,0.65,Cc1cc(C2CCCCC2)n(O)c(=O)c1,SCKYRAXSEDYPSA-UHFFFAOYSA-N,NAFLDkb_repositioning,207.27
+Ciglitazone,0.65,CC1(COc2ccc(CC3SC(=O)NC3=O)cc2)CCCCC1,YZFWTZACSRHJQD-UHFFFAOYSA-N,NAFLDkb_repositioning,333.45
+Cilansetron,0.65,Cc1nccn1C[C@H]1CCc2c(c3cccc4c3n2CCC4)C1=O,NCNFDKWULDWJDS-OAHLLOKOSA-N,NAFLDkb_repositioning,319.41
+Cilastatin,0.65,CC1(C)C[C@@H]1C(=O)N/C(=C\CCCCSC[C@H](N)C(=O)O)C(=O)O,DHSUYTOATWAVLW-WFVMDLQDSA-N,NAFLDkb_repositioning,358.46
+Cilazapril,0.65,CCOC(=O)[C@H](CCc1ccccc1)N[C@H]1CCCN2CCC[C@@H](C(=O)O)N2C1=O,HHHKFGXWKKUNCY-FHWLQOOXSA-N,NAFLDkb_repositioning,417.51
+Cilnidipine,0.65,COCCOC(=O)C1=C(C)NC(C)=C(C(=O)OC/C=C/c2ccccc2)C1c1cccc([N+](=O)[O-])c1,KJEBULYHNRNJTE-DHZHZOJOSA-N,NAFLDkb_repositioning,492.53
+Cilomilast,0.65,COc1ccc([C@]2(C#N)CC[C@@H](C(=O)O)CC2)cc1OC1CCCC1,CFBUZOUXXHZCFB-OYOVHJISSA-N,NAFLDkb_repositioning,343.42
+Cimicoxib,0.65,COc1ccc(-c2c(Cl)ncn2-c2ccc(S(N)(=O)=O)cc2)cc1F,KYXDNECMRLFQMZ-UHFFFAOYSA-N,NAFLDkb_repositioning,381.82
+Cinacalcet,0.65,C[C@@H](NCCCc1cccc(C(F)(F)F)c1)c1cccc2ccccc12,VDHAWDNDOKGFTD-MRXNPFEDSA-N,NAFLDkb_repositioning,357.42
+Cinalukast,0.65,CCC(CC)(CC(=O)Nc1cccc(/C=C/c2nc(C3CCC3)cs2)c1)C(=O)O,BZMKNPGKXJAIDV-VAWYXSNFSA-N,NAFLDkb_repositioning,412.56
+Cinoxacin,0.65,CCn1nc(C(=O)O)c(=O)c2cc3c(cc21)OCO3,VDUWPHTZYNWKRN-UHFFFAOYSA-N,NAFLDkb_repositioning,262.22
+Ciprofibrate,0.65,CC(C)(Oc1ccc(C2CC2(Cl)Cl)cc1)C(=O)O,KPSRODZRAIWAKH-UHFFFAOYSA-N,NAFLDkb_repositioning,289.16
+Ciprofloxacin,0.65,O=C(O)c1cn(C2CC2)c2cc(N3CCNCC3)c(F)cc2c1=O,MYSWGUAQZAJSOK-UHFFFAOYSA-N,NAFLDkb_repositioning,331.35
+Citalopram,0.65,CN(C)CCCC1(c2ccc(F)cc2)OCc2cc(C#N)ccc21,WSEQXVZVJXJVFP-UHFFFAOYSA-N,NAFLDkb_repositioning,324.4
+Clascoterone,0.65,CCC(=O)O[C@]1(C(=O)CO)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3CC[C@@]21C,GPNHMOZDMYNCPO-PDUMRIMRSA-N,NAFLDkb_repositioning,402.53
+Clazosentan,0.65,COc1ccccc1Oc1c(NS(=O)(=O)c2ccc(C)cn2)nc(-c2ccnc(-c3nnn[nH]3)c2)nc1OCCO,LFWCJABOXHSRGC-UHFFFAOYSA-N,NAFLDkb_repositioning,577.58
+Clenbuterol,0.65,CC(C)(C)NCC(O)c1cc(Cl)c(N)c(Cl)c1,STJMRWALKKWQGH-UHFFFAOYSA-N,NAFLDkb_repositioning,277.19
+Clevidipine,0.65,CCCC(=O)OCOC(=O)C1=C(C)NC(C)=C(C(=O)OC)C1c1cccc(Cl)c1Cl,KPBZROQVTHLCDU-UHFFFAOYSA-N,NAFLDkb_repositioning,456.32
+Clidinium,0.65,C[N@+]12CC[C@H](CC1)C(OC(=O)C(O)(c1ccccc1)c1ccccc1)C2,HOOSGZJRQIVJSZ-NNBUQUNQSA-N,NAFLDkb_repositioning,352.45
+Clinofibrate,0.65,CCC(C)(Oc1ccc(C2(c3ccc(OC(C)(CC)C(=O)O)cc3)CCCCC2)cc1)C(=O)O,BMOVQUBVGICXQN-UHFFFAOYSA-N,NAFLDkb_repositioning,468.59
+Clobetasol propionate,0.65,CCC(=O)O[C@]1(C(=O)CCl)[C@@H](C)C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]21C,CBGUOGMQLZIXBE-XGQKBEPLSA-N,NAFLDkb_repositioning,466.98
+Clobetasone,0.65,C[C@H]1C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)C(=O)C[C@]2(C)[C@@]1(O)C(=O)CCl,XXIFVOHLGBURIG-OZCCCYNHSA-N,NAFLDkb_repositioning,408.9
+Clocortolone,0.65,C[C@@H]1C[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(Cl)[C@@H](O)C[C@]2(C)[C@H]1C(=O)CO,YMTMADLUXIRMGX-RFPWEZLHSA-N,NAFLDkb_repositioning,410.91
+Clofarabine,0.65,Nc1nc(Cl)nc2c1ncn2[C@@H]1O[C@H](CO)[C@@H](O)[C@@H]1F,WDDPHFBMKLOVOX-AYQXTPAHSA-N,NAFLDkb_repositioning,303.68
+Clofazimine,0.65,CC(C)N=c1cc2n(-c3ccc(Cl)cc3)c3ccccc3nc-2cc1Nc1ccc(Cl)cc1,WDQPAMHFFCXSNU-UHFFFAOYSA-N,NAFLDkb_repositioning,473.41
+Clofibrate,0.65,CCOC(=O)C(C)(C)Oc1ccc(Cl)cc1,KNHUKKLJHYUCFP-UHFFFAOYSA-N,NAFLDkb_repositioning,242.7
+Clomethiazole,0.65,Cc1ncsc1CCCl,PCLITLDOTJTVDJ-UHFFFAOYSA-N,NAFLDkb_repositioning,161.66
+Clomipramine,0.65,CN(C)CCCN1c2ccccc2CCc2ccc(Cl)cc21,GDLIGKIOYRNHDA-UHFFFAOYSA-N,NAFLDkb_repositioning,314.86
+Clonidine,0.65,Clc1cccc(Cl)c1NC1=NCCN1,GJSURZIOUXUGAL-UHFFFAOYSA-N,NAFLDkb_repositioning,230.1
+Clonixin,0.65,Cc1c(Cl)cccc1Nc1ncccc1C(=O)O,CLOMYZFHNHFSIQ-UHFFFAOYSA-N,NAFLDkb_repositioning,262.7
+Clopidogrel,0.65,COC(=O)[C@H](c1ccccc1Cl)N1CCc2sccc2C1,GKTWGGQPFAXNFI-HNNXBMFYSA-N,NAFLDkb_repositioning,321.83
+Coenzyme A,0.65,CC(C)(COP(=O)(O)OP(=O)(O)OC[C@H]1O[C@@H](n2cnc3c(N)ncnc32)[C@H](O)[C@@H]1OP(=O)(O)O)[C@@H](O)C(=O)NCCC(=O)NCCS,RGJOEKWQDUBAIZ-IBOSZNHHSA-N,NAFLDkb_repositioning,767.54
+Colchicine,0.65,COc1cc2c(c(OC)c1OC)-c1ccc(OC)c(=O)cc1[C@@H](NC(C)=O)CC2,IAKHMKGGTNLKSZ-INIZCTEOSA-N,NAFLDkb_repositioning,399.44
+Colfosceril palmitate,0.65,CCCCCCCCCCCCCCCC(=O)OC[C@H](COP(=O)([O-])OCC[N+](C)(C)C)OC(=O)CCCCCCCCCCCCCCC,KILNVBDSWZSGLL-KXQOOQHDSA-N,NAFLDkb_repositioning,734.05
+Conivaptan,0.65,Cc1nc2c([nH]1)CCN(C(=O)c1ccc(NC(=O)c3ccccc3-c3ccccc3)cc1)c1ccccc1-2,IKENVDNFQMCRTR-UHFFFAOYSA-N,NAFLDkb_repositioning,498.59
+Copanlisib,0.65,COc1c(OCCCN2CCOCC2)ccc2c1N=C(NC(=O)c1cnc(N)nc1)N1CCN=C21,PZBCKZWLPGJMAO-UHFFFAOYSA-N,NAFLDkb_repositioning,480.53
+Cortisone acetate,0.65,CC(=O)OCC(=O)[C@@]1(O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3C(=O)C[C@@]21C,ITRJWOMZKQRYTA-RFZYENFJSA-N,NAFLDkb_repositioning,402.49
+Creatine,0.65,CN(CC(=O)O)C(=N)N,CVSVTCORWBXHQV-UHFFFAOYSA-N,NAFLDkb_repositioning,131.13
+Crisaborole,0.65,N#Cc1ccc(Oc2ccc3c(c2)COB3O)cc1,USZAGAREISWJDP-UHFFFAOYSA-N,NAFLDkb_repositioning,251.05
+Cromoglicic acid,0.65,O=C(O)c1cc(=O)c2c(OCC(O)COc3cccc4oc(C(=O)O)cc(=O)c34)cccc2o1,IMZMKUWMOSJXDT-UHFFFAOYSA-N,NAFLDkb_repositioning,468.37
+Curcumin sulfate,0.65,COc1cc(/C=C/C(=O)CC(=O)/C=C/c2ccc(OS(=O)(=O)O)c(OC)c2)ccc1O,NEJVQQBBTRFOHB-FCXRPNKRSA-N,NAFLDkb_repositioning,448.45
+Cutamesine,0.65,COc1ccc(CCN2CCN(CCCc3ccccc3)CC2)cc1OC,UVSWWUWQVAQPJR-UHFFFAOYSA-N,NAFLDkb_repositioning,368.52
+Cyclacillin,0.65,CC1(C)S[C@@H]2[C@H](NC(=O)C3(N)CCCCC3)C(=O)N2[C@H]1C(=O)O,HGBLNBBNRORJKI-WCABBAIRSA-N,NAFLDkb_repositioning,341.43
+Cyclandelate,0.65,CC1CC(OC(=O)C(O)c2ccccc2)CC(C)(C)C1,WZHCOOQXZCIUNC-UHFFFAOYSA-N,NAFLDkb_repositioning,276.38
+Cyclobenzaprine,0.65,CN(C)CCC=C1c2ccccc2C=Cc2ccccc21,JURKNVYFZMSNLP-UHFFFAOYSA-N,NAFLDkb_repositioning,275.4
+Cyclothiazide,0.65,NS(=O)(=O)c1cc2c(cc1Cl)NC(C1CC3C=CC1C3)NS2(=O)=O,BOCUKUHCLICSIY-UHFFFAOYSA-N,NAFLDkb_repositioning,389.89
+Cystine,0.65,N[C@@H](CSSC[C@H](N)C(=O)O)C(=O)O,LEVWYRKDKASIDU-IMJSIDKUSA-N,NAFLDkb_repositioning,240.31
+D-alpha-Tocopherol acetate,0.65,CC(=O)Oc1c(C)c(C)c2c(c1C)CC[C@@](C)(CCC[C@H](C)CCC[C@H](C)CCCC(C)C)O2,ZAKOWWREFLAJOT-CEFNRUSXSA-N,NAFLDkb_repositioning,472.75
+DDP-225,0.65,Cc1cc2c(-c3ccccc3F)nc(N3CCNCC3)nc2s1.Cl.O,SAURKKOJWIFYSR-UHFFFAOYSA-N,NAFLDkb_repositioning,382.89
+Daglutril,0.65,CCOC(=O)[C@H](CCc1ccccc1)CC1(C(=O)N[C@H]2CCc3ccccc3N(CC(=O)O)C2=O)CCCC1,XMQODGUTLZXUGZ-RPBOFIJWSA-N,NAFLDkb_repositioning,534.65
+Dalfopristin,0.65,CCN(CC)CCS(=O)(=O)[C@@H]1CCN2C(=O)c3coc(n3)CC(=O)C[C@H](O)/C=C(C)/C=C/CNC(=O)/C=C/[C@@H](C)[C@@H](C(C)C)OC(=O)[C@@H]12,SUYRLXYYZQTJHF-VMBLUXKRSA-N,NAFLDkb_repositioning,690.86
+Dapsone,0.65,Nc1ccc(S(=O)(=O)c2ccc(N)cc2)cc1,MQJKPEGWNLWLTK-UHFFFAOYSA-N,NAFLDkb_repositioning,248.31
+Darapladib,0.65,CCN(CC)CCN(Cc1ccc(-c2ccc(C(F)(F)F)cc2)cc1)C(=O)Cn1c(SCc2ccc(F)cc2)nc(=O)c2c1CCC2,WDPFJWLDPVQCAJ-UHFFFAOYSA-N,NAFLDkb_repositioning,666.79
+Darglitazone,0.65,Cc1oc(-c2ccccc2)nc1CCC(=O)c1ccc(CC2SC(=O)NC2=O)cc1,QQKNSPHAFATFNQ-UHFFFAOYSA-N,NAFLDkb_repositioning,420.49
+Darusentan,0.65,COc1cc(OC)nc(O[C@H](C(=O)O)C(OC)(c2ccccc2)c2ccccc2)n1,FEJVSJIALLTFRP-LJQANCHMSA-N,NAFLDkb_repositioning,410.43
+Daunorubicin,0.65,COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(C)=O)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1,STQGQHZAVUOBTE-VGBVRHCVSA-N,NAFLDkb_repositioning,527.53
+Debrisoquine,0.65,N=C(N)N1CCc2ccccc2C1,JWPGJSVJDAJRLW-UHFFFAOYSA-N,NAFLDkb_repositioning,175.23
+Declopramide,0.65,CCN(CC)CCNC(=O)c1ccc(N)c(Cl)c1,YEYAKZXEBSVURO-UHFFFAOYSA-N,NAFLDkb_repositioning,269.78
+Deflazacort,0.65,CC(=O)OCC(=O)[C@@]12N=C(C)O[C@@H]1C[C@H]1[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@H]3[C@@H](O)C[C@@]12C,FBHSPRKOSMHSIF-GRMWVWQJSA-N,NAFLDkb_repositioning,441.52
+Dehydroascorbic acid,0.65,O=C1O[C@H]([C@@H](O)CO)C(=O)C1=O,SBJKKFFYIZUCET-JLAZNSOCSA-N,NAFLDkb_repositioning,174.11
+Delafloxacin,0.65,Nc1nc(-n2cc(C(=O)O)c(=O)c3cc(F)c(N4CC(O)C4)c(Cl)c32)c(F)cc1F,DYDCPNMLZGFQTM-UHFFFAOYSA-N,NAFLDkb_repositioning,440.77
+Demeclocycline,0.65,CN(C)[C@@H]1C(O)=C(C(N)=O)C(=O)[C@@]2(O)C(O)=C3C(=O)c4c(O)ccc(Cl)c4[C@@H](O)[C@H]3C[C@@H]12,FMTDIUIBLCQGJB-SEYHBJAFSA-N,NAFLDkb_repositioning,464.86
+Deoxycholic acid,0.65,C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C,KXGVEGMKQFWNSR-LLQZFEROSA-N,NAFLDkb_repositioning,392.58
+Dequalinium,0.65,Cc1cc(N)c2ccccc2[n+]1CCCCCCCCCC[n+]1c(C)cc(N)c2ccccc21,PCSWXVJAIHCTMO-UHFFFAOYSA-P,NAFLDkb_repositioning,456.68
+Deserpidine,0.65,COC(=O)[C@H]1[C@H]2C[C@@H]3c4[nH]c5ccccc5c4CCN3C[C@H]2C[C@@H](OC(=O)c2cc(OC)c(OC)c(OC)c2)[C@@H]1OC,CVBMAZKKCSYWQR-WCGOZPBSSA-N,NAFLDkb_repositioning,578.66
+Desipramine,0.65,CNCCCN1c2ccccc2CCc2ccccc21,HCYAFALTSJYZDH-UHFFFAOYSA-N,NAFLDkb_repositioning,266.39
+Desonide,0.65,CC1(C)O[C@@H]2C[C@H]3[C@@H]4CCC5=CC(=O)C=C[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1,WBGKWQHBNHJJPZ-LECWWXJVSA-N,NAFLDkb_repositioning,416.51
+Desoximetasone,0.65,C[C@@H]1C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@H]1C(=O)CO,VWVSBHGCDBMOOT-IIEHVVJPSA-N,NAFLDkb_repositioning,376.47
+Desoxycorticosterone pivalate,0.65,CC(C)(C)C(=O)OCC(=O)[C@H]1CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3CC[C@]12C,VVOIQBFMTVCINR-WWMZEODYSA-N,NAFLDkb_repositioning,414.59
+Dexamethasone,0.65,C[C@@H]1C[C@H]2[C@@H]3CCC4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)CO,UREBDLICKHMUKA-CXSFZGCWSA-N,NAFLDkb_repositioning,392.47
+Dexanabinol,0.65,CCCCCCC(C)(C)c1cc(O)c2c(c1)OC(C)(C)[C@H]1CC=C(CO)C[C@H]21,SSQJFGMEZBFMNV-PMACEKPBSA-N,NAFLDkb_repositioning,386.58
+Dexfenfluramine,0.65,CCN[C@@H](C)Cc1cccc(C(F)(F)F)c1,DBGIVFWFUFKIQN-VIFPVBQESA-N,NAFLDkb_repositioning,231.26
+Dexibuprofen,0.65,CC(C)Cc1ccc([C@H](C)C(=O)O)cc1,HEFNNWSXXWATRW-JTQLQIEISA-N,NAFLDkb_repositioning,206.28
+Dexketoprofen,0.65,C[C@H](C(=O)O)c1cccc(C(=O)c2ccccc2)c1,DKYWVDODHFEZIM-NSHDSACASA-N,NAFLDkb_repositioning,254.28
+Dexloxiglumide,0.65,CCCCCN(CCCOC)C(=O)[C@@H](CCC(=O)O)NC(=O)c1ccc(Cl)c(Cl)c1,QNQZBKQEIFTHFZ-GOSISDBHSA-N,NAFLDkb_repositioning,461.39
+Dexpanthenol,0.65,CC(C)(CO)[C@@H](O)C(=O)NCCCO,SNPLKNRPJHDVJA-ZETCQYMHSA-N,NAFLDkb_repositioning,205.25
+Dexrazoxane,0.65,C[C@@H](CN1CC(=O)NC(=O)C1)N1CC(=O)NC(=O)C1,BMKDZUISNHGIBY-ZETCQYMHSA-N,NAFLDkb_repositioning,268.27
+Dextofisopam,0.65,CC[C@H]1C(C)=NN=C(c2ccc(OC)c(OC)c2)c2cc(OC)c(OC)cc21,RUJBDQSFYCKFAA-HNNXBMFYSA-N,NAFLDkb_repositioning,382.46
+Dextrothyroxine,0.65,N[C@H](Cc1cc(I)c(Oc2cc(I)c(O)c(I)c2)c(I)c1)C(=O)O,XUIIKFGFIJCVMT-GFCCVEGCSA-N,NAFLDkb_repositioning,776.87
+Diamorphine,0.65,CC(=O)Oc1ccc2c3c1O[C@H]1[C@@H](OC(C)=O)C=C[C@H]4[C@@H](C2)N(C)CC[C@@]341,GVGLGOZIDCSQPN-PVHGPHFFSA-N,NAFLDkb_repositioning,369.42
+Diazoxide,0.65,CC1=NS(=O)(=O)c2cc(Cl)ccc2N1,GDLBFKVLRPITMI-UHFFFAOYSA-N,NAFLDkb_repositioning,230.68
+Diclofenac,0.65,O=C(O)Cc1ccccc1Nc1c(Cl)cccc1Cl,DCOPUUMXTXDBNB-UHFFFAOYSA-N,NAFLDkb_repositioning,296.15
+Dicyclomine,0.65,CCN(CC)CCOC(=O)C1(C2CCCCC2)CCCCC1,CURUTKGFNZGFSE-UHFFFAOYSA-N,NAFLDkb_repositioning,309.49
+Didesmethylrocaglamide,0.65,COc1ccc([C@@]23Oc4cc(OC)cc(OC)c4[C@]2(O)[C@H](O)[C@H](C(N)=O)[C@H]3c2ccccc2)cc1,RMNPQEWLGQURNX-PXIJUOARSA-N,NAFLDkb_repositioning,477.51
+Diethylamino hydroxybenzoyl hexyl benzoate,0.65,CCCCCCOC(=O)c1ccccc1C(=O)c1ccc(N(CC)CC)cc1O,FDATWRLUYRHCJE-UHFFFAOYSA-N,NAFLDkb_repositioning,397.52
+Diethylpropion,0.65,CCN(CC)C(C)C(=O)c1ccccc1,XXEPPPIWZFICOJ-UHFFFAOYSA-N,NAFLDkb_repositioning,205.3
+Diflorasone,0.65,C[C@H]1C[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)CO,WXURHACBFYSXBI-XHIJKXOTSA-N,NAFLDkb_repositioning,410.46
+Diflunisal,0.65,O=C(O)c1cc(-c2ccc(F)cc2F)ccc1O,HUPFGZXOMWLGNK-UHFFFAOYSA-N,NAFLDkb_repositioning,250.2
+Difluocortolone,0.65,C[C@@H]1C[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@H]1C(=O)CO,OGPWIDANBSLJPC-RFPWEZLHSA-N,NAFLDkb_repositioning,394.46
+Difluprednate,0.65,CCCC(=O)O[C@]1(C(=O)COC(C)=O)CC[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]21C,WYQPLTPSGFELIB-JTQPXKBDSA-N,NAFLDkb_repositioning,508.56
+Dihomo-gamma-linolenic acid,0.65,CCCCC/C=C\C/C=C\C/C=C\CCCCCCC(=O)O,HOBAELRKJCKHQD-QNEBEIHSSA-N,NAFLDkb_repositioning,306.49
+Dihydroergocristine,0.65,CC(C)[C@@]1(NC(=O)[C@@H]2C[C@@H]3c4cccc5[nH]cc(c45)C[C@H]3N(C)C2)O[C@@]2(O)[C@@H]3CCCN3C(=O)[C@H](Cc3ccccc3)N2C1=O,DEQITUUQPICUMR-HJPBWRTMSA-N,NAFLDkb_repositioning,611.74
+Dihydrotachysterol,0.65,CC(C)[C@@H](C)/C=C/[C@@H](C)[C@H]1CC[C@H]2/C(=C/C=C3\C[C@@H](O)CC[C@@H]3C)CCC[C@]12C,ILYCWAKSDCYMBB-OPCMSESCSA-N,NAFLDkb_repositioning,398.68
+Dilmapimod,0.65,Cc1cc(F)ccc1-c1nc(NC(CO)CO)nc2c1ccc(=O)n2-c1c(F)cccc1F,ORVNHOYNEHYKJG-UHFFFAOYSA-N,NAFLDkb_repositioning,456.42
+Diltiazem,0.65,COc1ccc([C@@H]2Sc3ccccc3N(CCN(C)C)C(=O)[C@@H]2OC(C)=O)cc1,HSUGRBWQSSZJOP-RTWAWAEBSA-N,NAFLDkb_repositioning,414.53
+Dimethyl fumarate,0.65,COC(=O)/C=C/C(=O)OC,LDCRTTXIJACKKU-ONEGZZNKSA-N,NAFLDkb_repositioning,144.13
+Diosmin,0.65,COc1ccc(-c2cc(=O)c3c(O)cc(O[C@@H]4O[C@H](CO[C@@H]5O[C@@H](C)[C@H](O)[C@@H](O)[C@H]5O)[C@@H](O)[C@H](O)[C@H]4O)cc3o2)cc1O,GZSOSUNBTXMUFQ-YFAPSIMESA-N,NAFLDkb_repositioning,608.55
+Dipyridamole,0.65,OCCN(CCO)c1nc(N2CCCCC2)c2nc(N(CCO)CCO)nc(N3CCCCC3)c2n1,IZEKFCXSFNUWAM-UHFFFAOYSA-N,NAFLDkb_repositioning,504.64
+Dirithromycin,0.65,CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(O)C[C@@H](C)[C@@H]2N[C@@H](COCCOC)O[C@H]([C@H]2C)[C@]1(C)O,WLOHNSSYAXHWNR-DWIOZXRMSA-N,NAFLDkb_repositioning,835.09
+Diroximel fumarate,0.65,COC(=O)/C=C/C(=O)OCCN1C(=O)CCC1=O,YIMYDTCOUQIDMT-SNAWJCMRSA-N,NAFLDkb_repositioning,255.23
+Dobutamine,0.65,CC(CCc1ccc(O)cc1)NCCc1ccc(O)c(O)c1,JRWZLRBJNMZMFE-UHFFFAOYSA-N,NAFLDkb_repositioning,301.39
+Docetaxel,0.65,CC(=O)O[C@@]12CO[C@@H]1C[C@H](O)[C@@]1(C)C(=O)[C@H](O)C3=C(C)[C@@H](OC(=O)[C@H](O)[C@@H](NC(=O)OC(C)(C)C)c4ccccc4)C[C@@](O)([C@@H](OC(=O)c4ccccc4)[C@H]21)C3(C)C,ZDZOTLJHXYCWBA-VCVYQWHSSA-N,NAFLDkb_repositioning,807.89
+Docusate,0.65,CCCCC(CC)COC(=O)CC(C(=O)OCC(CC)CCCC)S(=O)(=O)O,HNSDLXPSAYFUHK-UHFFFAOYSA-N,NAFLDkb_repositioning,422.58
+Dofetilide,0.65,CN(CCOc1ccc(NS(C)(=O)=O)cc1)CCc1ccc(NS(C)(=O)=O)cc1,IXTMWRCNAAVVAI-UHFFFAOYSA-N,NAFLDkb_repositioning,441.58
+Donepezil,0.65,COc1cc2c(cc1OC)C(=O)C(CC1CCN(Cc3ccccc3)CC1)C2,ADEBPBSSDYVVLD-UHFFFAOYSA-N,NAFLDkb_repositioning,379.5
+Dopamine,0.65,NCCc1ccc(O)c(O)c1,VYFYYTLLBUKUHU-UHFFFAOYSA-N,NAFLDkb_repositioning,153.18
+Dorzolamide,0.65,CCN[C@H]1C[C@H](C)S(=O)(=O)c2sc(S(N)(=O)=O)cc21,IAVUPMFITXYVAF-XPUUQOCRSA-N,NAFLDkb_repositioning,324.45
+Doxazosin,0.65,COc1cc2nc(N3CCN(C(=O)C4COc5ccccc5O4)CC3)nc(N)c2cc1OC,RUZYUOTYCVRMRZ-UHFFFAOYSA-N,NAFLDkb_repositioning,451.48
+Doxepin,0.65,CN(C)CCC=C1c2ccccc2COc2ccccc21,ODQWQRRAPPTVAG-UHFFFAOYSA-N,NAFLDkb_repositioning,279.38
+Doxofylline,0.65,Cn1c(=O)c2c(ncn2CC2OCCO2)n(C)c1=O,HWXIGFIVGWUZAO-UHFFFAOYSA-N,NAFLDkb_repositioning,266.26
+Dronedarone,0.65,CCCCc1oc2ccc(NS(C)(=O)=O)cc2c1C(=O)c1ccc(OCCCN(CCCC)CCCC)cc1,ZQTNQVWKHCQYLQ-UHFFFAOYSA-N,NAFLDkb_repositioning,556.77
+Drospirenone,0.65,C[C@]12CCC(=O)C=C1[C@@H]1C[C@@H]1[C@H]1[C@@H]3[C@@H]4C[C@@H]4[C@@]4(CCC(=O)O4)[C@@]3(C)CC[C@@H]12,METQSPRSQINEEU-HXCATZOESA-N,NAFLDkb_repositioning,366.5
+Droxicam,0.65,CN1c2c(oc(=O)n(-c3ccccn3)c2=O)-c2ccccc2S1(=O)=O,OEHFRZLKGRKFAS-UHFFFAOYSA-N,NAFLDkb_repositioning,357.35
+Duloxetine,0.65,CNCC[C@H](Oc1cccc2ccccc12)c1cccs1,ZEUITGRIYCTCEM-KRWDZBQOSA-N,NAFLDkb_repositioning,297.42
+Dutasteride,0.65,C[C@]12C=CC(=O)N[C@@H]1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](C(=O)Nc3cc(C(F)(F)F)ccc3C(F)(F)F)CC[C@@H]12,JWJOTENAMICLJG-QWBYCMEYSA-N,NAFLDkb_repositioning,528.54
+Duvelisib,0.65,C[C@H](Nc1ncnc2[nH]cnc12)c1cc2cccc(Cl)c2c(=O)n1-c1ccccc1,SJVQHLPISAIATJ-ZDUSSCGKSA-N,NAFLDkb_repositioning,416.87
+ENMD-1198,0.65,COc1cc2c(cc1C(N)=O)CC[C@@H]1[C@@H]2CC[C@]2(C)C=CC[C@@H]12,YQJWOUQGXATDAE-ACNBBOPNSA-N,NAFLDkb_repositioning,311.43
+ETC-588,0.65,CCCCCCCC/C=C\CCCCCCCC(=O)OCC(COP(=O)([O-])OCC[N+](C)(C)C)OC(=O)CCCCCCCCCCCCCCC,RRVPPYNAZJRZFR-MRCUWXFGSA-N,NAFLDkb_repositioning,760.09
+Edaglitazone,0.65,Cc1oc(-c2ccccc2)nc1CCOc1ccc(CC2SC(=O)NC2=O)c2sccc12,HAAXAFNSRADSMK-UHFFFAOYSA-N,NAFLDkb_repositioning,464.57
+Edaravone,0.65,CC1=NN(c2ccccc2)C(=O)C1,QELUYTUMUWHWMC-UHFFFAOYSA-N,NAFLDkb_repositioning,174.2
+Edoxaban,0.65,CN1CCc2nc(C(=O)N[C@@H]3C[C@@H](C(=O)N(C)C)CC[C@@H]3NC(=O)C(=O)Nc3ccc(Cl)cn3)sc2C1,HGVDHZBSSITLCT-JLJPHGGASA-N,NAFLDkb_repositioning,548.07
+Efonidipine,0.65,CC1=C(C(=O)OCCN(Cc2ccccc2)c2ccccc2)C(c2cccc([N+](=O)[O-])c2)C(P2(=O)OCC(C)(C)CO2)=C(C)N1,NSVFSAJIGAJDMR-UHFFFAOYSA-N,NAFLDkb_repositioning,631.67
+Eldecalcitol,0.65,C=C1/C(=C\C=C2/CCC[C@]3(C)[C@@H]([C@H](C)CCCC(C)(C)O)CC[C@@H]23)C[C@@H](O)[C@@H](OCCCO)[C@@H]1O,FZEXGDDBXLBRTD-AYIMTCTASA-N,NAFLDkb_repositioning,490.73
+Elesclomol,0.65,CN(NC(=O)CC(=O)NN(C)C(=S)c1ccccc1)C(=S)c1ccccc1,BKJIXTWSNXCKJH-UHFFFAOYSA-N,NAFLDkb_repositioning,400.53
+Eletriptan,0.65,CN1CCC[C@@H]1Cc1c[nH]c2ccc(CCS(=O)(=O)c3ccccc3)cc12,PWVXXGRKLHYWKM-LJQANCHMSA-N,NAFLDkb_repositioning,382.53
+Elexacaftor,0.65,Cc1nn(C)cc1S(=O)(=O)NC(=O)c1ccc(-n2ccc(OCC(C)(C)C(F)(F)F)n2)nc1N1C[C@@H](C)CC1(C)C,MVRHVFSOIWFBTE-INIZCTEOSA-N,NAFLDkb_repositioning,597.66
+Elinogrel,0.65,CNc1cc2[nH]c(=O)n(-c3ccc(NC(=O)NS(=O)(=O)c4ccc(Cl)s4)cc3)c(=O)c2cc1F,LGSDFTPAICUONK-UHFFFAOYSA-N,NAFLDkb_repositioning,523.96
+Eluxadoline,0.65,COc1ccc(CN(C(=O)[C@@H](N)Cc2c(C)cc(C(N)=O)cc2C)[C@@H](C)c2nc(-c3ccccc3)c[nH]2)cc1C(=O)O,QFNHIDANIVGXPE-FNZWTVRRSA-N,NAFLDkb_repositioning,569.66
+Enalapril,0.65,CCOC(=O)[C@H](CCc1ccccc1)N[C@@H](C)C(=O)N1CCC[C@H]1C(=O)O,GBXSMTUPTTWBMN-XIRDDKMYSA-N,NAFLDkb_repositioning,376.45
+Enalaprilat,0.65,C[C@H](N[C@@H](CCc1ccccc1)C(=O)O)C(=O)N1CCC[C@H]1C(=O)O,LZFZMUMEGBBDTC-QEJZJMRPSA-N,NAFLDkb_repositioning,348.4
+Encainide,0.65,COc1ccc(C(=O)Nc2ccccc2CCC2CCCCN2C)cc1,PJWPNDMDCLXCOM-UHFFFAOYSA-N,NAFLDkb_repositioning,352.48
+Enoxacin,0.65,CCn1cc(C(=O)O)c(=O)c2cc(F)c(N3CCNCC3)nc21,IDYZIJYBMGIQMJ-UHFFFAOYSA-N,NAFLDkb_repositioning,320.32
+Enprofylline,0.65,CCCn1c(=O)[nH]c(=O)c2[nH]cnc21,SIQPXVQCUCHWDI-UHFFFAOYSA-N,NAFLDkb_repositioning,194.19
+Ensifentrine,0.65,COc1cc2c(cc1OC)-c1c/c(=N\c3c(C)cc(C)cc3C)n(CCNC(N)=O)c(=O)n1CC2,CSOBIBXVIYAXFM-BYNJWEBRSA-N,NAFLDkb_repositioning,477.57
+Entrectinib,0.65,CN1CCN(c2ccc(C(=O)Nc3n[nH]c4ccc(Cc5cc(F)cc(F)c5)cc34)c(NC3CCOCC3)c2)CC1,HAYYBYPASCDWEQ-UHFFFAOYSA-N,NAFLDkb_repositioning,560.65
+Enzalutamide,0.65,CNC(=O)c1ccc(N2C(=S)N(c3ccc(C#N)c(C(F)(F)F)c3)C(=O)C2(C)C)cc1F,WXCXUHSOUPDCQV-UHFFFAOYSA-N,NAFLDkb_repositioning,464.44
+Enzastaurin,0.65,Cn1cc(C2=C(c3cn(C4CCN(Cc5ccccn5)CC4)c4ccccc34)C(=O)NC2=O)c2ccccc21,AXRCEOKUDYDWLF-UHFFFAOYSA-N,NAFLDkb_repositioning,515.62
+Epinastine,0.65,NC1=NCC2c3ccccc3Cc3ccccc3N12,WHWZLSFABNNENI-UHFFFAOYSA-N,NAFLDkb_repositioning,249.32
+Epinephrine,0.65,CNC[C@H](O)c1ccc(O)c(O)c1,UCTWMZQNUQWSLP-VIFPVBQESA-N,NAFLDkb_repositioning,183.21
+Eplerenone,0.65,COC(=O)[C@@H]1CC2=CC(=O)CC[C@]2(C)[C@@]23O[C@@H]2C[C@@]2(C)[C@@H](CC[C@@]24CCC(=O)O4)[C@H]13,JUKPWJGBANNWMW-VWBFHTRKSA-N,NAFLDkb_repositioning,414.5
+Epoprostenol,0.65,CCCCC[C@H](O)/C=C/[C@@H]1[C@H]2C/C(=C/CCCC(=O)O)O[C@H]2C[C@H]1O,KAQKFAOMNZTLHT-OZUDYXHBSA-N,NAFLDkb_repositioning,352.47
+Eprodisate,0.65,O=S(=O)(O)CCCS(=O)(=O)O,MGNVWUDMMXZUDI-UHFFFAOYSA-N,NAFLDkb_repositioning,204.22
+Eprosartan,0.65,CCCCc1ncc(/C=C(\Cc2cccs2)C(=O)O)n1Cc1ccc(C(=O)O)cc1,OROAFUQRIXKEMV-LDADJPATSA-N,NAFLDkb_repositioning,424.52
+Eprotirome,0.65,CC(C)c1cc(Oc2c(Br)cc(NC(=O)CC(=O)O)cc2Br)ccc1O,VPCSYAVXDAUHLT-UHFFFAOYSA-N,NAFLDkb_repositioning,487.14
+Equilin,0.65,C[C@]12CC[C@H]3C(=CCc4cc(O)ccc43)[C@@H]1CCC2=O,WKRLQDKEXYKHJB-HFTRVMKXSA-N,NAFLDkb_repositioning,268.36
+Erdafitinib,0.65,COc1cc(OC)cc(N(CCNC(C)C)c2ccc3ncc(-c4cnn(C)c4)nc3c2)c1,OLAHOMJCDNXHFI-UHFFFAOYSA-N,NAFLDkb_repositioning,446.56
+Ergotamine,0.65,CN1C[C@H](C(=O)N[C@]2(C)O[C@@]3(O)[C@@H]4CCCN4C(=O)[C@H](Cc4ccccc4)N3C2=O)C=C2c3cccc4[nH]cc(c34)C[C@H]21,XCGSFFUVFURLIX-VFGNJEKYSA-N,NAFLDkb_repositioning,581.67
+Ertapenem,0.65,C[C@@H](O)[C@H]1C(=O)N2C(C(=O)O)=C(S[C@@H]3CN[C@H](C(=O)Nc4cccc(C(=O)O)c4)C3)[C@H](C)[C@H]12,JUZNIMUFDBIJCM-ANEDZVCMSA-N,NAFLDkb_repositioning,475.52
+Ertiprotafib,0.65,Cc1cc(-c2c3ccccc3c(Br)c3sc(C)c(C)c23)cc(C)c1O[C@H](Cc1ccccc1)C(=O)O,FONCZICQWCUXEB-RUZDIDTESA-N,NAFLDkb_repositioning,559.53
+Ertugliflozin,0.65,CCOc1ccc(Cc2cc([C@]34OC[C@](CO)(O3)[C@@H](O)[C@H](O)[C@H]4O)ccc2Cl)cc1,MCIACXAZCBVDEE-CUUWFGFTSA-N,NAFLDkb_repositioning,436.89
+Erythromycin,0.65,CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(O)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@]1(C)O,ULGZDMOVFRHVEP-RWJQBGPGSA-N,NAFLDkb_repositioning,733.94
+Esculin,0.65,O=c1ccc2cc(O[C@@H]3O[C@H](CO)[C@@H](O)[C@H](O)[C@H]3O)c(O)cc2o1,XHCADAYNFIFUHF-TVKJYDDYSA-N,NAFLDkb_repositioning,340.28
+Esketamine,0.65,CN[C@]1(c2ccccc2Cl)CCCCC1=O,YQEZLKZALYSWHR-ZDUSSCGKSA-N,NAFLDkb_repositioning,237.73
+Esmolol,0.65,COC(=O)CCc1ccc(OCC(O)CNC(C)C)cc1,AQNDDEOPVVGCPG-UHFFFAOYSA-N,NAFLDkb_repositioning,295.38
+Estramustine,0.65,C[C@]12CC[C@@H]3c4ccc(OC(=O)N(CCCl)CCCl)cc4CC[C@H]3[C@@H]1CC[C@@H]2O,FRPJXPJMRWBBIH-RBRWEJTLSA-N,NAFLDkb_repositioning,440.41
+Estrone sulfate,0.65,C[C@]12CC[C@@H]3c4ccc(OS(=O)(=O)O)cc4CC[C@H]3[C@@H]1CCC2=O,JKKFKPJIXZFSSB-CBZIJGRNSA-N,NAFLDkb_repositioning,350.44
+Etacrynic acid,0.65,C=C(CC)C(=O)c1ccc(OCC(=O)O)c(Cl)c1Cl,AVOLMBLBETYQHX-UHFFFAOYSA-N,NAFLDkb_repositioning,303.14
+Ethanolamine oleate,0.65,CCCCCCCC/C=C\CCCCCCCC(=O)O.NCCO,KGWDUNBJIMUFAP-KVVVOXFISA-N,NAFLDkb_repositioning,343.55
+Ethinylestradiol,0.65,C#C[C@]1(O)CC[C@H]2[C@@H]3CCc4cc(O)ccc4[C@H]3CC[C@@]21C,BFPYWIDHMRZLRN-SLHNCBLASA-N,NAFLDkb_repositioning,296.41
+Ethyl pyruvate,0.65,CCOC(=O)C(C)=O,XXRCUYVCPSWGCC-UHFFFAOYSA-N,NAFLDkb_repositioning,116.12
+Etizolam,0.65,CCc1cc2c(s1)-n1c(C)nnc1CN=C2c1ccccc1Cl,VMZUTJCNQWMAGF-UHFFFAOYSA-N,NAFLDkb_repositioning,342.86
+Etodolac,0.65,CCc1cccc2c3c([nH]c12)C(CC)(CC(=O)O)OCC3,NNYBQONXHNTVIJ-UHFFFAOYSA-N,NAFLDkb_repositioning,287.36
+Etoperidone,0.65,CCc1nn(CCCN2CCN(c3cccc(Cl)c3)CC2)c(=O)n1CC,IZBNNCFOBMGTQX-UHFFFAOYSA-N,NAFLDkb_repositioning,377.92
+Etoposide,0.65,COc1cc([C@@H]2c3cc4c(cc3[C@@H](O[C@@H]3O[C@@H]5CO[C@@H](C)O[C@H]5[C@H](O)[C@H]3O)[C@H]3COC(=O)[C@H]23)OCO4)cc(OC)c1O,VJJPUSNTGOMMGY-MRVIYFEKSA-N,NAFLDkb_repositioning,588.56
+Etoricoxib,0.65,Cc1ccc(-c2ncc(Cl)cc2-c2ccc(S(C)(=O)=O)cc2)cn1,MNJVRJDLRVPLFE-UHFFFAOYSA-N,NAFLDkb_repositioning,358.85
+Eugenol,0.65,C=CCc1ccc(O)c(OC)c1,RRAFCDWBNXTKKO-UHFFFAOYSA-N,NAFLDkb_repositioning,164.2
+Exisulind,0.65,CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)(=O)=O)cc1,MVGSNCBCUWPVDA-MFOYZWKCSA-N,NAFLDkb_repositioning,372.42
+Farnesol,0.65,CC(C)=CCC/C(C)=C\CC/C(C)=C\CO,CRDAMVZIKSXKFV-FBXUGWQNSA-N,NAFLDkb_repositioning,222.37
+Faropenem medoxomil,0.65,Cc1oc(=O)oc1COC(=O)C1=C([C@H]2CCCO2)S[C@@H]2[C@@H]([C@@H](C)O)C(=O)N12,JQBKWZPHJOEQAO-DVPVEWDBSA-N,NAFLDkb_repositioning,397.41
+Febuxostat,0.65,Cc1nc(-c2ccc(OCC(C)C)c(C#N)c2)sc1C(=O)O,BQSJTQLCZDPROO-UHFFFAOYSA-N,NAFLDkb_repositioning,316.38
+Fedratinib,0.65,Cc1cnc(Nc2ccc(OCCN3CCCC3)cc2)nc1Nc1cccc(S(=O)(=O)NC(C)(C)C)c1,JOOXLOJCABQBSG-UHFFFAOYSA-N,NAFLDkb_repositioning,524.69
+Felodipine,0.65,CCOC(=O)C1=C(C)NC(C)=C(C(=O)OC)C1c1cccc(Cl)c1Cl,RZTAMFZIAATZDJ-UHFFFAOYSA-N,NAFLDkb_repositioning,384.26
+Fenfluramine,0.65,CCNC(C)Cc1cccc(C(F)(F)F)c1,DBGIVFWFUFKIQN-UHFFFAOYSA-N,NAFLDkb_repositioning,231.26
+Fenofibric acid,0.65,CC(C)(Oc1ccc(C(=O)c2ccc(Cl)cc2)cc1)C(=O)O,MQOBSOSZFYZQOK-UHFFFAOYSA-N,NAFLDkb_repositioning,318.76
+Fenoldopam,0.65,Oc1ccc(C2CNCCc3c2cc(O)c(O)c3Cl)cc1,TVURRHSHRRELCG-UHFFFAOYSA-N,NAFLDkb_repositioning,305.76
+Fenoprofen,0.65,CC(C(=O)O)c1cccc(Oc2ccccc2)c1,RDJGLLICXDHJDY-UHFFFAOYSA-N,NAFLDkb_repositioning,242.27
+Fenproporex,0.65,CC(Cc1ccccc1)NCCC#N,IQUFSXIQAFPIMR-UHFFFAOYSA-N,NAFLDkb_repositioning,188.27
+Ferric maltol,0.65,Cc1occc(=O)c1[O-].Cc1occc(=O)c1[O-].Cc1occc(=O)c1[O-].[Fe+3],AHPWLYJHTFAWKI-UHFFFAOYSA-K,NAFLDkb_repositioning,431.15
+Fexaramine,0.65,COC(=O)/C=C/c1cccc(N(Cc2ccc(-c3ccc(N(C)C)cc3)cc2)C(=O)C2CCCCC2)c1,VLQTUNDJHLEFEQ-KGENOOAVSA-N,NAFLDkb_repositioning,496.65
+Fexofenadine,0.65,CC(C)(C(=O)O)c1ccc(C(O)CCCN2CCC(C(O)(c3ccccc3)c3ccccc3)CC2)cc1,RWTNPBWLLIMQHL-UHFFFAOYSA-N,NAFLDkb_repositioning,501.67
+Fiboflapon,0.65,CCOc1ccc(-c2ccc(Cn3c(CC(C)(C)C(=O)O)c(SC(C)(C)C)c4cc(OCc5ccc(C)cn5)ccc43)cc2)cn1,DFQGDHBGRSTTHX-UHFFFAOYSA-N,NAFLDkb_repositioning,637.85
+Fica,0.65,O=C(NCCS)c1cc2cc(F)ccc2[nH]1,JFUIHGAGFMFNRD-UHFFFAOYSA-N,NAFLDkb_repositioning,238.29
+Filanesib,0.65,CON(C)C(=O)N1N=C(c2cc(F)ccc2F)S[C@@]1(CCCN)c1ccccc1,LLXISKGBWFTGEI-FQEVSTJZSA-N,NAFLDkb_repositioning,420.49
+Filgotinib,0.65,O=C(Nc1nc2cccc(-c3ccc(CN4CCS(=O)(=O)CC4)cc3)n2n1)C1CC1,RIJLVEAXPNLDTC-UHFFFAOYSA-N,NAFLDkb_repositioning,425.51
+Fimasartan,0.65,CCCCc1nc(C)c(CC(=S)N(C)C)c(=O)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1,AMEROGPZOLAFBN-UHFFFAOYSA-N,NAFLDkb_repositioning,501.66
+Finerenone,0.65,CCOc1ncc(C)c2c1[C@H](c1ccc(C#N)cc1OC)C(C(N)=O)=C(C)N2,BTBHLEZXCOBLCY-QGZVFWFLSA-N,NAFLDkb_repositioning,378.43
+Flecainide,0.65,O=C(NCC1CCCCN1)c1cc(OCC(F)(F)F)ccc1OCC(F)(F)F,DJBNUMBKLMJRSA-UHFFFAOYSA-N,NAFLDkb_repositioning,414.35
+Fluasterone,0.65,C[C@]12CCCCC1=CC[C@@H]1[C@@H]2CC[C@]2(C)C(=O)[C@H](F)C[C@@H]12,VHZXNQKVFDBFIK-NBBHSKLNSA-N,NAFLDkb_repositioning,290.42
+Flucloxacillin,0.65,Cc1onc(-c2c(F)cccc2Cl)c1C(=O)N[C@@H]1C(=O)N2[C@@H]1SC(C)(C)[C@@H]2C(=O)O,UIOFUWFRIANQPC-JKIFEVAISA-N,NAFLDkb_repositioning,453.88
+Fludeoxyglucose (18F),0.65,O=C[C@H]([18F])[C@@H](O)[C@H](O)[C@H](O)CO,AOYNUTHNTBLRMT-MXWOLSILSA-N,NAFLDkb_repositioning,181.15
+Flufenamic acid,0.65,O=C(O)c1ccccc1Nc1cccc(C(F)(F)F)c1,LPEPZBJOKDYZAD-UHFFFAOYSA-N,NAFLDkb_repositioning,281.23
+Flumethasone,0.65,C[C@@H]1C[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@]2(C)[C@@]1(O)C(=O)CO,WXURHACBFYSXBI-GQKYHHCASA-N,NAFLDkb_repositioning,410.46
+Flunisolide,0.65,CC1(C)O[C@@H]2C[C@H]3[C@@H]4C[C@H](F)C5=CC(=O)C=C[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1,XSFJVAJPIHIPKU-XWCQMRHXSA-N,NAFLDkb_repositioning,434.5
+Fluocinolone acetonide,0.65,CC1(C)O[C@@H]2C[C@H]3[C@@H]4C[C@H](F)C5=CC(=O)C=C[C@]5(C)[C@@]4(F)[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1,FEBLZLNTKCEFIT-VSXGLTOVSA-N,NAFLDkb_repositioning,452.49
+Fluocinonide,0.65,CC(=O)OCC(=O)[C@@]12OC(C)(C)O[C@@H]1C[C@H]1[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]12C,WJOHZNCJWYWUJD-IUGZLZTKSA-N,NAFLDkb_repositioning,494.53
+Fluorescein,0.65,O=C1OC2(c3ccc(O)cc3Oc3cc(O)ccc32)c2ccccc21,GNBHRKFJIUUOQI-UHFFFAOYSA-N,NAFLDkb_repositioning,332.31
+Fluorometholone,0.65,CC(=O)[C@@]1(O)CC[C@H]2[C@@H]3C[C@H](C)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]21C,FAOZLTXFLGPHNG-KNAQIMQKSA-N,NAFLDkb_repositioning,376.47
+Fluoxetine,0.65,CNCCC(Oc1ccc(C(F)(F)F)cc1)c1ccccc1,RTHCYVBBDHJXIQ-UHFFFAOYSA-N,NAFLDkb_repositioning,309.33
+Flupentixol,0.65,OCCN1CCN(CC/C=C2/c3ccccc3Sc3ccc(C(F)(F)F)cc32)CC1,NJMYODHXAKYRHW-DVZOWYKESA-N,NAFLDkb_repositioning,434.53
+Flurandrenolide,0.65,CC1(C)O[C@@H]2C[C@H]3[C@@H]4C[C@H](F)C5=CC(=O)CC[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1,POPFMWWJOGLOIF-XWCQMRHXSA-N,NAFLDkb_repositioning,436.52
+Flurbiprofen,0.65,CC(C(=O)O)c1ccc(-c2ccccc2)c(F)c1,SYTBZMRGLBWNTM-UHFFFAOYSA-N,NAFLDkb_repositioning,244.27
+Fluvastatin,0.65,CC(C)n1c(/C=C/C(O)CC(O)CC(=O)O)c(-c2ccc(F)cc2)c2ccccc21,FJLGEFLZQAZZCD-VAWYXSNFSA-N,NAFLDkb_repositioning,411.47
+Fluvoxamine,0.65,COCCCC/C(=N\OCCN)c1ccc(C(F)(F)F)cc1,CJOFXWAVKWHTFT-XSFVSMFZSA-N,NAFLDkb_repositioning,318.34
+Forasartan,0.65,CCCCc1nc(CCCC)n(Cc2ccc(-c3ccccc3-c3nn[nH]n3)nc2)n1,YONOBYIBNBCDSJ-UHFFFAOYSA-N,NAFLDkb_repositioning,416.53
+Fosamprenavir,0.65,CC(C)CN(C[C@@H](OP(=O)(O)O)[C@H](Cc1ccccc1)NC(=O)O[C@H]1CCOC1)S(=O)(=O)c1ccc(N)cc1,MLBVMOWEQCZNCC-OEMFJLHTSA-N,NAFLDkb_repositioning,585.62
+Fosfomycin,0.65,C[C@@H]1O[C@@H]1P(=O)(O)O,YMDXZJFXQJVXBF-STHAYSLISA-N,NAFLDkb_repositioning,138.06
+Fosinopril,0.65,CCC(=O)O[C@@H](OP(=O)(CCCCc1ccccc1)CC(=O)N1C[C@H](C2CCCCC2)C[C@H]1C(=O)O)C(C)C,BIDNLKIUORFRQP-AJTMIRJTSA-N,NAFLDkb_repositioning,563.67
+Fostamatinib,0.65,COc1cc(Nc2ncc(F)c(Nc3ccc4c(n3)N(COP(=O)(O)O)C(=O)C(C)(C)O4)n2)cc(OC)c1OC,GKDRMWXFWHEQQT-UHFFFAOYSA-N,NAFLDkb_repositioning,580.47
+Fradafiban,0.65,N=C(N)c1ccc(-c2ccc(OC[C@@H]3C[C@@H](CC(=O)O)C(=O)N3)cc2)cc1,IKZACQMAVUIGPY-HOTGVXAUSA-N,NAFLDkb_repositioning,367.41
+Furosemide,0.65,NS(=O)(=O)c1cc(C(=O)O)c(NCc2ccco2)cc1Cl,ZZUFCTLCJUWOSV-UHFFFAOYSA-N,NAFLDkb_repositioning,330.75
+Fusidic acid,0.65,CC(=O)O[C@H]1C[C@@]2(C)[C@@H](C[C@@H](O)[C@H]3[C@@]4(C)CC[C@@H](O)[C@@H](C)[C@@H]4CC[C@@]32C)/C1=C(\CCC=C(C)C)C(=O)O,IECPWNUMDGFDKC-MZJAQBGESA-N,NAFLDkb_repositioning,516.72
+GC-24,0.65,Cc1cc(OCC(=O)O)cc(C)c1Cc1ccc(O)c(Cc2ccccc2)c1,JYHIGYLGYNCMGI-UHFFFAOYSA-N,NAFLDkb_repositioning,376.45
+GW-590735,0.65,Cc1nc(-c2ccc(C(F)(F)F)cc2)sc1C(=O)NCc1ccc(OC(C)(C)C(=O)O)cc1,ILUPZUOBHCUBKB-UHFFFAOYSA-N,NAFLDkb_repositioning,478.49
+Gabapentin,0.65,NCC1(CC(=O)O)CCCCC1,UGJMXCAKCUNAIE-UHFFFAOYSA-N,NAFLDkb_repositioning,171.24
+Gabexate,0.65,CCOC(=O)c1ccc(OC(=O)CCCCCNC(=N)N)cc1,YKGYIDJEEQRWQH-UHFFFAOYSA-N,NAFLDkb_repositioning,321.38
+Gadobutrol,0.65,O=C([O-])C[N+]12CC[N+]3(CC(=O)[O-])CC[N+]4([C@@H](CO)[C@@H](O)CO)CC[N+](CC(=O)[O-])(CC1)[Gd-]234,ZPDFIIGFYAHNSK-YYLIZZNMSA-K,NAFLDkb_repositioning,604.72
+Galactose,0.65,O=C[C@H](O)[C@@H](O)[C@@H](O)[C@H](O)CO,GZCGUPFRVQAUEE-KCDKBNATSA-N,NAFLDkb_repositioning,180.16
+Gallium citrate Ga-67,0.65,O=C([O-])CC(O)(CC(=O)[O-])C(=O)[O-].[67Ga+3],YEEGWNXDUZONAA-RYDPDVNUSA-K,NAFLDkb_repositioning,256.03
+Gallium nitrate,0.65,O=[N+]([O-])[O-].O=[N+]([O-])[O-].O=[N+]([O-])[O-].[Ga+3],CHPZKNULDCNCBW-UHFFFAOYSA-N,NAFLDkb_repositioning,255.73
+Gamolenic acid,0.65,CCCCC/C=C\C/C=C\C/C=C\CCCCC(=O)O,VZCCETWTMQHEPK-QNEBEIHSSA-N,NAFLDkb_repositioning,278.44
+Ganciclovir,0.65,Nc1nc2c(ncn2COC(CO)CO)c(=O)[nH]1,IRSCQMHQWWYFCW-UHFFFAOYSA-N,NAFLDkb_repositioning,255.23
+Garenoxacin,0.65,C[C@H]1NCc2cc(-c3ccc4c(=O)c(C(=O)O)cn(C5CC5)c4c3OC(F)F)ccc21,NJDRXTDGYFKORP-LLVKDONJSA-N,NAFLDkb_repositioning,426.42
+Gatifloxacin,0.65,COc1c(N2CCNC(C)C2)c(F)cc2c(=O)c(C(=O)O)cn(C3CC3)c12,XUBOMFCQGDBHNK-UHFFFAOYSA-N,NAFLDkb_repositioning,375.4
+Gemcitabine,0.65,Nc1ccn([C@@H]2O[C@H](CO)[C@@H](O)C2(F)F)c(=O)n1,SDUQYLNIPVEERB-QPPQHZFASA-N,NAFLDkb_repositioning,263.2
+Gemifloxacin,0.65,CO/N=C1\CN(c2nc3c(cc2F)c(=O)c(C(=O)O)cn3C2CC2)CC1CN,ZRCVYEYHRGVLOC-HYARGMPZSA-N,NAFLDkb_repositioning,389.39
+Glipizide,0.65,Cc1cnc(C(=O)NCCc2ccc(S(=O)(=O)NC(=O)NC3CCCCC3)cc2)cn1,ZJJXGWJIGJFDTL-UHFFFAOYSA-N,NAFLDkb_repositioning,445.55
+Gliquidone,0.65,COc1ccc2c(c1)C(=O)N(CCc1ccc(S(=O)(=O)NC(=O)NC3CCCCC3)cc1)C(=O)C2(C)C,LLJFMFZYVVLQKT-UHFFFAOYSA-N,NAFLDkb_repositioning,527.64
+Glisoxepide,0.65,Cc1cc(C(=O)NCCc2ccc(S(=O)(=O)NC(=O)NN3CCCCCC3)cc2)no1,ZKUDBRCEOBOWLF-UHFFFAOYSA-N,NAFLDkb_repositioning,449.53
+Glucosamine,0.65,N[C@H]1C(O)O[C@H](CO)[C@@H](O)[C@@H]1O,MSWZFWKMSRAUBD-IVMDWMLBSA-N,NAFLDkb_repositioning,179.17
+Glutathione disulfide,0.65,N[C@@H](CCC(=O)N[C@@H](CSSC[C@H](NC(=O)CC[C@H](N)C(=O)O)C(=O)NCC(=O)O)C(=O)NCC(=O)O)C(=O)O,YPZRWBKMTBYPTK-BJDJZHNGSA-N,NAFLDkb_repositioning,612.64
+Glyburide,0.65,COc1ccc(Cl)cc1C(=O)NCCc1ccc(S(=O)(=O)NC(=O)NC2CCCCC2)cc1,ZNNLBTZKUZBEKO-UHFFFAOYSA-N,NAFLDkb_repositioning,494.01
+Glycol salicylate,0.65,O=C(OCCO)c1ccccc1O,LVYLCBNXHHHPSB-UHFFFAOYSA-N,NAFLDkb_repositioning,182.17
+Glycyrrhizic acid,0.65,CC1(C)[C@@H](O[C@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)CC[C@]2(C)[C@H]3C(=O)C=C4[C@@H]5C[C@@](C)(C(=O)O)CC[C@]5(C)CC[C@@]4(C)[C@]3(C)CC[C@@H]12,LPLVUJXQOOQHMX-QWBHMCJMSA-N,NAFLDkb_repositioning,822.94
+Glymidine,0.65,COCCOc1cnc(NS(=O)(=O)c2ccccc2)nc1,QFWPJPIVLCBXFJ-UHFFFAOYSA-N,NAFLDkb_repositioning,309.35
+Golotimod,0.65,N[C@H](CCC(=O)N[C@@H](Cc1c[nH]c2ccccc12)C(=O)O)C(=O)O,CATMPQFFVNKDEY-YPMHNXCESA-N,NAFLDkb_repositioning,333.34
+Grapiprant,0.65,CCc1nc2c(C)nc(C)cc2n1-c1ccc(CCNC(=O)NS(=O)(=O)c2ccc(C)cc2)cc1,HZVLFTCYCLXTGV-UHFFFAOYSA-N,NAFLDkb_repositioning,491.62
+Grepafloxacin,0.65,Cc1c(F)c(N2CCNC(C)C2)cc2c1c(=O)c(C(=O)O)cn2C1CC1,AIJTTZAVMXIJGM-UHFFFAOYSA-N,NAFLDkb_repositioning,359.4
+Guanadrel,0.65,NC(N)=NCC1COC2(CCCCC2)O1,HPBNRIOWIXYZFK-UHFFFAOYSA-N,NAFLDkb_repositioning,213.28
+Guanethidine,0.65,NC(N)=NCCN1CCCCCCC1,ACGDKVXYNVEAGU-UHFFFAOYSA-N,NAFLDkb_repositioning,198.31
+HE-2200,0.65,C[C@]12CC[C@H]3[C@@H]([C@@H](O)C=C4C[C@@H](O)CC[C@@]43C)[C@@H]1CC[C@@H]2O,OEVZKEVBDIDVOI-YSZCXEEOSA-N,NAFLDkb_repositioning,306.45
+HE3286,0.65,C#C[C@]1(O)CC[C@H]2[C@@H]3[C@@H](O)C=C4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@@]21C,JJKOQZHWYLMASZ-FJWDNACWSA-N,NAFLDkb_repositioning,330.47
+Halcinonide,0.65,CC1(C)O[C@@H]2C[C@H]3[C@@H]4CCC5=CC(=O)CC[C@]5(C)[C@@]4(F)[C@@H](O)C[C@]3(C)[C@]2(C(=O)CCl)O1,MUQNGPZZQDCDFT-JNQJZLCISA-N,NAFLDkb_repositioning,454.97
+Haloxyfop-P,0.65,C[C@@H](Oc1ccc(Oc2ncc(C(F)(F)F)cc2Cl)cc1)C(=O)O,GOCUAJYOYBLQRH-MRVPVSSYSA-N,NAFLDkb_repositioning,361.7
+Heptyl glucoside,0.65,CCCCCCCO[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O,NIDYWHLDTIVRJT-UJPOAAIJSA-N,NAFLDkb_repositioning,278.35
+Hesperetin,0.65,COc1ccc([C@@H]2CC(=O)c3c(O)cc(O)cc3O2)cc1O,AIONOLUJZLIMTK-AWEZNQCLSA-N,NAFLDkb_repositioning,302.28
+Hetacillin,0.65,CC1(C)S[C@@H]2[C@H](N3C(=O)[C@@H](c4ccccc4)NC3(C)C)C(=O)N2[C@H]1C(=O)O,DXVUYOAEDJXBPY-NFFDBFGFSA-N,NAFLDkb_repositioning,389.48
+Hexylresorcinol,0.65,CCCCCCc1ccc(O)cc1O,WFJIVOKAWHGMBH-UHFFFAOYSA-N,NAFLDkb_repositioning,194.27
+Histidine,0.65,N[C@@H](Cc1c[nH]cn1)C(=O)O,HNDVDQJCIGZPNO-YFKPBYRVSA-N,NAFLDkb_repositioning,155.16
+Hyaluronic acid,0.65,CC(=O)N[C@@H]1C(O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)[C@H](O)[C@@H](CO)O[C@H]1O[C@H]1[C@H](O)[C@@H](O)[C@H](OC2[C@@H](NC(C)=O)[C@H](O)O[C@H](CO)[C@H]2O)O[C@@H]1C(=O)O,KIUKXJAPPMFGSW-MNSSHETKSA-N,NAFLDkb_repositioning,776.65
+Hydracarbazine,0.65,NNc1ccc(C(N)=O)nn1,WRYZEGZNBYOMLE-UHFFFAOYSA-N,NAFLDkb_repositioning,153.14
+Hydralazine,0.65,NNc1nncc2ccccc12,RPTUSVTUFVMDQK-UHFFFAOYSA-N,NAFLDkb_repositioning,160.18
+Hydrochlorothiazide,0.65,NS(=O)(=O)c1cc2c(cc1Cl)NCNS2(=O)=O,JZUFKLXOESDKRF-UHFFFAOYSA-N,NAFLDkb_repositioning,297.75
+Hydrocortamate,0.65,CCN(CC)CC(=O)OCC(=O)[C@@]1(O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,FWFVLWGEFDIZMJ-FOMYWIRZSA-N,NAFLDkb_repositioning,475.63
+Hydrocortisone,0.65,C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2[C@@H](O)C[C@@]2(C)[C@H]1CC[C@]2(O)C(=O)CO,JYGXADMDTFJGBT-VWUMJDOOSA-N,NAFLDkb_repositioning,362.47
+Hydrocortisone aceponate,0.65,CCC(=O)O[C@]1(C(=O)COC(C)=O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,MFBMYAOAMQLLPK-FZNHGJLXSA-N,NAFLDkb_repositioning,460.57
+Hydrocortisone acetate,0.65,CC(=O)OCC(=O)[C@@]1(O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,ALEXXDVDDISNDU-JZYPGELDSA-N,NAFLDkb_repositioning,404.5
+Hydrocortisone butyrate,0.65,CCCC(=O)O[C@]1(C(=O)CO)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,BMCQMVFGOVHVNG-TUFAYURCSA-N,NAFLDkb_repositioning,432.56
+Hydrocortisone cypionate,0.65,C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2[C@@H](O)C[C@@]2(C)[C@H]1CC[C@]2(O)C(=O)COC(=O)CCC1CCCC1,DLVOSEUFIRPIRM-KAQKJVHQSA-N,NAFLDkb_repositioning,486.65
+Hydrocortisone phosphate,0.65,C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2[C@@H](O)C[C@@]2(C)[C@H]1CC[C@]2(O)C(=O)COP(=O)(O)O,BGSOJVFOEQLVMH-VWUMJDOOSA-N,NAFLDkb_repositioning,442.45
+Hydrocortisone probutate,0.65,CCCC(=O)O[C@]1(C(=O)COC(=O)CC)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,FOGXJPFPZOHSQS-AYVLZSQQSA-N,NAFLDkb_repositioning,488.62
+Hydrocortisone valerate,0.65,CCCCC(=O)O[C@]1(C(=O)CO)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3[C@@H](O)C[C@@]21C,FZCHYNWYXKICIO-FZNHGJLXSA-N,NAFLDkb_repositioning,446.58
+Hydroflumethiazide,0.65,NS(=O)(=O)c1cc2c(cc1C(F)(F)F)NCNS2(=O)=O,DMDGGSIALPNSEE-UHFFFAOYSA-N,NAFLDkb_repositioning,331.3
+Hydroxychloroquine,0.65,CCN(CCO)CCCC(C)Nc1ccnc2cc(Cl)ccc12,XXSMGPRMXLTPCZ-UHFFFAOYSA-N,NAFLDkb_repositioning,335.88
+Hydroxyprogesterone caproate,0.65,CCCCCC(=O)O[C@]1(C(C)=O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@]4(C)[C@H]3CC[C@@]21C,DOMWKUIIPQCAJU-LJHIYBGHSA-N,NAFLDkb_repositioning,428.61
+Hydroxyzine,0.65,OCCOCCN1CCN(C(c2ccccc2)c2ccc(Cl)cc2)CC1,ZQDWXGKKHFNSQK-UHFFFAOYSA-N,NAFLDkb_repositioning,374.91
+INCB-9471,0.65,CCO[C@@H]1Cc2cc(C(F)(F)F)ccc2[C@H]1N1CCN(C2(C)CCN(C(=O)c3c(C)ncnc3C)CC2)C[C@@H]1C,ZMCJFJZOSKEMOM-DNKZPPIMSA-N,NAFLDkb_repositioning,559.68
+INO-1001,0.65,CS(=O)(=O)O.O=c1[nH]c2c(c3ccccc13)Cc1cc(S(=O)(=O)NCCCN3CCOCC3)ccc1-2,ICMWGKNAXGUKQN-UHFFFAOYSA-N,NAFLDkb_repositioning,535.64
+Ibandronate,0.65,CCCCCN(C)CCC(O)(P(=O)(O)O)P(=O)(O)O,MPBVHIBUJCELCL-UHFFFAOYSA-N,NAFLDkb_repositioning,319.23
+Ibrutinib,0.65,C=CC(=O)N1CCC[C@@H](n2nc(-c3ccc(Oc4ccccc4)cc3)c3c(N)ncnc32)C1,XYFPWWZEPKGCCK-GOSISDBHSA-N,NAFLDkb_repositioning,440.51
+Ibudilast,0.65,CC(C)C(=O)c1c(C(C)C)nn2ccccc12,ZJVFLBOZORBYFE-UHFFFAOYSA-N,NAFLDkb_repositioning,230.31
+Ibuprofen,0.65,CC(C)Cc1ccc(C(C)C(=O)O)cc1,HEFNNWSXXWATRW-UHFFFAOYSA-N,NAFLDkb_repositioning,206.28
+Ibutilide,0.65,CCCCCCCN(CC)CCCC(O)c1ccc(NS(C)(=O)=O)cc1,ALOBUEHUHMBRLE-UHFFFAOYSA-N,NAFLDkb_repositioning,384.59
+Iclaprim,0.65,COc1cc(Cc2cnc(N)nc2N)c2c(c1OC)OC(C1CC1)C=C2,HWJPWWYTGBZDEG-UHFFFAOYSA-N,NAFLDkb_repositioning,354.41
+Icosapent,0.65,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)O,JAZBEHYOTPTENJ-JLNKQSITSA-N,NAFLDkb_repositioning,302.46
+Icosapent ethyl,0.65,CC/C=C\C/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)OCC,SSQPWTVBQMWLSZ-AAQCHOMXSA-N,NAFLDkb_repositioning,330.51
+Icotinib,0.65,C#Cc1cccc(Nc2ncnc3cc4c(cc23)OCCOCCOCCO4)c1,QQLKULDARVNMAL-UHFFFAOYSA-N,NAFLDkb_repositioning,391.43
+Idelalisib,0.65,CC[C@H](Nc1ncnc2[nH]cnc12)c1nc2cccc(F)c2c(=O)n1-c1ccccc1,IFSDAJWBUCMOAH-HNNXBMFYSA-N,NAFLDkb_repositioning,415.43
+Idronoxil,0.65,Oc1ccc(C2=Cc3ccc(O)cc3OC2)cc1,ZZUBHVMHNVYXRR-UHFFFAOYSA-N,NAFLDkb_repositioning,240.26
+Ilepatril,0.65,CC(=O)S[C@H](C(=O)N[C@H]1Cc2ccccc2[C@H]2CCC[C@@H](C(=O)O)N2C1=O)C(C)C,FXKFFTMLFPWYFH-RDGPPVDQSA-N,NAFLDkb_repositioning,432.54
+Iloprost,0.65,CC#CCC(C)[C@H](O)/C=C/[C@@H]1[C@H]2C/C(=C/CCCC(=O)O)C[C@H]2C[C@H]1O,HIFJCPQKFCZDDL-ACWOEMLNSA-N,NAFLDkb_repositioning,360.49
+Imatinib,0.65,Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc1nccc(-c2cccnc2)n1,KTUFNOKKBVMGRW-UHFFFAOYSA-N,NAFLDkb_repositioning,493.62
+Imexon,0.65,NC1=NC(=O)N2CC12,BIXBBIPTYBJTRY-UHFFFAOYSA-N,NAFLDkb_repositioning,111.1
+Imipenem,0.65,C[C@@H](O)[C@H]1C(=O)N2C(C(=O)O)=C(SCC/N=C/N)C[C@H]12,ZSKVGTPCRGIANV-ZXFLCMHBSA-N,NAFLDkb_repositioning,299.35
+Imipramine,0.65,CN(C)CCCN1c2ccccc2CCc2ccccc21,BCGWQEUPMDMJNV-UHFFFAOYSA-N,NAFLDkb_repositioning,280.42
+Imiquimod,0.65,CC(C)Cn1cnc2c(N)nc3ccccc3c21,DOUYETYNHWVLEO-UHFFFAOYSA-N,NAFLDkb_repositioning,240.31
+Imolamine,0.65,CCN(CC)CCn1c(-c2ccccc2)noc1=N,MGSPDRWOUCPKNZ-UHFFFAOYSA-N,NAFLDkb_repositioning,260.34
+Implitapide,0.65,Cc1cc(C)c2c3ccccc3n(Cc3cccc([C@@H](C(=O)N[C@@H](CO)c4ccccc4)C4CCCC4)c3)c2n1,AMNXBQPRODZJQR-DITALETJSA-N,NAFLDkb_repositioning,531.7
+Incadronic acid,0.65,O=P(O)(O)C(NC1CCCCCC1)P(=O)(O)O,LWRDQHOZTAOILO-UHFFFAOYSA-N,NAFLDkb_repositioning,287.19
+Indapamide,0.65,CC1Cc2ccccc2N1NC(=O)c1ccc(Cl)c(S(N)(=O)=O)c1,NDDAHWYSQHTHNT-UHFFFAOYSA-N,NAFLDkb_repositioning,365.84
+Indeglitazar,0.65,COc1ccc(S(=O)(=O)n2cc(CCC(=O)O)c3cc(OC)ccc32)cc1,YMPALHOKRBVHOJ-UHFFFAOYSA-N,NAFLDkb_repositioning,389.43
+Indomethacin,0.65,COc1ccc2c(c1)c(CC(=O)O)c(C)n2C(=O)c1ccc(Cl)cc1,CGIGDMFJXJATDK-UHFFFAOYSA-N,NAFLDkb_repositioning,357.79
+Inosine,0.65,O=c1nc[nH]c2c1ncn2[C@@H]1O[C@H](CO)[C@@H](O)[C@H]1O,UGQMRVRMYYASKQ-KQYNXXCUSA-N,NAFLDkb_repositioning,268.23
+Inosine 5'-sulfate,0.65,O=c1[nH]cnc2c1ncn2[C@@H]1O[C@H](COS(=O)(=O)O)[C@@H](O)[C@H]1O,IGYLPKLXFDOQGM-KQYNXXCUSA-N,NAFLDkb_repositioning,348.29
+Inositol,0.65,O[C@H]1[C@H](O)[C@@H](O)[C@H](O)[C@@H](O)[C@H]1O,CDAISMWEOUEBRE-GPIVLXJGSA-N,NAFLDkb_repositioning,180.16
+Inositol nicotinate,0.65,O=C(O[C@H]1[C@H](OC(=O)c2cccnc2)[C@@H](OC(=O)c2cccnc2)[C@H](OC(=O)c2cccnc2)[C@@H](OC(=O)c2cccnc2)[C@H]1OC(=O)c1cccnc1)c1cccnc1,MFZCIDXOLLEMOO-GYSGTQPESA-N,NAFLDkb_repositioning,810.73
+Ioversol,0.65,O=C(NCC(O)CO)c1c(I)c(C(=O)NCC(O)CO)c(I)c(N(CCO)C(=O)CO)c1I,AMDBBAQNWSUWGN-UHFFFAOYSA-N,NAFLDkb_repositioning,807.11
+Iproclozide,0.65,CC(C)NNC(=O)COc1ccc(Cl)cc1,GGECDTUJZOXAAR-UHFFFAOYSA-N,NAFLDkb_repositioning,242.71
+Iproniazid,0.65,CC(C)NNC(=O)c1ccncc1,NYMGNSNKLVNMIA-UHFFFAOYSA-N,NAFLDkb_repositioning,179.22
+Irbesartan,0.65,CCCCC1=NC2(CCCC2)C(=O)N1Cc1ccc(-c2ccccc2-c2nn[nH]n2)cc1,YOSHYTLCDANDAN-UHFFFAOYSA-N,NAFLDkb_repositioning,428.54
+Irinotecan,0.65,CCc1c2c(nc3ccc(OC(=O)N4CCC(N5CCCCC5)CC4)cc13)-c1cc3c(c(=O)n1C2)COC(=O)[C@]3(O)CC,UWKQSNNFCGGAFS-XIFFEERXSA-N,NAFLDkb_repositioning,586.69
+Iroxanadine,0.65,c1cncc(C2=NC(CN3CCCCC3)CON2)c1,QWVRTSZDKPRPDF-UHFFFAOYSA-N,NAFLDkb_repositioning,260.34
+Isocarboxazid,0.65,Cc1cc(C(=O)NNCc2ccccc2)no1,XKFPYPQQHFEXRZ-UHFFFAOYSA-N,NAFLDkb_repositioning,231.26
+Isoflavone,0.65,O=c1c(-c2ccccc2)coc2ccccc12,GOMNOOKGLZYEJT-UHFFFAOYSA-N,NAFLDkb_repositioning,222.24
+Isoprenaline,0.65,CC(C)NCC(O)c1ccc(O)c(O)c1,JWZZKOKVBUJMES-UHFFFAOYSA-N,NAFLDkb_repositioning,211.26
+Isopropamide,0.65,CC(C)[N+](C)(CCC(C(N)=O)(c1ccccc1)c1ccccc1)C(C)C,JTPUMZTWMWIVPA-UHFFFAOYSA-O,NAFLDkb_repositioning,353.53
+Isosorbide dinitrate,0.65,O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-],MOYKHGMNXAOIAT-JGWLITMVSA-N,NAFLDkb_repositioning,236.14
+Isosorbide mononitrate,0.65,O=[N+]([O-])O[C@@H]1CO[C@H]2[C@@H]1OC[C@@H]2O,YWXYYJSYQOXTPL-SLPGGIOYSA-N,NAFLDkb_repositioning,191.14
+Isotretinoin,0.65,CC1=C(/C=C/C(C)=C/C=C/C(C)=C\C(=O)O)C(C)(C)CCC1,SHGAZHPCJJPHSC-XFYACQKRSA-N,NAFLDkb_repositioning,300.44
+Isradipine,0.65,COC(=O)C1=C(C)NC(C)=C(C(=O)OC(C)C)C1c1cccc2nonc12,HMJIYCCIJYRONP-UHFFFAOYSA-N,NAFLDkb_repositioning,371.39
+Itopride,0.65,COc1ccc(C(=O)NCc2ccc(OCCN(C)C)cc2)cc1OC,QQQIECGTIMUVDS-UHFFFAOYSA-N,NAFLDkb_repositioning,358.44
+Ivabradine,0.65,COc1cc2c(cc1OC)CC(=O)N(CCCN(C)C[C@H]1Cc3cc(OC)c(OC)cc31)CC2,ACRHBAYQBXXRTO-OAQYLSRUSA-N,NAFLDkb_repositioning,468.59
+Ivacaftor,0.65,CC(C)(C)c1cc(C(C)(C)C)c(NC(=O)c2c[nH]c3ccccc3c2=O)cc1O,PURKAOJPTOLRMP-UHFFFAOYSA-N,NAFLDkb_repositioning,392.5
+Ixazomib,0.65,CC(C)C[C@H](NC(=O)CNC(=O)c1cc(Cl)ccc1Cl)B(O)O,MXAYKZJJDUDWDS-LBPRGKRZSA-N,NAFLDkb_repositioning,361.03
+Josamycin,0.65,CO[C@@H]1[C@@H](O[C@@H]2O[C@H](C)[C@@H](O[C@H]3C[C@@](C)(O)[C@@H](OC(=O)CC(C)C)[C@H](C)O3)[C@H](N(C)C)[C@H]2O)[C@@H](CC=O)C[C@@H](C)[C@@H](O)/C=C/C=C/C[C@@H](C)OC(=O)C[C@H]1OC(C)=O,XJSFLOJWULLJQS-NGVXBBESSA-N,NAFLDkb_repositioning,828.01
+KB-141,0.65,CC(C)c1cc(Oc2c(Cl)cc(CC(=O)O)cc2Cl)ccc1O,OZYQIQVPUZANTM-UHFFFAOYSA-N,NAFLDkb_repositioning,355.22
+KD3010,0.65,C[C@@H]1CN(c2ccc(OC(F)(F)F)cc2)C[C@H](C)N1S(=O)(=O)c1cccc2c1CC(C(=O)O)C2.Cc1ccc(S(=O)(=O)O)cc1,SUTQDFLDQUPTKX-QVLMFNNZSA-N,NAFLDkb_repositioning,670.73
+Kanamycin,0.65,NC[C@H]1O[C@H](O[C@H]2[C@H](O)[C@@H](O[C@H]3O[C@H](CO)[C@@H](O)[C@H](N)[C@H]3O)[C@H](N)C[C@@H]2N)[C@H](O)[C@@H](O)[C@@H]1O,SBUJHOSQTJFQJX-NOAMYHISSA-N,NAFLDkb_repositioning,484.5
+Ketamine,0.65,CNC1(c2ccccc2Cl)CCCCC1=O,YQEZLKZALYSWHR-UHFFFAOYSA-N,NAFLDkb_repositioning,237.73
+Ketoprofen,0.65,CC(C(=O)O)c1cccc(C(=O)c2ccccc2)c1,DKYWVDODHFEZIM-UHFFFAOYSA-N,NAFLDkb_repositioning,254.28
+Ketorolac,0.65,O=C(c1ccccc1)c1ccc2n1CCC2C(=O)O,OZWKMVRBQXNZKK-UHFFFAOYSA-N,NAFLDkb_repositioning,255.27
+Ketotifen,0.65,CN1CCC(=C2c3ccccc3CC(=O)c3sccc32)CC1,ZCVMWBYGMWKGHF-UHFFFAOYSA-N,NAFLDkb_repositioning,309.43
+L-Glutamine,0.65,NC(=O)CC[C@H](N)C(=O)O,ZDXPYRJPNDTMRX-VKHMYHEASA-N,NAFLDkb_repositioning,146.15
+LGD2941,0.65,C[C@@H]1CC[C@H]([C@@H](O)C(F)(F)F)N1c1ccc2[nH]c(=O)cc(C(F)(F)F)c2c1,HWLLYFXDDGGHOE-BCSUUIJWSA-N,NAFLDkb_repositioning,394.32
+LJP 1082,0.65,NC(CCC(=O)NC(CSCO)C(=O)NCC(=O)O)C(=O)O,PIUSLWSYOYFRFR-UHFFFAOYSA-N,NAFLDkb_repositioning,337.35
+LX-2931,0.65,C/C(=N\O)c1ncc([C@@H](O)[C@H](O)[C@H](O)CO)[nH]1,AMXVYJYMZLDINS-RSWLNLDNSA-N,NAFLDkb_repositioning,245.24
+Labetalol,0.65,CC(CCc1ccccc1)NCC(O)c1ccc(O)c(C(N)=O)c1,SGUAFYQXFOLMHL-UHFFFAOYSA-N,NAFLDkb_repositioning,328.41
+Lacidipine,0.65,CCOC(=O)C1=C(C)NC(C)=C(C(=O)OCC)C1c1ccccc1/C=C/C(=O)OC(C)(C)C,GKQPCPXONLDCMU-CCEZHUSRSA-N,NAFLDkb_repositioning,455.55
+Lactitol,0.65,OC[C@@H](O)[C@@H](O[C@@H]1O[C@H](CO)[C@H](O)[C@H](O)[C@H]1O)[C@H](O)[C@@H](O)CO,VQHSOMBJVWLPSR-JVCRWLNRSA-N,NAFLDkb_repositioning,344.31
+Lactose,0.65,OC[C@H]1O[C@@H](O[C@H]2[C@H](O)[C@@H](O)C(O)O[C@@H]2CO)[C@H](O)[C@@H](O)[C@H]1O,GUBGYTABKSRVRQ-QKKXKWKRSA-N,NAFLDkb_repositioning,342.3
+Lamotrigine,0.65,Nc1nnc(-c2cccc(Cl)c2Cl)c(N)n1,PYZRQGJRPPTADH-UHFFFAOYSA-N,NAFLDkb_repositioning,256.1
+Larazotide,0.65,CC(C)C[C@H](NC(=O)[C@@H](NC(=O)CNC(=O)CN)C(C)C)C(=O)N[C@H](C(=O)N[C@@H](CCC(N)=O)C(=O)N1CCC[C@H]1C(=O)NCC(=O)O)C(C)C,ORFLZNAGUTZRLQ-ZMBVWFSWSA-N,NAFLDkb_repositioning,725.85
+Lasofoxifene,0.65,Oc1ccc2c(c1)CC[C@H](c1ccccc1)[C@@H]2c1ccc(OCCN2CCCC2)cc1,GXESHMAMLJKROZ-IAPPQJPRSA-N,NAFLDkb_repositioning,413.56

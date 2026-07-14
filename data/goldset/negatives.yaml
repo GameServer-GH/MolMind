@@ -1,0 +1,18 @@
+# 阴性 / 高毒参考（回归与惩罚标定）
+version: 1
+cases:
+  - name: Acetaminophen
+    role: negative
+    cas: "103-90-2"
+    smiles: "CC(=O)Nc1ccc(O)cc1"
+    expected:
+      high_tox: false
+      note: "经典肝毒对照；低剂量结构风险中等"
+
+  - name: Nitrofurantoin
+    role: negative
+    cas: "67-20-9"
+    smiles: "O=[N+]([O-])c1oc(cc1)/C=N/N2C(=O)NC(=O)C2"
+    expected:
+      high_tox: true
+      pass_filter: false

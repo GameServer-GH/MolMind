@@ -1,0 +1,16 @@
+{
+  "version": "ml-heads-v1",
+  "models": [
+    {
+      "path": "data/models/dili_knn_v1.json",
+      "kind": "dili_knn",
+      "version": "dili_knn_v1"
+    },
+    {
+      "path": "data/models/admet_proxy_v1.json",
+      "kind": "admet_proxy",
+      "version": "admet_proxy_v1"
+    }
+  ],
+  "notes": "本地 ECFP k-NN 毒性代理（源自 curated DILIrank）；无文件则跳过，不阻断筛选。肝损伤代理≠HepG2 活力实测。"
+}
