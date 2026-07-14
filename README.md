@@ -182,7 +182,7 @@ Docker 内离线 CLI 冒烟：
 docker compose -f deploy/docker-compose.yml run --rm cli
 ```
 
-机制 Markdown 默认调用 DeepSeek `deepseek-v4-pro` 润色（**不改 Top 10**）。无可用 Key 或调用失败时自动模板降级。
+机制 Markdown 默认使用**准确模板**生成（**不改 Top 10**）；`llm_client` 保留兼容位，不作为交卷主路径。
 
 ---
 

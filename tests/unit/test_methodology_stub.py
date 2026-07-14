@@ -3,7 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DOC = ROOT / "docs" / "architecture" / "方法学表述.md"
+DOC = ROOT / "docs" / "delivery" / "方法学表述.md"
 
 
 def test_methodology_stub_exists() -> None:

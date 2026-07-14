@@ -182,7 +182,7 @@ Offline CLI smoke inside Docker:
 docker compose -f deploy/docker-compose.yml run --rm cli
 ```
 
-Mechanism Markdown defaults to DeepSeek `deepseek-v4-pro` polish (**Top 10 unchanged**). Missing key or call failure falls back to templates.
+Mechanism Markdown defaults to the accurate template (**Top 10 unchanged**); the LLM client remains for optional/compat use only.
 
 ---
 
