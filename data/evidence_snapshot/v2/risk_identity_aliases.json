@@ -1,0 +1,46 @@
+{
+  "schema_version": "molmind-risk-identity-aliases-v1",
+  "policy": "Only adverse/toxicity evidence propagates from original entries to standardized tautomer, parent or salt aliases. Beneficial evidence does not propagate.",
+  "aliases": [
+    {
+      "molecule_id": "T204086",
+      "original_inchikey": "PBULYLQKWDXDFZ-QHIGSJCSSA-M",
+      "standardized_inchikey": "FJAZVHYPASAQKM-BJGNMCLESA-N"
+    },
+    {
+      "molecule_id": "T23557",
+      "original_inchikey": "KCEFVYIWOQSJCH-LMOVPXPDSA-N",
+      "standardized_inchikey": "SRBPKVWITYPHQR-KRWDZBQOSA-N"
+    },
+    {
+      "molecule_id": "T64737",
+      "original_inchikey": "JCZLABDVDPYLRZ-AWEZNQCLSA-N",
+      "standardized_inchikey": "JCZLABDVDPYLRZ-UHFFFAOYSA-N"
+    },
+    {
+      "molecule_id": "TN7120",
+      "original_inchikey": "RHCPKKNRWFXMAT-RRWYKFPJSA-N",
+      "standardized_inchikey": "RHCPKKNRWFXMAT-QHMGNDAISA-N"
+    },
+    {
+      "molecule_id": "T0214",
+      "original_inchikey": "HYAFETHFCAUJAY-UHFFFAOYSA-N",
+      "standardized_inchikey": "IYYGBZJXHJSLEV-UHFFFAOYSA-N"
+    },
+    {
+      "molecule_id": "T17044",
+      "original_inchikey": "CXGTZJYQWSUFET-IBGZPJMESA-N",
+      "standardized_inchikey": "CXGTZJYQWSUFET-UHFFFAOYSA-N"
+    },
+    {
+      "molecule_id": "T39740",
+      "original_inchikey": "MGFZEARHINUOMX-UHFFFAOYSA-N",
+      "standardized_inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N"
+    },
+    {
+      "molecule_id": "T8188",
+      "original_inchikey": "ISCQYPPCSYRZOT-BKTGTZMESA-N",
+      "standardized_inchikey": "ISCQYPPCSYRZOT-HRJVKACCSA-N"
+    }
+  ]
+}

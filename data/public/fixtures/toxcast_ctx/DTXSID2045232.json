@@ -1,0 +1,17 @@
+[
+  {
+    "dtxsid": "DTXSID2045232",
+    "casn": "51-24-1",
+    "chnm": "Tiratricol",
+    "aeid": 714,
+    "assayComponentEndpointName": "CEETOX_H295R_ESTRONE_dn",
+    "hitc": 1.0,
+    "ac50": 0.86,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "steroid hormone",
+    "inchikey": "UOWSMEAFZLJREE-UHFFFAOYSA-N",
+    "smiles": "CCc1cc(I)c(Oc2ccc(O)c(I)c2)c(I)c1O",
+    "m4id": 5001,
+    "spid": "TP0000904H05"
+  }
+]

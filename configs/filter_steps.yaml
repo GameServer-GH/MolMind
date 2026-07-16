@@ -1,9 +1,11 @@
 name: druglikeness_filter
+version: filter-policy-v2
 steps:
   - id: basic_props
     backend: chem_core
   - id: lipinski_ro5
     backend: chem_core
+    classification: review_required
     params:
       max_mw: 500.0
       max_logp: 5.0
@@ -11,9 +13,33 @@ steps:
       max_hba: 10
   - id: expert_redlines
     backend: chem_core
+    classification: hard_exclusion
     params:
-      max_mw_hard: 600.0
-      max_logp_hard: 5.0
+      max_mw_hard: 700.0
+      max_logp_hard: 8.0
   - id: structural_alerts
     backend: chem_core
+    rule_set_version: structural-alerts-v2
+    rules:
+      - id: nitro_aromatic
+        smarts: "[N+](=O)[O-]"
+        classification: review_required
+      - id: aniline
+        smarts: "c1ccccc1[NH2]"
+        classification: review_required
+      - id: epoxide
+        smarts: "C1OC1"
+        classification: review_required
+      - id: aldehyde
+        smarts: "[CH]=O"
+        classification: review_required
+      - id: isocyanate
+        smarts: "N=C=O"
+        classification: hard_exclusion
+      - id: acyl_halide
+        smarts: "C(=O)[F,Cl,Br,I]"
+        classification: hard_exclusion
+      - id: sulfonyl_ester
+        smarts: "S(=O)(=O)O"
+        classification: information_only
 on_fail: reject

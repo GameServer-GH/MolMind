@@ -9,7 +9,11 @@ from pathlib import Path
 
 from packages.goldset import load_goldset
 from services.eval_harness import run_goldset_harness
-from services.evidence_facade.bake import bake_from_sdf
+from services.evidence_facade.bake import (
+    bake_from_sdf,
+    bake_frozen_top10,
+    bake_submission_evidence,
+)
 from services.pipeline import load_config, run_pipeline
 
 
@@ -48,6 +52,21 @@ def main(argv: list[str] | None = None) -> int:
         help="即使 snapshot 已有该 InChIKey 也重新拉取（写后自动压缩覆盖旧行）",
     )
     parser.add_argument(
+        "--bake-frozen-top10",
+        action="store_true",
+        help="仅烘焙已冻结的 Top 10 实体，不重新筛选候选",
+    )
+    parser.add_argument(
+        "--bake-submission",
+        action="store_true",
+        help="一次烘焙冻结 Top 10 与 Top-M 候选窗口，供日常 auto 完全复用",
+    )
+    parser.add_argument(
+        "--bake-output",
+        default=None,
+        help="证据 JSONL 输出路径（默认 data/evidence_snapshot/baked_evidence_v2.jsonl）",
+    )
+    parser.add_argument(
         "--compact-snapshot",
         action="store_true",
         help="压缩 data/evidence_snapshot/*.jsonl：同 InChIKey+adapter+query_type 保留最后一条",
@@ -76,13 +95,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.bake_evidence:
-        if not args.input:
+        if not args.input and not args.bake_frozen_top10:
             parser.error("--bake-evidence 需要 --input")
-        stats = bake_from_sdf(
-            Path(args.input),
-            top_m=args.bake_top_m,
-            skip_cached=not args.bake_force,
-        )
+        output_path = Path(args.bake_output) if args.bake_output else None
+        if args.bake_submission:
+            if not args.input:
+                parser.error("--bake-submission 需要 --input")
+            stats = bake_submission_evidence(
+                Path(args.input),
+                top_m=args.bake_top_m,
+                output_path=output_path,
+                skip_cached=not args.bake_force,
+            )
+        elif args.bake_frozen_top10:
+            stats = bake_frozen_top10(
+                output_path=output_path,
+                skip_cached=not args.bake_force,
+            )
+        else:
+            stats = bake_from_sdf(
+                Path(args.input),
+                top_m=args.bake_top_m,
+                output_path=output_path,
+                skip_cached=not args.bake_force,
+            )
         print(json.dumps(stats.__dict__, ensure_ascii=False, indent=2))
         return 0
 
@@ -110,7 +146,18 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"diagnostics: std_tox={result.diagnostics.std_tox} "
         f"scaffolds={result.diagnostics.scaffold_diversity_top10} "
-        f"quality_pass={result.diagnostics.quality_pass}"
+        f"engineering_pass={result.diagnostics.engineering_pass} "
+        f"scientific_validation={result.diagnostics.scientific_validation_status}"
+    )
+    resource_counts = result.hepg2_ffa_resources.get("resource_counts", {})
+    print(
+        "hepg2_ffa_resources: "
+        f"total={resource_counts.get('total', 0)} "
+        f"mechanistic_context={resource_counts.get('mechanistic_context', 0)} "
+        f"assay_qc={resource_counts.get('assay_qc', 0)} "
+        f"dual_endpoint_training_eligible="
+        f"{resource_counts.get('candidate_dual_endpoint_training_eligible', 0)} "
+        "ranking_effect=none"
     )
     if result.config.degraded_channels:
         print(f"degraded_channels: {', '.join(result.config.degraded_channels)}")

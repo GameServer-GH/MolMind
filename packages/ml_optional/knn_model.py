@@ -45,7 +45,13 @@ class KnnModel:
         self._fps = fps
         return fps
 
-    def predict(self, mol: Chem.Mol) -> tuple[float, str | None, float]:
+    def predict(
+        self,
+        mol: Chem.Mol,
+        *,
+        exclude_names: set[str] | None = None,
+        exclude_similarity_at_or_above: float | None = None,
+    ) -> tuple[float, str | None, float]:
         """返回 (score, neighbor_name, similarity)。无命中则 (0, None, 0)。"""
         if mol is None or not self.entries:
             return 0.0, None, 0.0
@@ -55,6 +61,13 @@ class KnnModel:
         sims: list[tuple[float, int]] = []
         for idx, fp in enumerate(fps):
             sim = float(DataStructs.TanimotoSimilarity(query, fp))
+            if exclude_names and self.entries[idx].name in exclude_names:
+                continue
+            if (
+                exclude_similarity_at_or_above is not None
+                and sim >= exclude_similarity_at_or_above
+            ):
+                continue
             if sim >= self.sim_threshold:
                 sims.append((sim, idx))
         if not sims:

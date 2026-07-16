@@ -7,6 +7,7 @@ from services.critic.critic import (
     llm_critic_stub,
     rule_critic,
     run_evidence_bound_llm_critic,
+    summarize_critic_actions,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "llm_critic_stub",
     "rule_critic",
     "run_evidence_bound_llm_critic",
+    "summarize_critic_actions",
 ]

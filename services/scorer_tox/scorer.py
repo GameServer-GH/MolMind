@@ -31,8 +31,13 @@ def _get_ml_bundle(cfg: AppConfig) -> OptionalHeadsBundle:
     return _heads_bundle(key, str(ROOT))
 
 
-def fuse_tox(heads: dict[str, float], weights: dict[str, float], boost: float) -> float:
-    active_w = {k: w for k, w in weights.items() if heads.get(k, 0.0) > 0 or k == "physchem"}
+def fuse_tox(heads: dict[str, float], weights: dict[str, object], boost: float) -> float:
+    numeric_weights = {
+        k: float(v) for k, v in weights.items() if k != "aggregation" and isinstance(v, (int, float))
+    }
+    active_w = {
+        k: w for k, w in numeric_weights.items() if heads.get(k, 0.0) > 0 or k == "physchem"
+    }
     for optional in ("dili", "admet", "evidence", "alert"):
         if optional in active_w and heads.get(optional, 0.0) == 0.0 and optional != "alert":
             if optional != "alert":
@@ -40,10 +45,12 @@ def fuse_tox(heads: dict[str, float], weights: dict[str, float], boost: float) -
     if heads.get("alert", 0.0) == 0.0:
         active_w.pop("alert", None)
     if "physchem" not in active_w:
-        active_w["physchem"] = weights.get("physchem", 0.15)
+        active_w["physchem"] = numeric_weights.get("physchem", 0.15)
     total_w = sum(active_w.values()) or 1.0
-    r = sum(active_w[k] * heads.get(k, 0.0) for k in active_w) / total_w
-    return clamp(min(1.0, r + boost))
+    weighted_context = sum(active_w[k] * heads.get(k, 0.0) for k in active_w) / total_w
+    # 风险融合必须单调：新增一个高风险头不得把已有风险稀释掉。
+    max_head = max((heads.get(k, 0.0) for k in numeric_weights), default=0.0)
+    return clamp(min(1.0, max(weighted_context, max_head) + boost))
 
 
 def score_tox(
@@ -51,6 +58,8 @@ def score_tox(
     cfg: AppConfig,
     gold: GoldSet,
     evidence: EvidenceBundle,
+    *,
+    excluded_reference_names: set[str] | None = None,
 ) -> tuple[float, dict[str, float], float, list[Attribution], str]:
     mol = Chem.MolFromSmiles(record.smiles)
     attrs: list[Attribution] = []
@@ -89,12 +98,19 @@ def score_tox(
     if cfg.ml_enabled:
         bundle = _get_ml_bundle(cfg)
         if bundle.skipped:
-            cfg.mark_degraded("dili_ml")
-            cfg.mark_degraded("admet_ml")
+            # P0-C：缺模型 → *_missing（勿再用笼统 dili_ml）
+            cfg.mark_degraded("dili_ml_missing")
+            cfg.mark_degraded("admet_ml_missing")
         else:
-            ml_pred = bundle.predict(mol)
+            ml_pred = bundle.predict(
+                mol,
+                exclude_names=excluded_reference_names,
+                exclude_similarity_at_or_above=0.98 if excluded_reference_names else None,
+            )
             if not ml_pred.skipped:
+                had_neighbor = False
                 if ml_pred.dili > 0:
+                    had_neighbor = True
                     r_dili = max(r_dili, clamp(ml_pred.dili))
                     attrs.append(
                         Attribution(
@@ -105,6 +121,7 @@ def score_tox(
                         )
                     )
                 if ml_pred.admet > 0:
+                    had_neighbor = True
                     r_admet = max(r_admet, clamp(ml_pred.admet))
                     attrs.append(
                         Attribution(
@@ -114,9 +131,10 @@ def score_tox(
                             evidence_id=f"ml:{ml_pred.reason}",
                         )
                     )
+                cfg.note_ml_predict(had_neighbor=had_neighbor)
     else:
-        cfg.mark_degraded("dili_ml")
-        cfg.mark_degraded("admet_ml")
+        cfg.mark_degraded("dili_ml_missing")
+        cfg.mark_degraded("admet_ml_missing")
 
     r_evidence = clamp(max((h.score for h in other_tox), default=0.0))
     for hit in other_tox:
@@ -150,14 +168,104 @@ def score_tox(
         "admet": r_admet,
         "evidence": r_evidence,
     }
-    r_tox = fuse_tox(heads, cfg.tox_fuse, boost)
+    raw_risk = fuse_tox(heads, cfg.tox_fuse, boost)
+    ml_similarity = 0.0
+    if ml_pred is not None and not ml_pred.skipped:
+        ml_similarity = max(float(ml_pred.dili_sim), float(ml_pred.admet_sim))
 
-    parts = [f"R_tox={r_tox:.3f}"]
+    # 覆盖度、风险信号可信度、安全结论可信度是三个不同概念。
+    # 结构警示和理化性质是计算代理，不能伪装成“安全清除证据”。
+    # 因此它们单独记录为 proxy_coverage，不进入 safety_clearance 或
+    # toxicity_evidence_coverage；没有外部/实验安全证据时必须保持 audit_missing。
+    local_proxy_coverage = clamp(float(cfg.gates.get("local_toxicity_proxy_coverage", 0.20)))
+    model_applicability = clamp(ml_similarity)
+    external_coverage = evidence.toxicity_evidence_coverage
+    toxicity_evidence_coverage = max(
+        model_applicability,
+        external_coverage,
+    )
+
+    risk_signal_candidates = [local_proxy_coverage if r_physchem > 0 else 0.0]
+    if alert_hits:
+        risk_signal_candidates.append(0.40)
+    if r_dili > 0 or r_admet > 0:
+        risk_signal_candidates.append(clamp(0.45 + 0.45 * model_applicability))
+    if evidence.tox:
+        risk_signal_candidates.append(max(clamp(h.confidence) for h in evidence.tox))
+    if fp_sim >= threshold or neg_sim >= threshold:
+        risk_signal_candidates.append(clamp(0.45 + 0.45 * max(fp_sim, neg_sim)))
+    risk_signal_confidence = clamp(max(risk_signal_candidates, default=0.0))
+
+    # ML / 结构近邻低风险只算 proxy_clearance，不得伪装成外部安全清除证据。
+    nomination_max = float(cfg.gates.get("tox_nomination_max", 0.45))
+    proxy_clearance_candidates: list[float] = []
+    if (
+        model_applicability > 0
+        and max(r_dili, r_admet) < nomination_max
+        and not alert_hits
+    ):
+        proxy_clearance_candidates.append(clamp(0.45 + 0.45 * model_applicability))
+    proxy_clearance_confidence = clamp(max(proxy_clearance_candidates, default=0.0))
+
+    safety_clearance_candidates: list[float] = []
+    for hit in evidence.tox:
+        if (
+            hit.evidence_role == "task_evidence"
+            and hit.direction in {"supports_safety", "low_risk"}
+            and hit.score < nomination_max
+        ):
+            safety_clearance_candidates.append(clamp(hit.confidence))
+    safety_clearance_confidence = clamp(max(safety_clearance_candidates, default=0.0))
+
+    # 兼容旧字段名：toxicity_confidence 现在明确等于安全结论可信度（外部证据）。
+    tox_confidence = safety_clearance_confidence
+    tox_uncertainty = 1.0 - toxicity_evidence_coverage
+    uncertainty_penalty = float(cfg.gates.get("tox_uncertainty_penalty", 0.0)) * tox_uncertainty
+    r_tox = clamp(raw_risk + uncertainty_penalty)
+    min_confidence = float(cfg.gates.get("min_toxicity_confidence", 0.0))
+    # 风险证据可以提高“发现危险”的覆盖度，却不能证明安全；因此是否使用
+    # 保守提名边界只看 safety_clearance，而不能被 GHS/DILI 风险证据或 ML 近邻解除。
+    low_safety_confidence = safety_clearance_confidence <= min_confidence + 1e-12
+    low_confidence_margin = (
+        float(cfg.gates.get("low_confidence_tox_margin", 0.0))
+        if low_safety_confidence
+        else 0.0
+    )
+    tox_upper_bound = clamp(r_tox + low_confidence_margin)
+    heads["raw_risk"] = raw_risk
+    heads["confidence"] = tox_confidence
+    heads["uncertainty"] = tox_uncertainty
+    heads["uncertainty_penalty"] = uncertainty_penalty
+    heads["model_applicability"] = model_applicability
+    heads["proxy_coverage"] = local_proxy_coverage
+    heads["proxy_clearance_confidence"] = proxy_clearance_confidence
+    heads["evidence_coverage"] = toxicity_evidence_coverage
+    heads["risk_signal_confidence"] = risk_signal_confidence
+    heads["safety_clearance_confidence"] = safety_clearance_confidence
+    heads["tox_upper_bound"] = tox_upper_bound
+
+    parts = [
+        f"R_tox={r_tox:.3f}",
+        f"raw={raw_risk:.3f}",
+        f"tox_confidence={tox_confidence:.3f}",
+        f"tox_coverage={toxicity_evidence_coverage:.3f}",
+        f"risk_signal_confidence={risk_signal_confidence:.3f}",
+        f"uncertainty_penalty={uncertainty_penalty:.3f}",
+    ]
     parts.append(
         "heads["
-        + ", ".join(f"{k}={v:.3f}" for k, v in heads.items() if v > 0 or k == "physchem")
+        + ", ".join(
+            f"{k}={v:.3f}"
+            for k, v in heads.items()
+            if k in {"alert", "physchem", "dili", "admet", "evidence"} and (v > 0 or k == "physchem")
+        )
         + "]"
     )
+    if low_confidence_margin > 0:
+        parts.append(
+            f"low_confidence_margin={low_confidence_margin:.3f}; "
+            f"conservative_upper={tox_upper_bound:.3f}"
+        )
     if boost > 0:
         parts.append(f"analog_boost={boost:.3f}")
     if alert_hits:

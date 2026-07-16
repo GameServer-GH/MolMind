@@ -1,0 +1,172 @@
+schema_version: molmind-public-data-registry-v1
+captured_at: '2026-07-15'
+project_positioning: >
+  MolMind is an auditable computational candidate-prioritization system
+  grounded in public experimental activity data, toxicology evidence, and
+  multi-omics mechanism context for MASLD / HepG2-FFA nomination—not a
+  wet-lab-validated efficacy or safety predictor.
+project_policy:
+  quality_first: true
+  keep_training_and_inference_in_same_project: true
+  split_only_after_runtime_or_delivery_failure: true
+  missing_record_semantics: audit_missing
+  negative_search_is_negative_label: false
+  default_omics_ranking_effect: none
+  # Import waves are the operational priority. Sources must be ingested in
+  # wave order; later waves must not rewrite earlier assay-grain schemas.
+  import_wave_order:
+    - wave_1_activity
+    - wave_2_toxicology
+    - wave_3_multiomics
+  required_record_fields:
+    - compound_id
+    - standardized_smiles
+    - source_id
+    - assay_id
+    - endpoint
+    - dose
+    - dose_unit
+    - treatment_time_hours
+    - direction
+    - value
+    - unit
+    - control_id
+    - batch_id
+    - source_url
+    - retrieved_at
+    - license
+sources:
+  - source_id: chembl_bioactivity
+    display_name: ChEMBL
+    import_wave: wave_1_activity
+    role: candidate_activity
+    evidence_level: L2-L3
+    endpoint_scope: cellular_lipid_or_related_bioactivity
+    source_url: https://www.ebi.ac.uk/training/online/courses/chembl-quick-tour/accessing-chembl-data/
+    api_base: https://www.ebi.ac.uk/chembl/api/data
+    license_policy: verify_source_version_and_cc_by_sa_3
+    ingestion_status: imported
+    qc_status: endpoint_qc_complete
+    qc_pass_rows: 117
+    positive_phenotype_rows: 111
+    ranking_effect: candidate_task_evidence_only
+    missing_semantics: audit_missing
+  - source_id: pubchem_bioassay
+    display_name: PubChem BioAssay
+    import_wave: wave_1_activity
+    role: candidate_activity_or_cytotoxicity
+    evidence_level: L2-L3
+    endpoint_scope: depositor_assay_with_protocol_and_result
+    source_url: https://pubchem.ncbi.nlm.nih.gov/docs/overview-bioassay-submission
+    api_base: https://pubchem.ncbi.nlm.nih.gov/rest/pug
+    license_policy: preserve_depositor_provenance_and_source_rights
+    ingestion_status: imported
+    qc_status: endpoint_qc_complete
+    qc_pass_rows: 26
+    ranking_effect: candidate_task_evidence_only
+    missing_semantics: audit_missing
+  - source_id: bindingdb
+    display_name: BindingDB
+    import_wave: wave_1_activity
+    role: mechanism_support
+    evidence_level: L2
+    endpoint_scope: protein_ligand_binding
+    source_url: https://www.bindingdb.org/rwd/bind/chemsearch/marvin/Download.jsp
+    api_base: https://www.bindingdb.org/rest
+    license_policy: split_provenance_for_bindingdb_and_imported_sources
+    ingestion_status: imported
+    qc_status: endpoint_qc_complete
+    qc_pass_rows: 71
+    target_coverage: 16
+    ranking_effect: mechanism_support_only
+    missing_semantics: audit_missing
+  - source_id: epa_toxcast_tox21
+    display_name: EPA ToxCast/Tox21
+    import_wave: wave_2_toxicology
+    role: toxicity_risk
+    evidence_level: L2
+    endpoint_scope: concentration_response_and_cytotoxicity
+    source_url: https://www.epa.gov/comptox-tools/exploring-toxcast-data
+    api_base: https://comptox.epa.gov/ctx-api/bioactivity
+    chemical_api_base: https://comptox.epa.gov/ctx-api/chemical
+    download_url: https://epa.figshare.com/articles/dataset/ToxCast_Database_invitroDB_/6062623
+    license_policy: preserve_version_and_endpoint_provenance
+    # Prefer CTX DTXSID lookups over Figshare invitrodb SQL (GB-scale / HTTP 403).
+    # Live CTX requires CTX_API_KEY (free via ccte_api@epa.gov); fixtures cover offline.
+    ingestion_status: imported
+    qc_status: endpoint_qc_complete
+    qc_pass_rows: 7
+    dtxsid_seed_count: 6
+    ranking_effect: risk_signal_only
+    missing_semantics: audit_missing
+  - source_id: fda_dilirank_2
+    display_name: FDA DILIrank 2.0
+    import_wave: wave_2_toxicology
+    role: clinical_liver_risk
+    evidence_level: L2
+    endpoint_scope: clinical_drug_induced_liver_injury
+    source_url: https://www.fda.gov/science-research/liver-toxicity-knowledge-base-ltkb/drug-induced-liver-injury-rank-dilirank-20-dataset
+    download_url: https://www.fda.gov/media/113052/download?attachment=
+    license_policy: preserve_dataset_version_and_label_lineage
+    ingestion_status: imported
+    ranking_effect: risk_signal_only
+    missing_semantics: audit_missing
+  - source_id: epa_toxref_toxval
+    display_name: EPA ToxRefDB/ToxValDB
+    import_wave: wave_2_toxicology
+    role: regulatory_toxicology
+    evidence_level: L2
+    endpoint_scope: in_vivo_point_of_departure_and_regulatory_records
+    source_url: https://www.epa.gov/comptox-tools/downloadable-computational-toxicology-data
+    license_policy: preserve_source_and_species_route_duration
+    ingestion_status: planned
+    ranking_effect: risk_signal_only
+    missing_semantics: audit_missing
+  - source_id: geo_ffa_and_drug_signatures
+    display_name: GEO FFA, NAFLD and known-drug perturbation studies
+    import_wave: wave_3_multiomics
+    role: mechanism_support
+    evidence_level: L1-L2
+    endpoint_scope: transcriptomic_disease_and_drug_response
+    example_accessions: [GSE122660, GSE248166, GSE248903, GSE24187, GSE29868, GSE33152]
+    source_url: https://www.ncbi.nlm.nih.gov/geo/
+    license_policy: preserve_accession_and_record_terms
+    ingestion_status: imported_metadata_only
+    ranking_effect: mechanism_support_only
+    missing_semantics: audit_missing
+  - source_id: pride_hepg2_ffa
+    display_name: PRIDE HepG2 FFA proteomics
+    import_wave: wave_3_multiomics
+    role: mechanism_support_or_assay_qc
+    evidence_level: L1
+    endpoint_scope: proteomic_ffa_response
+    example_accessions: [PXD012065, PXD012066]
+    source_url: https://www.ebi.ac.uk/pride/archive/projects/PXD012065
+    license_policy: verify_record_terms_before_redistribution
+    ingestion_status: imported_metadata_only
+    ranking_effect: mechanism_support_only
+    missing_semantics: audit_missing
+  - source_id: metabolomics_workbench_and_metabolights
+    display_name: Metabolomics Workbench and MetaboLights
+    import_wave: wave_3_multiomics
+    role: mechanism_support_or_assay_qc
+    evidence_level: L1
+    endpoint_scope: metabolomics_and_lipidomics_context
+    example_accessions: [ST003475]
+    source_url: https://www.metabolomicsworkbench.org/about/index.html
+    license_policy: verify_record_terms_and_noncommercial_restrictions
+    ingestion_status: imported_metadata_only
+    ranking_effect: mechanism_support_only
+    missing_semantics: audit_missing
+  - source_id: lincs_cmap
+    display_name: LINCS/CMap perturbation signatures
+    import_wave: wave_3_multiomics
+    role: mechanism_support
+    evidence_level: L1
+    endpoint_scope: compound_perturbation_signature
+    example_accessions: [GSE92742, GSE70138]
+    source_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92742
+    license_policy: preserve_data_policy_and_compound_identity
+    ingestion_status: imported_metadata_only
+    ranking_effect: mechanism_support_only
+    missing_semantics: audit_missing

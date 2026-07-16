@@ -1,0 +1,32 @@
+[
+  {
+    "dtxsid": "DTXSID3020966",
+    "casn": "103-90-2",
+    "chnm": "Acetaminophen",
+    "aeid": 801,
+    "assayComponentEndpointName": "APR_Hepat_Apoptosis_24h_up",
+    "hitc": 1.0,
+    "ac50": 45.0,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "cell cycle",
+    "inchikey": "RZVAJINKPMORJF-UHFFFAOYSA-N",
+    "smiles": "CC(=O)Nc1ccc(O)cc1",
+    "m4id": 2001,
+    "spid": "TP0000002"
+  },
+  {
+    "dtxsid": "DTXSID3020966",
+    "casn": "103-90-2",
+    "chnm": "Acetaminophen",
+    "aeid": 802,
+    "assayComponentEndpointName": "TOX21_AhR_LUC_Agonist",
+    "hitc": 0.2,
+    "ac50": null,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "nuclear receptor",
+    "inchikey": "RZVAJINKPMORJF-UHFFFAOYSA-N",
+    "smiles": "CC(=O)Nc1ccc(O)cc1",
+    "m4id": 2002,
+    "spid": "TP0000002"
+  }
+]

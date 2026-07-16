@@ -1,0 +1,62 @@
+{
+  "schema_version": "molmind-public-assay-qc-v1",
+  "captured_at": "2026-07-15T11:23:27+00:00",
+  "status": "qc_complete",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "sources": {
+    "pubchem_bioassay": {
+      "status": "qc_complete",
+      "input_rows": 176,
+      "qc_pass_rows": 26,
+      "training_eligible_rows": 26,
+      "exclude_reasons": {
+        "outcome_excluded:Unspecified": 150,
+        "pass": 26
+      },
+      "processed_path": "data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl",
+      "processed_sha256": "b2e7288ff402fcf9ba462e0217eb414cb14cfb97a8253f06d88df9b7c8b16b8a",
+      "note": "Unspecified/incomplete rows excluded; failures are not negative labels. PubChem Active is identity/assay outcome, not proven lipid-lowering."
+    },
+    "chembl_bioactivity": {
+      "status": "qc_complete",
+      "input_rows": 1128,
+      "qc_pass_rows": 209,
+      "training_eligible_rows": 209,
+      "exclude_reasons": {
+        "classification_excluded:annotation": 918,
+        "pass": 209,
+        "classification_excluded:mechanism": 1
+      },
+      "processed_path": "data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl",
+      "processed_sha256": "068884fbe33eb2f1f62af103e4933889ebb3c2a5515d8b9a520e50f405b55f40",
+      "note": "Unspecified/incomplete rows excluded; failures are not negative labels. PubChem Active is identity/assay outcome, not proven lipid-lowering."
+    },
+    "bindingdb": {
+      "status": "qc_complete",
+      "input_rows": 74,
+      "qc_pass_rows": 71,
+      "training_eligible_rows": 0,
+      "exclude_reasons": {
+        "pass": 71,
+        "affinity_missing": 3
+      },
+      "processed_path": "data/public/processed/bindingdb/records_endpoint_qc.jsonl",
+      "processed_sha256": "d26c6c4fdd7dd96a71e4d7e7dbe82846efba026159992b774d3b1d61c146d0b4",
+      "note": "BindingDB affinities are mechanism_support only; binding ≠ cellular lipid-lowering. Failures are not negative labels."
+    },
+    "epa_toxcast_tox21": {
+      "status": "qc_complete",
+      "input_rows": 9,
+      "qc_pass_rows": 7,
+      "training_eligible_rows": 0,
+      "exclude_reasons": {
+        "pass": 7,
+        "inactive_excluded_not_safety_label": 2
+      },
+      "processed_path": "data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl",
+      "processed_sha256": "26ef8706b112e59f2c38c9161a348233369a760727aa36c301635108b2436ce8",
+      "note": "ToxCast/CTX active hits are risk_signal only; inactive/non-hit is never a safety clearance. Layer separately from DILIrank."
+    }
+  }
+}

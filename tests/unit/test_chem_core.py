@@ -19,6 +19,9 @@ SIMVASTATIN_LACTONE = (
 )
 # D-glucono-1,5-lactone — 糖内酯，不应命中 statin_lactone
 GLUCONO_LACTONE = "O=C1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O"
+# 糖醛酸结合物：旧开链 SMARTS 会沿糖环误命中 statin_like_hydroxy_acid。
+GLUCURONIDE = "Cc1cc(=O)oc2cc(O[C@@H]3OC(C(=O)O)[C@@H](O)[C@H](O)[C@H]3O)ccc12"
+ACYCLIC_DIHYDROXY_ACID = "CC(O)CC(O)CC(=O)O"
 ETHANOL = "CCO"
 BAD_SMILES = "not_a_smiles_!!!"
 
@@ -61,3 +64,13 @@ def test_statin_smarts_does_not_hit_sugar_lactone() -> None:
     assert sugar_score < 0.15
     assert "statin lactone" in statin_hits or "statin like hydroxy acid" in statin_hits
     assert statin_score > sugar_score
+
+
+def test_statin_open_chain_smarts_excludes_glucuronide_ring() -> None:
+    glucuronide = Chem.MolFromSmiles(GLUCURONIDE)
+    acyclic = Chem.MolFromSmiles(ACYCLIC_DIHYDROXY_ACID)
+    assert glucuronide is not None and acyclic is not None
+    _, glucuronide_hits = match_weighted(glucuronide, LIPID_PATTERNS)
+    _, acyclic_hits = match_weighted(acyclic, LIPID_PATTERNS)
+    assert "statin like hydroxy acid" not in glucuronide_hits
+    assert "statin like hydroxy acid" in acyclic_hits

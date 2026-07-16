@@ -5,6 +5,7 @@ cases:
     role: positive
     cas: "79902-63-9"
     smiles: "CCC(C)(C)C(=O)O[C@H]1C[C@H](C)C=C2C=C[C@H](C)[C@H](CC[C@@H]3C[C@@H](O)CC(=O)O3)[C@@H]12"
+    assay_note: "HepG2-FFA literature context ~µM statin class; proxy positive only — not a predicted 1mM FFA readout"
     expected:
       pass_filter: true
       rank_eligible: true
@@ -14,6 +15,7 @@ cases:
     role: positive
     cas: "75330-75-5"
     smiles: "CC[C@H](C)C(=O)O[C@H]1C[C@@H](C)C=C2C=C[C@H](C)[C@H](CC[C@@H]3C[C@@H](O)CC(=O)O3)[C@@H]12"
+    assay_note: "HepG2-FFA / hepatic lipid literature positive reference (descriptive)"
     expected:
       pass_filter: true
       rank_eligible: true
@@ -23,6 +25,7 @@ cases:
     role: positive
     cas: "49562-28-9"
     smiles: "CC(C)OC(=O)C(C)(C)Oc1ccc(cc1)C(=O)c2ccc(Cl)cc2"
+    assay_note: "PPARα agonist class; HepG2-FFA literature context (descriptive, not dose–response)"
     expected:
       pass_filter: true
       rank_eligible: true

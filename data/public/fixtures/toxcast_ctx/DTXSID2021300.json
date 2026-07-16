@@ -1,0 +1,17 @@
+[
+  {
+    "dtxsid": "DTXSID2021300",
+    "casn": "50-78-2",
+    "chnm": "Aspirin",
+    "aeid": 901,
+    "assayComponentEndpointName": "NVS_ENZ_hCOX1",
+    "hitc": 1.0,
+    "ac50": 3.2,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "enzyme",
+    "inchikey": "BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+    "smiles": "CC(=O)Oc1ccccc1C(=O)O",
+    "m4id": 3001,
+    "spid": "TP0000003"
+  }
+]

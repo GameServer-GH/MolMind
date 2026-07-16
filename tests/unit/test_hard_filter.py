@@ -37,13 +37,15 @@ def _record_from_smiles(molecule_id: str, smiles: str) -> MoleculeRecord:
     )
 
 
-def test_nitro_rejected() -> None:
+def test_nitro_requires_review_not_automatic_rejection() -> None:
     cfg = load_config(mode="offline")
     # nitrobenzene
     rec = _record_from_smiles("NITRO_TEST", "c1ccc(cc1)[N+](=O)[O-]")
     decision = apply_hard_filters(rec, cfg)
-    assert decision.passed is False
-    assert "structural_alerts" in decision.step_codes or "nitro" in decision.reason.lower()
+    assert decision.passed is True
+    assert decision.status == "review_required"
+    assert any(hit.rule_id == "nitro_aromatic" for hit in decision.alert_hits)
+    assert all(hit.rule_id != "aniline" for hit in decision.alert_hits)
 
 
 def test_simvastatin_passes() -> None:
@@ -53,6 +55,24 @@ def test_simvastatin_passes() -> None:
     rec = _record_from_smiles("Simvastatin", sim.smiles)
     decision = apply_hard_filters(rec, cfg)
     assert decision.passed is True
+
+
+def test_max_logp_hard_rejects() -> None:
+    """P0-B：expert_redlines.max_logp_hard 生效。"""
+    cfg = load_config(mode="offline")
+    # 压低红线 LogP，使 Ro5 已过但红线拒
+    for step in cfg.filter_steps.get("steps", []):
+        if step.get("id") == "lipinski_ro5":
+            step.setdefault("params", {})["max_logp"] = 10.0
+        if step.get("id") == "expert_redlines":
+            step.setdefault("params", {})["max_logp_hard"] = 3.0
+    # biphenyl 类适中 LogP 常 >3
+    rec = _record_from_smiles("LOGP_HARD", "c1ccc(cc1)c2ccccc2")
+    assert rec.logp > 3.0
+    decision = apply_hard_filters(rec, cfg)
+    assert decision.passed is False
+    assert "expert_redlines" in decision.step_codes
+    assert "LogP" in decision.reason
 
 
 def test_sample_pass_rate_statable() -> None:

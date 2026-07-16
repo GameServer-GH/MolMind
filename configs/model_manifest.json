@@ -1,5 +1,13 @@
 {
   "version": "ml-heads-v1",
+  "public_data_registry": "data/public/registry.yaml",
+  "delivery_policy": {
+    "quality_first": true,
+    "keep_training_data_and_inference_models_in_project": true,
+    "split_only_after_runtime_or_delivery_failure": true,
+    "preferred_inference": "cpu_docker_offline",
+    "training_artifacts_may_be_gb_scale": true
+  },
   "models": [
     {
       "path": "data/models/dili_knn_v1.json",
@@ -12,5 +20,9 @@
       "version": "admet_proxy_v1"
     }
   ],
+  "task_specific_dual_endpoint": {
+    "status": "unavailable",
+    "reason": "no_same_condition_HepG2_FFA_lipid_and_viability_training_data"
+  },
   "notes": "本地 ECFP k-NN 毒性代理（源自 curated DILIrank）；无文件则跳过，不阻断筛选。肝损伤代理≠HepG2 活力实测。"
 }

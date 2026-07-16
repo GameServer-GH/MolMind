@@ -36,6 +36,10 @@ def _mol(mid: str = "T001") -> ScoreRecord:
         lipid_rationale="rule+evidence",
         tox_rationale="low alert",
         overall_reason="ok",
+        toxicity_confidence=0.8,
+        toxicity_uncertainty=0.2,
+        eligibility_status="eligible",
+        eligibility_reasons=("lipid_and_toxicity_policy_passed",),
     )
 
 

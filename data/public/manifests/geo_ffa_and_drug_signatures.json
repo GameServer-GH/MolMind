@@ -1,0 +1,26 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "geo_ffa_and_drug_signatures",
+  "import_wave": "wave_3_multiomics",
+  "source_url": "https://www.ncbi.nlm.nih.gov/geo/",
+  "license_policy": "preserve_accession_and_record_terms",
+  "captured_at": "2026-07-15T07:49:09.139427+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 6,
+  "raw_path": "data/public/raw/geo_ffa_and_drug_signatures/response_1784101749.json",
+  "processed_path": "data/public/processed/geo_ffa_and_drug_signatures/records.jsonl",
+  "raw_sha256": "d9e927d3373037ebeaf9df4a6f4702cb4797bb1b5798afaea868fb26b3146f28",
+  "processed_sha256": "d9bc06ebacb73cbaa39ff90aee27f723b54f055324cf48a7b30f426a5dfcda63",
+  "query": {
+    "accessions": [
+      "GSE122660",
+      "GSE248166",
+      "GSE248903",
+      "GSE24187",
+      "GSE29868",
+      "GSE33152"
+    ]
+  }
+}

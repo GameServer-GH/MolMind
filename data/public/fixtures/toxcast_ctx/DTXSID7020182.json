@@ -1,0 +1,47 @@
+[
+  {
+    "dtxsid": "DTXSID7020182",
+    "casn": "80-05-7",
+    "chnm": "Bisphenol A",
+    "aeid": 701,
+    "assayComponentEndpointName": "TOX21_ERa_LUC_BG1_Agonist",
+    "hitc": 1.0,
+    "ac50": 0.85,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "nuclear receptor",
+    "inchikey": "IISBACLAFKSPIT-UHFFFAOYSA-N",
+    "smiles": "CC(C)(c1ccc(O)cc1)c1ccc(O)cc1",
+    "m4id": 1001,
+    "spid": "TP0000001"
+  },
+  {
+    "dtxsid": "DTXSID7020182",
+    "casn": "80-05-7",
+    "chnm": "Bisphenol A",
+    "aeid": 702,
+    "assayComponentEndpointName": "TOX21_ARE_BLA_agonist_ratio",
+    "hitc": 0.95,
+    "ac50": 12.3,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "dna binding",
+    "inchikey": "IISBACLAFKSPIT-UHFFFAOYSA-N",
+    "smiles": "CC(C)(c1ccc(O)cc1)c1ccc(O)cc1",
+    "m4id": 1002,
+    "spid": "TP0000001"
+  },
+  {
+    "dtxsid": "DTXSID7020182",
+    "casn": "80-05-7",
+    "chnm": "Bisphenol A",
+    "aeid": 703,
+    "assayComponentEndpointName": "TOX21_PPARg_BLA_Agonist_ratio",
+    "hitc": 0.0,
+    "ac50": null,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "nuclear receptor",
+    "inchikey": "IISBACLAFKSPIT-UHFFFAOYSA-N",
+    "smiles": "CC(C)(c1ccc(O)cc1)c1ccc(O)cc1",
+    "m4id": 1003,
+    "spid": "TP0000001"
+  }
+]

@@ -1,4 +1,4 @@
-"""定榜冻结口径：主证据 chembl/pubchem；nafldkb/dili 默认关闭。"""
+"""主路径冻结口径：主证据 chembl/pubchem；nafldkb/dili 默认关闭。"""
 
 from __future__ import annotations
 

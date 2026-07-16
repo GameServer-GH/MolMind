@@ -1,0 +1,23 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "fda_dilirank_2",
+  "import_wave": "wave_2_toxicology",
+  "source_url": "https://www.fda.gov/science-research/liver-toxicity-knowledge-base-ltkb/drug-induced-liver-injury-rank-dilirank-20-dataset",
+  "license_policy": "preserve_dataset_version_and_label_lineage",
+  "captured_at": "2026-07-15T07:51:59.781800+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 1336,
+  "raw_path": "data/public/raw/fda_dilirank_2/response_1784101919.json",
+  "processed_path": "data/public/processed/fda_dilirank_2/records.jsonl",
+  "raw_sha256": "495db1fcb90efbdb5525fbbaaf5c81ee81377279cdc851fe1564e3779fe91fe0",
+  "processed_sha256": "cf21667f59f0b44382c159bc586153eb22e0da1db62cc673bccd347bf97b0950",
+  "query": {
+    "raw_path": "data/public/raw/fda_dilirank_2/dilirank_2.0.xlsx",
+    "processed_path": "data/public/processed/fda_dilirank_2/records.csv",
+    "row_count": 1336,
+    "header_rows": 2,
+    "dataset_version": "DILIrank 2.0"
+  }
+}

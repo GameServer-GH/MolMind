@@ -1,14 +1,23 @@
-# MolMind 正式版交付镜像
-FROM continuumio/miniconda3:24.1.2-0
+# MolMind 交付镜像；主验收平台 linux/amd64，可用 buildx 同构 arm64。
+ARG BASE_IMAGE=continuumio/miniconda3:24.1.2-0
+FROM ${BASE_IMAGE}
+
+ARG TARGETPLATFORM
+ARG CONDA_CHANNEL=conda-forge
+ARG PIP_INDEX_URL=https://pypi.org/simple
+LABEL org.molmind.target-platform=${TARGETPLATFORM}
 
 WORKDIR /app
 
-# 不钉死小版本：2023.09.6 无 linux-aarch64 包，Apple Silicon 原生构建会失败。
-# 与 pyproject.toml 的 rdkit>=2023.9.1 对齐，由 conda 按当前架构解析可用版本。
-RUN conda install -y -c conda-forge "rdkit>=2023.09.1" python=3.11 \
-    && conda clean -afy
+# 精确固定 RDKit 补丁；镜像源可注入，但默认使用可信官方源。
+RUN conda install -y -c "${CONDA_CHANNEL}" "rdkit=2025.09.2" "python=3.11"
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md .gitignore .dockerignore ./
+COPY deploy ./deploy
+
+# 依赖层仅在锁文件变化时失效，日常代码/测试修改不再重复下载依赖。
+RUN pip install --index-url "${PIP_INDEX_URL}" --no-cache-dir -r deploy/requirements.lock
+
 COPY apps ./apps
 COPY services ./services
 COPY packages ./packages
@@ -16,9 +25,10 @@ COPY configs ./configs
 COPY data ./data
 COPY templates ./templates
 COPY scripts ./scripts
+COPY tests ./tests
+COPY .github ./.github
 
-RUN pip install --no-cache-dir pyyaml pandas fastapi "uvicorn[standard]" python-multipart httpx reportlab pytest \
-    && pip install --no-cache-dir -e .
+RUN pip install --no-deps --no-build-isolation --no-cache-dir -e .
 
 ENV PYTHONPATH=/app
 ENV MOLMIND_MODE=auto

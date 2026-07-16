@@ -1,0 +1,22 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "lincs_cmap",
+  "import_wave": "wave_3_multiomics",
+  "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92742",
+  "license_policy": "preserve_data_policy_and_compound_identity",
+  "captured_at": "2026-07-15T07:49:09.144211+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 2,
+  "raw_path": "data/public/raw/lincs_cmap/response_1784101749.json",
+  "processed_path": "data/public/processed/lincs_cmap/records.jsonl",
+  "raw_sha256": "403dd0a55cd97d3c6d12dea8d648abe8f9c7bff679fe5f9332b6df428a633285",
+  "processed_sha256": "9bf87c02f29b5d5a5046af2dd9969c0d41ced60857181152096d33b3258cc107",
+  "query": {
+    "accessions": [
+      "GSE92742",
+      "GSE70138"
+    ]
+  }
+}

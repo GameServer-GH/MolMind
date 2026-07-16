@@ -24,6 +24,8 @@ class GoldCase:
     expected: dict[str, Any]
     fp_bits: Any
     inchikey: str = ""
+    # P1-B：描述性实验上下文（不参与打分）
+    assay_note: str = ""
 
 
 @dataclass
@@ -62,6 +64,7 @@ def _load_cases(path: Path) -> list[GoldCase]:
                 expected=item.get("expected") or {},
                 fp_bits=morgan_fp(mol),
                 inchikey=inchikey or "",
+                assay_note=str(item.get("assay_note") or ""),
             )
         )
     return cases
@@ -93,3 +96,25 @@ def max_similarity(fp, cases: list[GoldCase]) -> tuple[float, str | None]:
             best = sim
             best_name = case.name
     return best, best_name
+
+
+def leave_one_case_out(
+    gold: GoldSet,
+    excluded: GoldCase,
+    *,
+    duplicate_similarity: float = 0.98,
+) -> GoldSet:
+    """移除被评估 case 及近重复物，避免自身相似度制造乐观回归结果。"""
+
+    def keep(case: GoldCase) -> bool:
+        if case is excluded or case.name == excluded.name:
+            return False
+        if excluded.inchikey and case.inchikey == excluded.inchikey:
+            return False
+        return tanimoto(excluded.fp_bits, case.fp_bits) < duplicate_similarity
+
+    return GoldSet(
+        positives=[case for case in gold.positives if keep(case)],
+        false_positives=[case for case in gold.false_positives if keep(case)],
+        negatives=[case for case in gold.negatives if keep(case)],
+    )

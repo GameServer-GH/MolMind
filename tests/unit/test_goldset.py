@@ -35,3 +35,11 @@ def test_positive_self_similarity() -> None:
     sim, name = max_similarity(case.fp_bits, gold.positives)
     assert sim >= 0.99
     assert name == case.name
+
+
+def test_assay_note_loaded_descriptive_only() -> None:
+    """P1-B：assay_note 可加载，不参与相似计算语义。"""
+    gold = load_goldset()
+    sim = next(c for c in gold.positives if c.name == "Simvastatin")
+    assert getattr(sim, "assay_note", "")
+    assert "HepG2" in sim.assay_note or "hepg2" in sim.assay_note.lower()

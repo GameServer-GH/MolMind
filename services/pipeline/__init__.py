@@ -1,7 +1,16 @@
 """services.pipeline — 编排与配置导出。"""
 
 from services.pipeline.config_loader import AppConfig, ConfigLoadError, load_config
-from services.pipeline.export import CSV_COLUMNS, export_nomination_csv, to_csv_text
+from services.pipeline.export import (
+    CSV_COLUMNS,
+    SCREENING_AUDIT_COLUMNS,
+    export_critic_audit_csv,
+    export_hepg2_ffa_resources_json,
+    export_nomination_csv,
+    export_screening_audit_csv,
+    export_rank_robustness_json,
+    to_csv_text,
+)
 
 
 def __getattr__(name: str):
@@ -15,9 +24,14 @@ def __getattr__(name: str):
 __all__ = [
     "AppConfig",
     "CSV_COLUMNS",
+    "SCREENING_AUDIT_COLUMNS",
     "ConfigLoadError",
     "PipelineResult",
     "export_nomination_csv",
+    "export_critic_audit_csv",
+    "export_hepg2_ffa_resources_json",
+    "export_screening_audit_csv",
+    "export_rank_robustness_json",
     "load_config",
     "run_pipeline",
     "screen_sdf",

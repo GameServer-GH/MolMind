@@ -1,0 +1,159 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "bindingdb",
+  "import_wave": "wave_1_activity",
+  "source_url": "https://www.bindingdb.org/rwd/bind/chemsearch/marvin/Download.jsp",
+  "license_policy": "split_provenance_for_bindingdb_and_imported_sources",
+  "captured_at": "2026-07-15T09:17:13.970513+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 74,
+  "raw_path": "data/public/raw/bindingdb/bindingdb_assay_grain_1784107033.json",
+  "processed_path": "data/public/processed/bindingdb/records.jsonl",
+  "raw_sha256": "4e611288bf5f5f4ba96701919727f41c3f0cc7ea43b0052b7f7a35db4ef9a382",
+  "processed_sha256": "3d474eca85ba8693b7a8d2eaab4c7fec19fbad088f8dbff6c36957538ee881a6",
+  "query": {
+    "activity_count": 74,
+    "target_count": 16,
+    "target_stats": [
+      {
+        "uniprot": "Q07869",
+        "target_label": "PPARA",
+        "returned": 2327,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P37231",
+        "target_label": "PPARG",
+        "returned": 4416,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "Q03181",
+        "target_label": "PPARD",
+        "returned": 1732,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P04035",
+        "target_label": "HMGCR",
+        "returned": 236,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P49327",
+        "target_label": "FASN",
+        "returned": 2032,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "O00767",
+        "target_label": "SCD1",
+        "returned": 677,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "O75907",
+        "target_label": "DGAT1",
+        "returned": 1419,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "Q96PD7",
+        "target_label": "DGAT2",
+        "returned": 1674,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "Q13085",
+        "target_label": "ACACA",
+        "returned": 638,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "O00763",
+        "target_label": "ACACB",
+        "returned": 3623,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P50416",
+        "target_label": "CPT1A",
+        "returned": 14,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "Q9UHC9",
+        "target_label": "NPC1L1",
+        "returned": 25,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P01130",
+        "target_label": "LDLR",
+        "returned": 405,
+        "kept": 5,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "P06858",
+        "target_label": "LPL",
+        "returned": 2,
+        "kept": 2,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "O95477",
+        "target_label": "ABCA1",
+        "returned": 2,
+        "kept": 2,
+        "cache_hit": true
+      },
+      {
+        "uniprot": "Q13131",
+        "target_label": "PRKAA1",
+        "returned": 502,
+        "kept": 5,
+        "cache_hit": true
+      }
+    ],
+    "target_errors": [],
+    "target_label_counts": {
+      "PPARA": 5,
+      "PPARG": 5,
+      "PPARD": 5,
+      "HMGCR": 5,
+      "FASN": 5,
+      "SCD1": 5,
+      "DGAT1": 5,
+      "DGAT2": 5,
+      "ACACA": 5,
+      "ACACB": 5,
+      "CPT1A": 5,
+      "NPC1L1": 5,
+      "LDLR": 5,
+      "LPL": 2,
+      "ABCA1": 2,
+      "PRKAA1": 5
+    },
+    "affinity_cutoff_nM": 1000,
+    "api_base": "https://www.bindingdb.org/rest",
+    "grain": "compound_x_assay_x_activity",
+    "ranking_effect": "mechanism_support_only",
+    "note": "BindingDB lipid-mechanism UniProt subset. Affinity is mechanism support only; binding ≠ cellular lipid-lowering. Empty/failed targets are audit_missing, not negatives."
+  },
+  "grain": "compound_x_assay_x_activity"
+}

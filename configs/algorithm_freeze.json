@@ -1,0 +1,81 @@
+{
+  "schema_version": "molmind-algorithm-freeze-v2",
+  "frozen_at": "2026-07-15T12:12:00+08:00",
+  "source_commit": "1d3bbf33455128c0d2d8103e16f8ad1dfbe3fa0e",
+  "algorithm_contract_version": "competition-eligibility-v9",
+  "baseline_config_hash": "75edc449e123b3da",
+  "active_config_hash": "75edc449e123b3da",
+  "baseline_run_id": "mm-4df40a7e6fea829e3ba6f346",
+  "baseline_selection_sha256": "8b29798ff8c4b2cf97dfb1c63a7f0a09c92ae88ede48f45f56f4c9f38016cae0",
+  "baseline_input_sha256": "3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456",
+  "baseline_artifacts": {
+    "nomination_top10.csv": "bf7be27a3638964f4b597aa8983ac5cd678505b07e828cf9729769d78040c61b",
+    "nomination_top10.mechanism.pdf": "ea0803fde9c1d130218480c52b33fd601601bc22b7784386e2c8081f4735f4f8",
+    "nomination_top10.rank_robustness.json": "c6d625bef0aec6a8ad7376f63713f4cda48d6a6049d47c48de5abc286191de50",
+    "nomination_top10.mechanism_graph.json": "17b6cd58f81ca792d3a9751fac26607906d97f639805b76552556051a6330f03"
+  },
+  "critical_files": {
+    "configs/rank_weights.yaml": "728679380db7c34a1656a493b2593042225339ade5fa4c34a4fec4d44e9d5aa0",
+    "configs/assumptions.yaml": "cd352aa8691cef6873f16340475b17e9ee937a54ebda803131e76b1c1699f7d1",
+    "services/eligibility/policy.py": "0ac207c17350e2d0af51ebefce4f0495503b884d787608a927f131698896bb69",
+    "services/scorer_lipid/scorer.py": "d8e5954e9b762e48a43599793ffbd86849d9d0172391d496e1c7c96d8cad0836",
+    "services/scorer_tox/scorer.py": "c9d1adb78ea733fce8152e92398fba883c33e244aef28dd962cd824a01629def",
+    "services/ranker/ranker.py": "53de1cd5bd6bc42ef465c8019128350c71cf4d6c4964d37f6599b4a710cb9561",
+    "services/ranker/robustness.py": "0cd574d96b4f132bd4924572138032100efed6002c7a526bfc5e2a55983fa08d",
+    "services/critic/critic.py": "c22485e1cf04a01ecb29ef1b855a7803009acbaf1ea5ab7dab6f88e8b0fc9cff",
+    "packages/chem_core/core.py": "a51383f5a353c007afe4934b0a1a9df3a1038d34ca2ee4673c07d19881fd5d3c",
+    "services/pipeline/config_loader.py": "ba4862305b450cd1f086939e036302e4fa46bd6b46bfde83f440ed924f474d57",
+    "services/evidence_facade/facade.py": "5dec28e6b1f6c6134086f979d086078ec5e387683766177e1a59b18e829da541",
+    "data/goldset/positives.yaml": "907e1998d558217c1f610734d469d2e73c02ce9270abf982aafeab7d4b7f0b8e",
+    "data/goldset/false_positives.yaml": "90bfbb8307b1ffaa328e54f2e784d30842e73345f66112cb8390b78516769a67"
+  },
+  "policy": {
+    "evidence_may_change_scores": true,
+    "evidence_may_change_eligibility": true,
+    "evidence_may_change_algorithm_files": false,
+    "negative_search_is_safety_evidence": false,
+    "stereoisomer_evidence_requires_exact_structure_match": true
+  },
+  "change_control": {
+    "from_contract": "competition-eligibility-v3",
+    "reason": "Confirmed glucuronide ring false positives in statin_like_hydroxy_acid SMARTS.",
+    "scope": "Only require the statin dihydroxy-acid side chain atoms to be non-ring atoms; weights and all other gates remain unchanged.",
+    "regression_test": "tests/unit/test_chem_core.py::test_statin_open_chain_smarts_excludes_glucuronide_ring"
+  },
+  "evidence_direction_change": {
+    "from_contract": "competition-eligibility-v4",
+    "reason": "ChEMBL phospholipidosis and target-only activities were incorrectly treated as positive lipid-lowering evidence.",
+    "scope": "Split activities into positive cellular phenotype, adverse lipid phenotype, mechanism support and annotation; only explicit direction-matched cellular lipid reduction contributes to lipid evidence.",
+    "regression_test": "tests/unit/test_evidence_adapters.py::test_legacy_phospholipidosis_is_replayed_as_toxicity_not_lipid"
+  },
+  "scientific_degradation_change": {
+    "from_contract": "competition-eligibility-v5",
+    "reason": "A Quality-Max run disabled snapshots, reported no candidate evidence, admitted a borderline high-uncertainty toxicity candidate, and sorted relaxed quota candidates below lower-scoring candidates.",
+    "scope": "Force and hash snapshot use in auto mode; report candidate-level evidence misses; gate proxy-only candidates on a conservative toxicity upper bound; distinguish engineering PASS from scientific validation; preserve final-score ordering after portfolio selection.",
+    "regression_test": "tests/unit/test_api.py::test_quality_max_cannot_disable_frozen_snapshot; tests/unit/test_high_value_optimizations.py::test_low_confidence_toxicity_uses_conservative_nomination_bound"
+  },
+  "evidence_query_contract_change": {
+    "from_contract": "competition-eligibility-v6",
+    "reason": "Query failures, verified empty results and ambiguous PubChem identities were not represented as distinct machine-readable outcomes.",
+    "scope": "Add non-scoring query status states; prevent multi-CID PubChem identity ambiguity from producing toxicity scores; bind delivery artifacts and evidence-bake manifests to deterministic selection hashes.",
+    "regression_test": "tests/unit/test_evidence_adapters.py::test_pubchem_multiple_cids_requires_identity_review_without_toxicity_lookup; tests/unit/test_competition_invariants.py::test_final_top_csv_pdf_and_result_share_same_eligible_ids"
+  },
+  "evidence_circuit_and_mechanism_context_change": {
+    "from_contract": "competition-eligibility-v7",
+    "reason": "Circuit-open candidates were mislabeled as verified empty during evidence baking, and target context was not separated from candidate-target evidence.",
+    "scope": "Represent circuit-open as not_queried/query_failed; add a non-scoring candidate-target-disease-pathway graph whose candidate edges remain explicit hypotheses and whose target context uses frozen official identifiers.",
+    "regression_test": "tests/unit/test_bake_evidence.py::test_bake_circuit_open_is_not_mislabeled_verified_empty; tests/unit/test_mechanism_graph.py::test_graph_keeps_candidate_target_as_hypothesis_only"
+  },
+  "scientific_claim_and_audit_change": {
+    "from_contract": "competition-eligibility-v8",
+    "reason": "Local structural toxicity proxies were being counted as safety-clearance evidence, and candidate-level scientific claim limits were not exported.",
+    "scope": "Keep computational proxy nomination available while setting safety evidence coverage to zero without direct evidence; add scientific_status, claim_ceiling, endpoint query status, all-candidate score JSONL and evidence ledger artifacts; exclude self/near-self kNN entries during GoldSet regression.",
+    "regression_test": "tests/unit/test_high_value_optimizations.py::test_toxicity_risk_signal_does_not_raise_safety_clearance; tests/unit/test_export.py::test_pipeline_writes_candidate_scores_and_evidence_ledger"
+  },
+  "origene_evidence_semantics_change": {
+    "from_contract": "competition-eligibility-v9",
+    "reason": "OriGene guidance: residual P0 evidence lineage/identity cutoff and P1 Top-M orchestration, citations, structured selection reasons.",
+    "scope": "Add EvidenceBundle lineage fields and evidence_type vocabulary; keep annotation/query_audit out of lipid_query_status and scientific scores; ML/proxy clearance must not inflate safety_clearance_confidence; Top-M runs identity\u2192fill\u2192re-eligibility; export citations.jsonl and selection_audit.jsonl. Default gate thresholds unchanged (min_toxicity_confidence/min_safety_evidence_coverage remain 0.0).",
+    "regression_test": "tests/unit/test_high_value_optimizations.py::test_chembl_annotation_does_not_drive_lipid_query_status; tests/unit/test_high_value_optimizations.py::test_ml_proxy_clearance_does_not_raise_safety_clearance; tests/unit/test_high_value_optimizations.py::test_bundle_lineage_and_citations_populated; tests/unit/test_high_value_optimizations.py::test_identity_review_forces_review_required_eligibility; tests/unit/test_export.py::test_pipeline_writes_candidate_scores_and_evidence_ledger"
+  }
+}

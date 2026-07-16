@@ -15,7 +15,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE_DIR = ROOT / "data" / "llm_cache"
 
-# DeepSeek 交付默认：密钥经 XOR+Base64 混淆嵌入，评委无需再配环境变量。
+# DeepSeek 交付默认：密钥经 XOR+Base64 混淆嵌入，部署方无需再配环境变量。
 # 优先级：环境变量 > 嵌入密钥。设 MOLMIND_LLM_USE_EMBEDDED=0 可禁用嵌入（测试用）。
 # 注意：源码内混淆可被逆向；公开仓库仍有泄露风险，赛后建议轮换 Key。
 _EMBEDDED_KEY_PAD = b"MolMind::DeepSeek::Mechanism::2026"

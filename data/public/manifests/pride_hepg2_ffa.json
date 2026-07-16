@@ -1,0 +1,22 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "pride_hepg2_ffa",
+  "import_wave": "wave_3_multiomics",
+  "source_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD012065",
+  "license_policy": "verify_record_terms_before_redistribution",
+  "captured_at": "2026-07-15T07:49:09.140958+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 2,
+  "raw_path": "data/public/raw/pride_hepg2_ffa/response_1784101749.json",
+  "processed_path": "data/public/processed/pride_hepg2_ffa/records.jsonl",
+  "raw_sha256": "ee954f0528a2d50032c723a746c5b50d0dd29313685ff1fe2c9e972b6bb433ce",
+  "processed_sha256": "b43f190c1def960c4bcebc0d18580a1e7310609662c51199d56d1ad3f03e6df9",
+  "query": {
+    "accessions": [
+      "PXD012065",
+      "PXD012066"
+    ]
+  }
+}

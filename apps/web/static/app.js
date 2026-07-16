@@ -36,6 +36,9 @@
   const mechPdfToast = document.getElementById("mechPdfToast");
   const mechPdfToastName = document.getElementById("mechPdfToastName");
   let mechPdfToastTimer = null;
+  const snapshotSwitch = document.getElementById("snapshotSwitch");
+  const snapshotLockToast = document.getElementById("snapshotLockToast");
+  let snapshotLockToastTimer = null;
   const topNInput = document.getElementById("topN");
   const progressBar = document.getElementById("progressBar");
   const progressPct = document.getElementById("progressPct");
@@ -125,6 +128,24 @@
     mechPdfToast.setAttribute("aria-hidden", "false");
     if (mechPdfToastTimer) clearTimeout(mechPdfToastTimer);
     mechPdfToastTimer = setTimeout(hideMechPdfToast, 2000);
+  }
+
+  function hideSnapshotLockToast() {
+    if (snapshotLockToastTimer) {
+      clearTimeout(snapshotLockToastTimer);
+      snapshotLockToastTimer = null;
+    }
+    if (!snapshotLockToast) return;
+    snapshotLockToast.classList.remove("is-visible");
+    snapshotLockToast.setAttribute("aria-hidden", "true");
+  }
+
+  function showSnapshotLockToast() {
+    if (!snapshotLockToast) return;
+    snapshotLockToast.classList.add("is-visible");
+    snapshotLockToast.setAttribute("aria-hidden", "false");
+    if (snapshotLockToastTimer) clearTimeout(snapshotLockToastTimer);
+    snapshotLockToastTimer = setTimeout(hideSnapshotLockToast, 2600);
   }
 
   function stopMechanismPoll() {
@@ -262,6 +283,21 @@
     });
     const meta = MODE_META[selectedMode];
     modeHint.textContent = meta ? meta.hint : "";
+    if (useSnapshotInput) {
+      if (selectedMode === "auto") {
+        useSnapshotInput.checked = true;
+        useSnapshotInput.disabled = true;
+      } else {
+        useSnapshotInput.disabled = false;
+      }
+    }
+    if (snapshotSwitch) {
+      const locked = selectedMode === "auto";
+      snapshotSwitch.classList.toggle("is-locked", locked);
+      snapshotSwitch.title = locked
+        ? "Quality-Max 必须使用快照"
+        : "使用证据快照";
+    }
     const snapTag = snapshotLabel(useSnapshotEnabled());
     navModeBadge.textContent = `${modeLabel(selectedMode)} · ${snapTag}`;
     runningModeBadge.textContent = `${modeLabel(selectedMode)} · ${snapTag}`;
@@ -715,9 +751,12 @@
       d.scaffold_diversity_top10 != null ? d.scaffold_diversity_top10 : "—";
 
     const qualityEl = document.getElementById("statQuality");
-    if (d.quality_pass === true) {
-      qualityEl.textContent = "PASS";
-      qualityEl.className = "text-lg font-semibold tabular-nums text-primary";
+    if (d.engineering_pass === true) {
+      const scienceReady = d.scientific_validation_status === "validated";
+      qualityEl.textContent = scienceReady ? "VALIDATED" : "工程 PASS · 科学未验证";
+      qualityEl.className = scienceReady
+        ? "text-lg font-semibold tabular-nums text-primary"
+        : "text-sm font-semibold tabular-nums text-amber-600";
     } else if (d.quality_pass === false) {
       qualityEl.textContent = "FAIL";
       qualityEl.className = "text-lg font-semibold tabular-nums text-red-600";
@@ -772,6 +811,8 @@
         <td class="p-3 font-mono text-xs max-w-[140px] truncate" title="${escapeHtml(String(row.inchikey || ""))}">${escapeHtml(String(row.inchikey || "—"))}</td>
         <td class="p-3 font-mono text-sm tabular-nums">${cellNum(row.lipid_score)}</td>
         <td class="p-3 font-mono text-sm tabular-nums">${cellNum(row.tox_risk)}</td>
+        <td class="p-3 font-mono text-xs whitespace-nowrap">${escapeHtml(String(row.eligibility_status || "—"))}</td>
+        <td class="p-3 font-mono text-sm tabular-nums">${cellNum(row.toxicity_confidence)}</td>
         <td class="p-3 font-mono text-sm tabular-nums font-bold text-primary">${cellNum(row.final_score)}</td>
         <td class="p-3 font-mono text-sm tabular-nums">${cellNum(row.novelty_score)}</td>
         <td class="p-3 font-mono text-sm tabular-nums">${cellNum(row.conf_e)}</td>
@@ -850,6 +891,15 @@
 
   if (useSnapshotInput) {
     useSnapshotInput.addEventListener("change", updateModeUI);
+  }
+
+  if (snapshotSwitch) {
+    snapshotSwitch.addEventListener("click", (e) => {
+      if (selectedMode !== "auto") return;
+      e.preventDefault();
+      if (useSnapshotInput) useSnapshotInput.checked = true;
+      showSnapshotLockToast();
+    });
   }
 
   topNInput.addEventListener("change", () => {

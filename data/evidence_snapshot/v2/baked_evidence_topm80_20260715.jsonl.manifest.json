@@ -1,0 +1,659 @@
+{
+  "schema_version": "molmind-evidence-bake-manifest-v3",
+  "created_at": "2026-07-15T06:16:57+00:00",
+  "config_hash": "deecff6b06ec4077",
+  "source_input_sha256": "3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456",
+  "candidate_set_sha256": "cc14470e15e72411a38dc64044df5b9a8091185d61d001d72e2d209cf153a74a",
+  "algorithm_freeze_sha256": "8abcd32dab5cdad2f6e31543135a964852d38a5f74e871bc1130fe4fd7bb6d27",
+  "snapshot_path": "baked_evidence_v2.jsonl",
+  "snapshot_sha256": "0142ac9cab4cea088a198b3618611332e0830d5503f3122745a21c358788bd21",
+  "candidates": 80,
+  "fetched": 80,
+  "skipped_cached": 0,
+  "wrote_rows": 163,
+  "failures": 0,
+  "query_entities": [
+    {
+      "molecule_id": "T37177",
+      "source_index": 18906,
+      "original_inchikey": "SHUYNJFEXPRUGR-RTCCEZQESA-N",
+      "standardized_inchikey": "SHUYNJFEXPRUGR-RTCCEZQESA-N",
+      "standardized_smiles": "C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "60696-62-0"
+    },
+    {
+      "molecule_id": "T23557",
+      "source_index": 15591,
+      "original_inchikey": "KCEFVYIWOQSJCH-LMOVPXPDSA-N",
+      "standardized_inchikey": "SRBPKVWITYPHQR-KRWDZBQOSA-N",
+      "standardized_smiles": "O=C(O)Cc1ccc(OCCNC[C@H](O)c2ccccc2)cc1",
+      "cas": "178600-17-4"
+    },
+    {
+      "molecule_id": "T64737",
+      "source_index": 22326,
+      "original_inchikey": "JCZLABDVDPYLRZ-AWEZNQCLSA-N",
+      "standardized_inchikey": "JCZLABDVDPYLRZ-UHFFFAOYSA-N",
+      "standardized_smiles": "NC(Cc1ccc(-c2ccccc2)cc1)C(=O)O",
+      "cas": "155760-02-4"
+    },
+    {
+      "molecule_id": "T67958",
+      "source_index": 16974,
+      "original_inchikey": "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+      "standardized_inchikey": "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+      "standardized_smiles": "O=C(O)CCCCCc1cccc2cncn12",
+      "cas": "85691-74-3"
+    },
+    {
+      "molecule_id": "T84225",
+      "source_index": 20546,
+      "original_inchikey": "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
+      "standardized_inchikey": "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
+      "standardized_smiles": "C[C@]12CC[C@H](O)C[C@@H]1[C@@H](O)C[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12",
+      "cas": "49644-04-4"
+    },
+    {
+      "molecule_id": "T17044",
+      "source_index": 15792,
+      "original_inchikey": "CXGTZJYQWSUFET-IBGZPJMESA-N",
+      "standardized_inchikey": "CXGTZJYQWSUFET-UHFFFAOYSA-N",
+      "standardized_smiles": "CCOC(Cc1ccc(OCCc2ccc(OS(C)(=O)=O)cc2)cc1)C(=O)O",
+      "cas": "251565-85-2"
+    },
+    {
+      "molecule_id": "TN7120",
+      "source_index": 14024,
+      "original_inchikey": "RHCPKKNRWFXMAT-RRWYKFPJSA-N",
+      "standardized_inchikey": "RHCPKKNRWFXMAT-QHMGNDAISA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2C3C(=O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "911-40-0"
+    },
+    {
+      "molecule_id": "T39740",
+      "source_index": 14881,
+      "original_inchikey": "MGFZEARHINUOMX-UHFFFAOYSA-N",
+      "standardized_inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1n[nH]c(C)c1CCCOc1cc(C(=O)O)ccc1F",
+      "cas": "2242751-53-5"
+    },
+    {
+      "molecule_id": "T8188",
+      "source_index": 7558,
+      "original_inchikey": "ISCQYPPCSYRZOT-BKTGTZMESA-N",
+      "standardized_inchikey": "ISCQYPPCSYRZOT-HRJVKACCSA-N",
+      "standardized_smiles": "COc1cc([C@@H]2c3cc4c(cc3C(=O)C3COC(=O)C32)OCO4)cc(OC)c1OC",
+      "cas": "477-49-6"
+    },
+    {
+      "molecule_id": "TN1037",
+      "source_index": 9628,
+      "original_inchikey": "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
+      "standardized_inchikey": "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
+      "standardized_smiles": "COc1cc2c(cc1O)CC[n+]1cc3c4c(ccc3cc1-2)OCO4",
+      "cas": "38691-95-1"
+    },
+    {
+      "molecule_id": "T19189",
+      "source_index": 12314,
+      "original_inchikey": "BHQCQFFYRZLCQQ-PGHAKIONSA-N",
+      "standardized_inchikey": "BHQCQFFYRZLCQQ-PGHAKIONSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "2464-18-8"
+    },
+    {
+      "molecule_id": "T7331",
+      "source_index": 6815,
+      "original_inchikey": "BHQCQFFYRZLCQQ-UTLSPDKDSA-N",
+      "standardized_inchikey": "BHQCQFFYRZLCQQ-UTLSPDKDSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "2955-27-3"
+    },
+    {
+      "molecule_id": "T4588",
+      "source_index": 5445,
+      "original_inchikey": "GHCZAUBVMUEKKP-GYPHWSFCSA-N",
+      "standardized_inchikey": "GHCZAUBVMUEKKP-GYPHWSFCSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "640-79-9"
+    },
+    {
+      "molecule_id": "T5234",
+      "source_index": 5982,
+      "original_inchikey": "GHCZAUBVMUEKKP-XROMFQGDSA-N",
+      "standardized_inchikey": "GHCZAUBVMUEKKP-XROMFQGDSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "64480-66-6"
+    },
+    {
+      "molecule_id": "T5259",
+      "source_index": 5987,
+      "original_inchikey": "GHCZAUBVMUEKKP-GYPHWSFCSA-N",
+      "standardized_inchikey": "GHCZAUBVMUEKKP-GYPHWSFCSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "16564-43-5"
+    },
+    {
+      "molecule_id": "T13506",
+      "source_index": 15900,
+      "original_inchikey": "RUDATBOHQWOJDD-DNMBCGTGSA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-DNMBCGTGSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "78919-26-3"
+    },
+    {
+      "molecule_id": "T207107",
+      "source_index": 21337,
+      "original_inchikey": "RUDATBOHQWOJDD-JGFDLHJZSA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-JGFDLHJZSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "566-24-5"
+    },
+    {
+      "molecule_id": "T29078",
+      "source_index": 13484,
+      "original_inchikey": "RUDATBOHQWOJDD-ASYSNUCISA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-ASYSNUCISA-N",
+      "standardized_smiles": "C[C@@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "2898-95-5"
+    },
+    {
+      "molecule_id": "T10087",
+      "source_index": 8777,
+      "original_inchikey": "QYYDXDSPYPOWRO-JHMCBHKWSA-N",
+      "standardized_inchikey": "QYYDXDSPYPOWRO-JHMCBHKWSA-N",
+      "standardized_smiles": "C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "99697-24-2"
+    },
+    {
+      "molecule_id": "TN7583",
+      "source_index": 22118,
+      "original_inchikey": "MIHNUBCEFJLAGN-DMMBONCOSA-N",
+      "standardized_inchikey": "MIHNUBCEFJLAGN-DMMBONCOSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC(=O)[C@]12C",
+      "cas": "2458/8/4"
+    },
+    {
+      "molecule_id": "T2744",
+      "source_index": 2493,
+      "original_inchikey": "DLYVTEULDNMQAR-SRNOMOOLSA-N",
+      "standardized_inchikey": "DLYVTEULDNMQAR-SRNOMOOLSA-N",
+      "standardized_smiles": "COC(=O)CC[C@@H](C)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "1448-36-8"
+    },
+    {
+      "molecule_id": "TMIH-0148",
+      "source_index": 22243,
+      "original_inchikey": "BHQCQFFYRZLCQQ-YFEOEUIKSA-N",
+      "standardized_inchikey": "BHQCQFFYRZLCQQ-YFEOEUIKSA-N",
+      "standardized_smiles": "[2H]C1([2H])C[C@@]2(C)[C@H](C[C@@H](O)[C@@H]3[C@@H]2C[C@H](O)[C@]2(C)[C@@H]([C@H](C)CCC(=O)O)CC[C@@H]32)C([2H])([2H])[C@@H]1O",
+      "cas": "116380-66-6"
+    },
+    {
+      "molecule_id": "T0700",
+      "source_index": 636,
+      "original_inchikey": "RUDATBOHQWOJDD-UZVSRGJWSA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-UZVSRGJWSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "128-13-2"
+    },
+    {
+      "molecule_id": "T67974",
+      "source_index": 16174,
+      "original_inchikey": "RUDATBOHQWOJDD-UZVSRGJWSA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-UZVSRGJWSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "1868138-66-2"
+    },
+    {
+      "molecule_id": "T4S0800",
+      "source_index": 5515,
+      "original_inchikey": "HVTCKKMWZDDWOY-UHFFFAOYSA-O",
+      "standardized_inchikey": "HVTCKKMWZDDWOY-UHFFFAOYSA-O",
+      "standardized_smiles": "COc1ccc2cc3[n+](cc2c1OC)CCc1cc(O)c(O)cc1-3",
+      "cas": "25459-91-0"
+    },
+    {
+      "molecule_id": "T8153",
+      "source_index": 7304,
+      "original_inchikey": "SPOIYSFQOFYOFZ-BRDORRHWSA-N",
+      "standardized_inchikey": "SPOIYSFQOFYOFZ-BRDORRHWSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3C[C@H](O)[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "13042-33-6"
+    },
+    {
+      "molecule_id": "T5S0803",
+      "source_index": 5056,
+      "original_inchikey": "YYFOFDHQVIODOQ-UHFFFAOYSA-O",
+      "standardized_inchikey": "YYFOFDHQVIODOQ-UHFFFAOYSA-O",
+      "standardized_smiles": "COc1cc2c(cc1O)-c1cc3ccc(OC)c(OC)c3c[n+]1CC2",
+      "cas": "3621-36-1"
+    },
+    {
+      "molecule_id": "T9447",
+      "source_index": 15381,
+      "original_inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N",
+      "standardized_inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1n[nH]c(C)c1CCCOc1cc(C(=O)O)ccc1F",
+      "cas": "1446711-81-4"
+    },
+    {
+      "molecule_id": "TN2071",
+      "source_index": 12165,
+      "original_inchikey": "ISCQYPPCSYRZOT-HRJVKACCSA-N",
+      "standardized_inchikey": "ISCQYPPCSYRZOT-HRJVKACCSA-N",
+      "standardized_smiles": "COc1cc([C@@H]2c3cc4c(cc3C(=O)C3COC(=O)C32)OCO4)cc(OC)c1OC",
+      "cas": "477-48-5"
+    },
+    {
+      "molecule_id": "T19124",
+      "source_index": 17263,
+      "original_inchikey": "OEKUSRBIIZNLHZ-DJDNIQJZSA-N",
+      "standardized_inchikey": "OEKUSRBIIZNLHZ-DJDNIQJZSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4CC(=O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "2304-89-4"
+    },
+    {
+      "molecule_id": "TMIH-0590",
+      "source_index": 18976,
+      "original_inchikey": "RUDATBOHQWOJDD-QGCKUCIHSA-N",
+      "standardized_inchikey": "RUDATBOHQWOJDD-QGCKUCIHSA-N",
+      "standardized_smiles": "[2H]C1([2H])C[C@@]2(C)[C@H](C[C@H](O)[C@@H]3[C@@H]2CC[C@]2(C)[C@@H]([C@H](C)CCC(=O)O)CC[C@@H]32)C([2H])([2H])[C@@H]1O",
+      "cas": "347841-46-7"
+    },
+    {
+      "molecule_id": "T86470",
+      "source_index": 21611,
+      "original_inchikey": "PKUPFNJHQHKECO-UHFFFAOYSA-N",
+      "standardized_inchikey": "PKUPFNJHQHKECO-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1cccc(C(c2cc3c(cc2O)OCO3)N2CCOCC2)c1OC",
+      "cas": "102616-64-8"
+    },
+    {
+      "molecule_id": "TQ0160",
+      "source_index": 9389,
+      "original_inchikey": "JZUTXVTYJDCMDU-MOPGFXCFSA-N",
+      "standardized_inchikey": "JZUTXVTYJDCMDU-MOPGFXCFSA-N",
+      "standardized_smiles": "COc1ccc2c(c1OC)C(=O)O[C@@H]2[C@H]1c2cc3c(cc2CCN1C)OCO3",
+      "cas": "118-08-1"
+    },
+    {
+      "molecule_id": "T5S2361",
+      "source_index": 5107,
+      "original_inchikey": "FPJQGFLUORYYPE-UHFFFAOYSA-N",
+      "standardized_inchikey": "FPJQGFLUORYYPE-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1cc2c(cc1OC)-c1cc3ccc4c(c3c[n+]1CC2)OCO4",
+      "cas": "6873/9/2"
+    },
+    {
+      "molecule_id": "T8306",
+      "source_index": 18883,
+      "original_inchikey": "FPJQGFLUORYYPE-UHFFFAOYSA-N",
+      "standardized_inchikey": "FPJQGFLUORYYPE-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1cc2c(cc1OC)-c1cc3ccc4c(c3c[n+]1CC2)OCO4",
+      "cas": "889665-86-5"
+    },
+    {
+      "molecule_id": "T5254",
+      "source_index": 5988,
+      "original_inchikey": "WVULKSPCQVQLCU-BUXLTGKBSA-N",
+      "standardized_inchikey": "WVULKSPCQVQLCU-BUXLTGKBSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "16409-34-0"
+    },
+    {
+      "molecule_id": "T5352",
+      "source_index": 6108,
+      "original_inchikey": "WVULKSPCQVQLCU-XMPMLJJQSA-N",
+      "standardized_inchikey": "WVULKSPCQVQLCU-XMPMLJJQSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CCC4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "360-65-6"
+    },
+    {
+      "molecule_id": "T4561",
+      "source_index": 5339,
+      "original_inchikey": "GUHPRPJDBZHYCJ-UHFFFAOYSA-N",
+      "standardized_inchikey": "GUHPRPJDBZHYCJ-UHFFFAOYSA-N",
+      "standardized_smiles": "CC(C(=O)O)c1ccc(C(=O)c2ccccc2)s1",
+      "cas": "33005-95-7"
+    },
+    {
+      "molecule_id": "T24421",
+      "source_index": 16907,
+      "original_inchikey": "UEFWDVMEDFCHGW-UHFFFAOYSA-N",
+      "standardized_inchikey": "UEFWDVMEDFCHGW-UHFFFAOYSA-N",
+      "standardized_smiles": "CC(C)(CN1CCN(C2=Nc3ccccc3Oc3ccccc32)CC1)C(=O)O",
+      "cas": "879409-35-5"
+    },
+    {
+      "molecule_id": "T7952",
+      "source_index": 7216,
+      "original_inchikey": "AKNNEGZIBPJZJG-UHFFFAOYSA-N",
+      "standardized_inchikey": "AKNNEGZIBPJZJG-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1ccc2c(c1OC)C(=O)OC2C1c2c(cc3c(c2OC)OCO3)CCN1C",
+      "cas": "128-62-1"
+    },
+    {
+      "molecule_id": "T9862",
+      "source_index": 13248,
+      "original_inchikey": "IDEMWTMCJLNBDH-UHFFFAOYSA-N",
+      "standardized_inchikey": "IDEMWTMCJLNBDH-UHFFFAOYSA-N",
+      "standardized_smiles": "c1c2c(cc3c1OCO3)-c1cc3cc4c(cc3c[n+]1CC2)OCO4",
+      "cas": "30044-78-1"
+    },
+    {
+      "molecule_id": "TQ0170",
+      "source_index": 7727,
+      "original_inchikey": "IXZHDDUFQVXHIL-UOAIQHMYSA-N",
+      "standardized_inchikey": "IXZHDDUFQVXHIL-UOAIQHMYSA-N",
+      "standardized_smiles": "C[C@]12CC[C@H](O)C[C@H]1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](c3ccc(=O)oc3)[C@@H](O)[C@H]3O[C@]132",
+      "cas": "4026-95-3"
+    },
+    {
+      "molecule_id": "TN1087",
+      "source_index": 7995,
+      "original_inchikey": "ZGLXUQQMLLIKAN-XIXJEIPKSA-N",
+      "standardized_inchikey": "ZGLXUQQMLLIKAN-XIXJEIPKSA-N",
+      "standardized_smiles": "COc1cc([C@@H]2c3cc4c(cc3C[C@H]3COC(=O)C32)OCO4)cc(OC)c1OC",
+      "cas": "19186-35-7"
+    },
+    {
+      "molecule_id": "T3859",
+      "source_index": 7760,
+      "original_inchikey": "NQRBAPDEZYMKFL-UHFFFAOYSA-N",
+      "standardized_inchikey": "NQRBAPDEZYMKFL-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1ccc(C2COc3cc(O)ccc3C2)c(O)c1OC",
+      "cas": "52250-35-8"
+    },
+    {
+      "molecule_id": "TN6967",
+      "source_index": 16286,
+      "original_inchikey": "NQRBAPDEZYMKFL-NSHDSACASA-N",
+      "standardized_inchikey": "NQRBAPDEZYMKFL-NSHDSACASA-N",
+      "standardized_smiles": "COc1ccc([C@@H]2COc3cc(O)ccc3C2)c(O)c1OC",
+      "cas": "64474-51-7"
+    },
+    {
+      "molecule_id": "T2S2215",
+      "source_index": 4878,
+      "original_inchikey": "UVDQDNQWGQFIAO-CQSZACIVSA-N",
+      "standardized_inchikey": "UVDQDNQWGQFIAO-CQSZACIVSA-N",
+      "standardized_smiles": "COc1ccc2c(c1OC)C[C@@H]1c3c(cc4c(c3-2)OCO4)CCN1C",
+      "cas": "25127-29-1"
+    },
+    {
+      "molecule_id": "TN1189",
+      "source_index": 8896,
+      "original_inchikey": "SMERZMDSMLIVHC-UHFFFAOYSA-N",
+      "standardized_inchikey": "SMERZMDSMLIVHC-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1ccc2c(C)c3[n+](cc2c1OC)CCc1cc2c(cc1-3)OCO2",
+      "cas": "54260-72-9"
+    },
+    {
+      "molecule_id": "T0095",
+      "source_index": 89,
+      "original_inchikey": "YTKUWDBFDASYHO-UHFFFAOYSA-N",
+      "standardized_inchikey": "YTKUWDBFDASYHO-UHFFFAOYSA-N",
+      "standardized_smiles": "Cn1c(CCCC(=O)O)nc2cc(N(CCCl)CCCl)ccc21",
+      "cas": "3543-75-7"
+    },
+    {
+      "molecule_id": "T8380",
+      "source_index": 7669,
+      "original_inchikey": "YTKUWDBFDASYHO-UHFFFAOYSA-N",
+      "standardized_inchikey": "YTKUWDBFDASYHO-UHFFFAOYSA-N",
+      "standardized_smiles": "Cn1c(CCCC(=O)O)nc2cc(N(CCCl)CCCl)ccc21",
+      "cas": "16506-27-7"
+    },
+    {
+      "molecule_id": "T1415",
+      "source_index": 1273,
+      "original_inchikey": "HEMJJKBWTPKOJG-UHFFFAOYSA-N",
+      "standardized_inchikey": "HEMJJKBWTPKOJG-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1ccc(C)c(OCCCC(C)(C)C(=O)O)c1",
+      "cas": "25812-30-0"
+    },
+    {
+      "molecule_id": "T2831",
+      "source_index": 2574,
+      "original_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "475-31-0"
+    },
+    {
+      "molecule_id": "T4070",
+      "source_index": 5273,
+      "original_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "863-57-0"
+    },
+    {
+      "molecule_id": "T5072",
+      "source_index": 5859,
+      "original_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_inchikey": "RFDAIACWWDREDC-FRVQLJSFSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)NCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "1192657-83-2"
+    },
+    {
+      "molecule_id": "T3S1457",
+      "source_index": 4925,
+      "original_inchikey": "QBUIDYLGKMWNEA-UHFFFAOYSA-O",
+      "standardized_inchikey": "QBUIDYLGKMWNEA-UHFFFAOYSA-O",
+      "standardized_smiles": "COc1cc2c(cc1OC)-c1cc3ccc(OC)c(O)c3c[n+]1CC2",
+      "cas": "16176-68-4"
+    },
+    {
+      "molecule_id": "T78495",
+      "source_index": 19010,
+      "original_inchikey": "PLRQOCVIINWCFA-AHFDLSHQSA-N",
+      "standardized_inchikey": "PLRQOCVIINWCFA-AHFDLSHQSA-N",
+      "standardized_smiles": "C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "53608-86-9"
+    },
+    {
+      "molecule_id": "T19803",
+      "source_index": 11978,
+      "original_inchikey": "HJUFTIJOISQSKQ-UHFFFAOYSA-N",
+      "standardized_inchikey": "HJUFTIJOISQSKQ-UHFFFAOYSA-N",
+      "standardized_smiles": "CCOC(=O)NCCOc1ccc(Oc2ccccc2)cc1",
+      "cas": "72490-01-8"
+    },
+    {
+      "molecule_id": "T14546",
+      "source_index": 18133,
+      "original_inchikey": "REHLODZXMGOGQP-UHFFFAOYSA-N",
+      "standardized_inchikey": "REHLODZXMGOGQP-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1ccc2c(c1)CC(=O)c1cc(C(C)C(=O)O)ccc1O2",
+      "cas": "78499-27-1"
+    },
+    {
+      "molecule_id": "T13518",
+      "source_index": 9762,
+      "original_inchikey": "HHUZGDMRRLQZIQ-XFNJLMRDSA-N",
+      "standardized_inchikey": "HHUZGDMRRLQZIQ-XFNJLMRDSA-N",
+      "standardized_smiles": "CC(=O)C1CC[C@H]2[C@@H]3C[C@H](O)[C@H]4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "21853-11-2"
+    },
+    {
+      "molecule_id": "T10767",
+      "source_index": 19224,
+      "original_inchikey": "CDHNVTRRQNLWKA-SWFZNMEYSA-N",
+      "standardized_inchikey": "CDHNVTRRQNLWKA-WOJBJXKFSA-N",
+      "standardized_smiles": "COCc1c(-c2ccc(F)cc2)c(=CC[C@@H](O)C[C@@H](O)CC(=O)O)c(C(C)C)nc1=C(C)C",
+      "cas": "143201-11-0"
+    },
+    {
+      "molecule_id": "T14931",
+      "source_index": 19163,
+      "original_inchikey": "CDHNVTRRQNLWKA-KVQDXKSSSA-N",
+      "standardized_inchikey": "CDHNVTRRQNLWKA-WOJBJXKFSA-N",
+      "standardized_smiles": "COCc1c(-c2ccc(F)cc2)c(=CC[C@@H](O)C[C@@H](O)CC(=O)O)c(C(C)C)nc1=C(C)C",
+      "cas": "145599-86-6"
+    },
+    {
+      "molecule_id": "T21318",
+      "source_index": 19721,
+      "original_inchikey": "BNFRJXLZYUTIII-UHFFFAOYSA-N",
+      "standardized_inchikey": "BNFRJXLZYUTIII-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1cc(C)cc(NC(=O)Cc2ccc(OC(C)(C)C(=O)O)cc2)c1",
+      "cas": "131179-95-8"
+    },
+    {
+      "molecule_id": "T6482",
+      "source_index": 4275,
+      "original_inchikey": "BNFRJXLZYUTIII-UHFFFAOYSA-N",
+      "standardized_inchikey": "BNFRJXLZYUTIII-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1cc(C)cc(NC(=O)Cc2ccc(OC(C)(C)C(=O)O)cc2)c1",
+      "cas": "170787-99-2"
+    },
+    {
+      "molecule_id": "T13505",
+      "source_index": 18394,
+      "original_inchikey": "KXGVEGMKQFWNSR-MFSKYVBHSA-N",
+      "standardized_inchikey": "KXGVEGMKQFWNSR-MFSKYVBHSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@@H](O)[C@]12C",
+      "cas": "570-62-7"
+    },
+    {
+      "molecule_id": "T2965",
+      "source_index": 2696,
+      "original_inchikey": "KXGVEGMKQFWNSR-UHFFFAOYSA-N",
+      "standardized_inchikey": "KXGVEGMKQFWNSR-UHFFFAOYSA-N",
+      "standardized_smiles": "CC(CCC(=O)O)C1CCC2C3CCC4CC(O)CCC4(C)C3CC(O)C12C",
+      "cas": "83-44-3"
+    },
+    {
+      "molecule_id": "T5077",
+      "source_index": 5867,
+      "original_inchikey": "KXGVEGMKQFWNSR-LLQZFEROSA-N",
+      "standardized_inchikey": "KXGVEGMKQFWNSR-LLQZFEROSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "302-95-4"
+    },
+    {
+      "molecule_id": "T84944",
+      "source_index": 21340,
+      "original_inchikey": "KXGVEGMKQFWNSR-OFYXWCICSA-N",
+      "standardized_inchikey": "KXGVEGMKQFWNSR-OFYXWCICSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC[C@@H]4C[C@@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "570-63-8"
+    },
+    {
+      "molecule_id": "T38451",
+      "source_index": 21666,
+      "original_inchikey": "JBDHZKLJNAIJNC-UHFFFAOYSA-N",
+      "standardized_inchikey": "JBDHZKLJNAIJNC-UHFFFAOYSA-N",
+      "standardized_smiles": "C#CCOC(=O)C(C)Oc1ccc(Oc2ncc(Cl)cc2F)cc1",
+      "cas": "105512-06-9"
+    },
+    {
+      "molecule_id": "T36585",
+      "source_index": 16404,
+      "original_inchikey": "ZHCAAZIHTDCFJX-QLEQUTGBSA-N",
+      "standardized_inchikey": "ZHCAAZIHTDCFJX-QLEQUTGBSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4CCCC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "cas": "566-17-6"
+    },
+    {
+      "molecule_id": "T5S2178",
+      "source_index": 5095,
+      "original_inchikey": "AWOGQCSIVCQXBT-LATRNWQMSA-N",
+      "standardized_inchikey": "AWOGQCSIVCQXBT-LATRNWQMSA-N",
+      "standardized_smiles": "COc1ccc([C@@H]2OC[C@H]3[C@@H]2CO[C@@H]3c2ccc3c(c2)OCO3)cc1OC",
+      "cas": "31008-19-2"
+    },
+    {
+      "molecule_id": "TN1834",
+      "source_index": 21366,
+      "original_inchikey": "AWOGQCSIVCQXBT-VUEDXXQZSA-N",
+      "standardized_inchikey": "AWOGQCSIVCQXBT-VUEDXXQZSA-N",
+      "standardized_smiles": "COc1ccc([C@H]2OC[C@H]3[C@@H]2CO[C@@H]3c2ccc3c(c2)OCO3)cc1OC",
+      "cas": "36150-23-9"
+    },
+    {
+      "molecule_id": "T2S1792",
+      "source_index": 4864,
+      "original_inchikey": "DFQOXFIPAAMFAU-UHFFFAOYSA-O",
+      "standardized_inchikey": "DFQOXFIPAAMFAU-UHFFFAOYSA-O",
+      "standardized_smiles": "Oc1cc2c3c(c1)c1cc4c(cc1c[n+]3CC2)OCO4",
+      "cas": "72510-04-4"
+    },
+    {
+      "molecule_id": "T2968",
+      "source_index": 2698,
+      "original_inchikey": "DGABKXLVXPYZII-SIBKNCMHSA-N",
+      "standardized_inchikey": "DGABKXLVXPYZII-SIBKNCMHSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3C[C@H](O)[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "cas": "83-49-8"
+    },
+    {
+      "molecule_id": "T5750",
+      "source_index": 6495,
+      "original_inchikey": "ZHYQCBCBTQWPLC-UHFFFAOYSA-N",
+      "standardized_inchikey": "ZHYQCBCBTQWPLC-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1ccc2cc3n(c(=O)c2c1OC)CCc1cc2c(cc1-3)OCO2",
+      "cas": "549-21-3"
+    },
+    {
+      "molecule_id": "T60184",
+      "source_index": 15924,
+      "original_inchikey": "GCWBKYDSSJIRNJ-UHFFFAOYSA-N",
+      "standardized_inchikey": "GCWBKYDSSJIRNJ-UHFFFAOYSA-N",
+      "standardized_smiles": "O=C(O)CCc1ccc(C#Cc2cc(Cl)nc(Cl)c2)cc1",
+      "cas": "1206629-08-4"
+    },
+    {
+      "molecule_id": "T0408",
+      "source_index": 382,
+      "original_inchikey": "OHXPGWPVLFPUSM-QQWGLBLRSA-N",
+      "standardized_inchikey": "OHXPGWPVLFPUSM-QQWGLBLRSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2C3C(=O)C[C@@H]4CC(=O)CC[C@]4(C)[C@H]3CC(=O)[C@]12C",
+      "cas": "81-23-2"
+    },
+    {
+      "molecule_id": "T0516",
+      "source_index": 481,
+      "original_inchikey": "OHXPGWPVLFPUSM-QQWGLBLRSA-N",
+      "standardized_inchikey": "OHXPGWPVLFPUSM-QQWGLBLRSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2C3C(=O)C[C@@H]4CC(=O)CC[C@]4(C)[C@H]3CC(=O)[C@]12C",
+      "cas": "145-41-5"
+    },
+    {
+      "molecule_id": "T6S1917",
+      "source_index": 5178,
+      "original_inchikey": "ZWRRJEICIPUPHZ-UHFFFAOYSA-N",
+      "standardized_inchikey": "ZWRRJEICIPUPHZ-UHFFFAOYSA-N",
+      "standardized_smiles": "COc1cc2c(c(OC)c1OC)-c1c(cc3c(c1OC)OCO3)CC(C)C(C)(O)C2",
+      "cas": "58546-54-6"
+    },
+    {
+      "molecule_id": "TN6783",
+      "source_index": 10852,
+      "original_inchikey": "YESPQCLKTIRGLU-UHFFFAOYSA-N",
+      "standardized_inchikey": "YESPQCLKTIRGLU-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1c2[n+](cc3c4c(ccc13)OCO4)CCc1cc3c(cc1-2)OCO3",
+      "cas": "11028-77-6"
+    },
+    {
+      "molecule_id": "T27832",
+      "source_index": 16359,
+      "original_inchikey": "LNXBEIZREVRNTF-UHFFFAOYSA-N",
+      "standardized_inchikey": "LNXBEIZREVRNTF-UHFFFAOYSA-N",
+      "standardized_smiles": "CC(C)(C)c1ccc(CCC(O)COc2ccc(C(=O)O)cc2)cc1",
+      "cas": "96609-16-4"
+    },
+    {
+      "molecule_id": "TMIH-0182",
+      "source_index": 22631,
+      "original_inchikey": "KXGVEGMKQFWNSR-FCSCGBJGSA-N",
+      "standardized_inchikey": "KXGVEGMKQFWNSR-FCSCGBJGSA-N",
+      "standardized_smiles": "[2H]C1([2H])C[C@@]2(C)[C@H](CC[C@@H]3[C@@H]2C[C@H](O)[C@]2(C)[C@@H]([C@H](C)CCC(=O)O)CC[C@@H]32)C([2H])([2H])[C@@H]1O",
+      "cas": "112076-61-6"
+    }
+  ],
+  "network_policy": "one_time_bake_then_snapshot_first",
+  "negative_search_is_safety_evidence": false
+}

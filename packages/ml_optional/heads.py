@@ -44,7 +44,13 @@ class OptionalHeadsBundle:
             and self.placeholder_dili is None
         )
 
-    def predict(self, mol: Chem.Mol | None) -> MLHeadResult:
+    def predict(
+        self,
+        mol: Chem.Mol | None,
+        *,
+        exclude_names: set[str] | None = None,
+        exclude_similarity_at_or_above: float | None = None,
+    ) -> MLHeadResult:
         if self.placeholder_dili is not None:
             return MLHeadResult(
                 dili=float(self.placeholder_dili),
@@ -58,10 +64,18 @@ class OptionalHeadsBundle:
         admet, admet_name, admet_sim = (0.0, None, 0.0)
         parts: list[str] = []
         if self.dili_model is not None:
-            dili, dili_name, dili_sim = self.dili_model.predict(mol)
+            dili, dili_name, dili_sim = self.dili_model.predict(
+                mol,
+                exclude_names=exclude_names,
+                exclude_similarity_at_or_above=exclude_similarity_at_or_above,
+            )
             parts.append(f"dili:{self.dili_model.version}")
         if self.admet_model is not None:
-            admet, admet_name, admet_sim = self.admet_model.predict(mol)
+            admet, admet_name, admet_sim = self.admet_model.predict(
+                mol,
+                exclude_names=exclude_names,
+                exclude_similarity_at_or_above=exclude_similarity_at_or_above,
+            )
             parts.append(f"admet:{self.admet_model.version}")
         return MLHeadResult(
             dili=dili,

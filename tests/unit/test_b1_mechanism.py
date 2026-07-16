@@ -32,7 +32,11 @@ def test_b1_mechanism_has_pathway_and_rescue(tmp_path: Path) -> None:
     assert "活力 >=80%" in text
     assert "nafld_pathways.yaml" in text
     assert "有效命中" in text
-    assert any(x in text for x in ("`DNL`", "`FAO`", "`PPAR`", "`FXR`", "`AMPK`", "`THR`"))
+    assert any(
+        x in text
+        for x in ("`DNL`", "`FAO`", "`PPAR`", "`FXR`", "`AMPK`", "`THR`", "`UNRESOLVED`")
+    )
+    assert "常见机制假说空间包括" in text
     assert csv_before == result.to_csv_text()
 
 
@@ -59,6 +63,9 @@ def test_b1_positive_maps_to_pathway(tmp_path: Path) -> None:
         fp_bits=morgan_fp(mol),
     )
     scored = score_molecule(record, cfg, gold, EvidenceBundle())
+    # 本测例只验证机制映射；保守毒性上界可能把无安全证据的精确对照置为复核。
+    scored.eligibility_status = "eligible"
+    scored.gated_out = False
     scored.attributions.append(
         Attribution("evidence", "chembl_lipid_v1", value=0.8, evidence_id="chembl:TEST123")
     )

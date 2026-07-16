@@ -29,15 +29,15 @@ def infer_hypothesis_pathway(
     smiles: str,
     fp_bits: Any = None,
 ) -> tuple[dict[str, Any], str]:
-    """返回 (pathway_dict, support_text)。无强阳性相似时回退 FAO。"""
+    """返回 (pathway_dict, support_text)；无候选级依据时明确标记未解析。"""
     table = load_nafld_pathways()
     gold = load_goldset()
-    support = "规则默认: FAO/DNL 启发（无强阳性相似）"
+    support = "证据不足: 未分配候选级机制通路"
     bits = ensure_fp_bits(smiles, fp_bits)
 
     if bits is not None and gold.positives:
         sim, name = max_similarity(bits, gold.positives)
-        if name and sim >= 0.35:
+        if name and sim >= 0.50:
             mapped = infer_pathway_for_positive(name, table)
             if mapped:
                 return mapped, f"阳性相似 {name} (sim={sim:.2f}) -> {mapped['id']}"
@@ -60,11 +60,11 @@ def infer_hypothesis_pathway(
             if mapped:
                 return mapped, f"结构启发: {', '.join(hits) or prefer}"
 
-    fallback = pathway_by_id("FAO", table) or {
-        "id": "FAO",
-        "name": "脂肪酸氧化",
-        "targets": ["PPARalpha", "AMPK", "CPT1"],
-        "rescue_hint": "可用 AMPK 抑制剂 Compound C 做救援；或检测 CPT1A / ACOX1",
+    fallback = {
+        "id": "UNRESOLVED",
+        "name": "候选级机制未解析",
+        "targets": [],
+        "rescue_hint": "先做无偏靶点/通路验证，再按获得的候选级证据设计救援实验",
     }
     return fallback, support
 

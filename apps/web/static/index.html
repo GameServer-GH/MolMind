@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="./favicon.png" type="image/png" sizes="24x24" />
-  <title>MolMind · 化合物筛选</title>
+  <title>MolMind · 分子思维</title>
   <script src="./vendor/tailwindcss/tailwindcdn.js"></script>
   <link href="./vendor/fonts/inter/inter.css" rel="stylesheet" />
   <link href="./vendor/fonts/material-symbols/material-symbols.css" rel="stylesheet" />
@@ -174,17 +174,30 @@
       background-clip: text;
     }
 
-    .mech-pdf-toast {
+    .ui-toast {
       opacity: 0;
       transform: translateY(12px);
       transition: opacity 0.18s ease, transform 0.18s ease;
       visibility: hidden;
     }
 
-    .mech-pdf-toast.is-visible {
+    .ui-toast.is-visible {
       opacity: 1;
       transform: translateY(0);
       visibility: visible;
+    }
+
+    .ui-toast.toast-top {
+      transform: translateY(-12px);
+    }
+
+    .ui-toast.toast-top.is-visible {
+      transform: translateY(0);
+    }
+
+    .snapshot-switch.is-locked .track {
+      cursor: not-allowed;
+      opacity: 0.72;
     }
 
     .text-primary {
@@ -392,7 +405,7 @@
           <span class="material-symbols-outlined text-4xl text-primary">upload_file</span>
         </div>
         <p class="text-body-lg text-on-surface-variant group-hover:text-primary transition-colors">点击或拖拽 SDF 文件至此处</p>
-        <span class="glass-tag px-4 py-1.5 rounded-full text-label-md text-on-surface-variant">组委会化合物库 · 单文件 .sdf</span>
+        <span class="glass-tag px-4 py-1.5 rounded-full text-label-md text-on-surface-variant">化合物库 · 单文件 .sdf</span>
         <p id="fileName" class="hidden font-mono text-sm text-primary mt-1 break-all"></p>
       </div>
       <input id="fileInput" type="file" accept=".sdf" />
@@ -406,7 +419,7 @@
         </div>
         <p id="modeHint" class="text-xs text-on-surface-variant/80 leading-relaxed max-w-2xl"></p>
         <div class="flex items-start gap-3 pt-1">
-          <label class="snapshot-switch" title="使用证据快照">
+          <label id="snapshotSwitch" class="snapshot-switch" title="使用证据快照">
             <input id="useSnapshot" type="checkbox" checked />
             <span class="track"></span>
           </label>
@@ -546,6 +559,8 @@
                 <th class="p-3 font-semibold whitespace-nowrap">InChIKey</th>
                 <th class="p-3 font-semibold whitespace-nowrap">lipid_score</th>
                 <th class="p-3 font-semibold whitespace-nowrap">tox_risk</th>
+                <th class="p-3 font-semibold whitespace-nowrap">资格状态</th>
+                <th class="p-3 font-semibold whitespace-nowrap">毒性置信</th>
                 <th class="p-3 font-bold whitespace-nowrap text-primary">final_score</th>
                 <th class="p-3 font-semibold whitespace-nowrap">novelty_score</th>
                 <th class="p-3 font-semibold whitespace-nowrap">conf_e</th>
@@ -597,8 +612,19 @@
     </section>
   </main>
 
+  <!-- Quality-Max 快照锁定提醒（右上角） -->
+  <div id="snapshotLockToast" class="ui-toast toast-top fixed top-6 right-6 z-[80] pointer-events-none" aria-live="polite" aria-hidden="true">
+    <div class="glass-panel-strong rounded-2xl px-4 py-3 border border-white/70 shadow-lg flex items-center gap-3 min-w-[240px] max-w-sm">
+      <span class="material-symbols-outlined text-primary text-[22px]">info</span>
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-on-background">Quality-Max 必须使用快照</p>
+        <p class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">请先切换到「在线模式」或「离线模式」后再关闭。</p>
+      </div>
+    </div>
+  </div>
+
   <!-- 机制 PDF 完成提示条 -->
-  <div id="mechPdfToast" class="mech-pdf-toast fixed bottom-24 right-6 z-[80] pointer-events-none" aria-live="polite" aria-hidden="true">
+  <div id="mechPdfToast" class="ui-toast fixed bottom-24 right-6 z-[80] pointer-events-none" aria-live="polite" aria-hidden="true">
     <div class="glass-panel-strong rounded-2xl px-4 py-3 border border-white/70 shadow-lg flex items-center gap-3 min-w-[240px] max-w-sm">
       <span class="material-symbols-outlined text-primary text-[22px]">task_alt</span>
       <div class="min-w-0">
@@ -609,7 +635,7 @@
   </div>
 
   <footer class="w-full py-8 border-t border-black/5 flex justify-center items-center mt-auto">
-    <div class="text-sm text-on-surface-variant/70">MolMind · 化合物筛选 · Quality-Max</div>
+    <div class="text-sm text-on-surface-variant/70">MolMind · 分子思维 · Quality-Max</div>
   </footer>
 
   <!-- History drawer -->

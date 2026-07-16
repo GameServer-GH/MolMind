@@ -8,7 +8,7 @@ from packages.chem_core import compute_descriptors, morgan_fp
 from packages.goldset import load_goldset
 from packages.models import MoleculeRecord
 from rdkit import Chem
-from services.critic import rule_critic
+from services.critic import rule_critic, summarize_critic_actions
 from services.evidence_facade import EvidenceBundle
 from services.ingest import parse_sdf
 from services.pipeline.config_loader import load_config
@@ -107,4 +107,18 @@ def test_critic_berberine_family_quota_at_most_one() -> None:
     ]
     assert len(berberine_keeps) <= 1
     assert len(top) >= 1
+
+
+def test_summarize_critic_actions_histogram() -> None:
+    cfg = load_config(mode="offline")
+    gold = load_goldset()
+    lov = next(c for c in gold.positives if c.name == "Lovastatin")
+    scored = score_molecule(_record_from_case("Lovastatin", lov.smiles), cfg, gold, EvidenceBundle())
+    sample = parse_sdf(SAMPLE_SDF)
+    alts = [score_molecule(r, cfg, gold, EvidenceBundle()) for r in sample[:5]]
+    pool = [scored] + [a for a in alts if not a.gated_out]
+    _top, actions = rule_critic([scored], pool, cfg, gold, top_n=2)
+    hist = summarize_critic_actions(actions)
+    assert hist["known_positive"] >= 1 or hist["near_positive"] >= 1
+    assert sum(hist.values()) == len(actions)
 

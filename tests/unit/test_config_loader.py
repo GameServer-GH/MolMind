@@ -43,3 +43,20 @@ def test_load_default_configs_ok() -> None:
     assert cfg.mode in {"auto", "online", "offline"}
     assert isinstance(cfg.raw, dict)
     assert "weights" in cfg.raw
+
+
+def test_auto_is_frozen_and_only_online_allows_live() -> None:
+    assert load_config(config_dir=CONFIG_DIR, mode="auto").allow_live_evidence is False
+    assert load_config(config_dir=CONFIG_DIR, mode="offline").allow_live_evidence is False
+    assert load_config(config_dir=CONFIG_DIR, mode="online").allow_live_evidence is True
+
+
+def test_snapshot_runtime_policy_is_hashed_and_auto_is_forced() -> None:
+    auto = load_config(mode="auto", use_snapshot=False)
+    assert auto.evidence["use_snapshot"] is True
+
+    offline_on = load_config(mode="offline", use_snapshot=True)
+    offline_off = load_config(mode="offline", use_snapshot=False)
+    assert offline_on.evidence["use_snapshot"] is True
+    assert offline_off.evidence["use_snapshot"] is False
+    assert offline_on.config_hash != offline_off.config_hash

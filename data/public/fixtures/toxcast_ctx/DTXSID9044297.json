@@ -1,0 +1,17 @@
+[
+  {
+    "dtxsid": "DTXSID9044297",
+    "casn": "657-24-9",
+    "chnm": "Metformin",
+    "aeid": 1001,
+    "assayComponentEndpointName": "TOX21_MMP_ratio_down",
+    "hitc": 0.92,
+    "ac50": 88.0,
+    "cellViabilityAssay": 1,
+    "intendedTargetFamily": "cell morphology",
+    "inchikey": "XZWYZXLIPXDALR-UHFFFAOYSA-N",
+    "smiles": "CN(C)C(=N)NC(=N)N",
+    "m4id": 4001,
+    "spid": "TP0000004"
+  }
+]

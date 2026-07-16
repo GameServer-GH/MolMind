@@ -1,0 +1,82 @@
+{
+  "schema_version": "molmind-mechanism-context-v1",
+  "captured_at": "2026-07-15",
+  "scope": "target-to-disease and target-to-pathway context only; no candidate identifiers were sent to external services",
+  "disease": {
+    "id": "MONDO_0013209",
+    "name": "metabolic dysfunction-associated steatotic liver disease"
+  },
+  "sources": [
+    {
+      "source": "UniProt",
+      "purpose": "reviewed human protein identifier normalization",
+      "base_url": "https://rest.uniprot.org",
+      "retrieval_precision": "date",
+      "response_sha256": {
+        "PRKAA1": "f932bec6c32428819fdf3eb267eb2c7730d5ceba4ecdeff86e383428ce44a19c",
+        "NR1H4": "a391814a1abb7357aa344e08a5ab6ecd6df59ccf7bff1f6a9026e0857395cf67c"
+      }
+    },
+    {
+      "source": "Open Targets",
+      "purpose": "target-to-MASLD association context; datasource breadth is not causal proof",
+      "base_url": "https://api.platform.opentargets.org/api/v4/graphql",
+      "retrieval_precision": "date",
+      "response_sha256": {
+        "PRKAA1_search": "fe462dc6c32428819fdf3eb267eb2c7730d5ceba4ecdeff86e383428ce44a19c",
+        "NR1H4_search": "ab0c617f3344569a608c4f197799fb5b0ab8c36d562a210c14c5226935d542a4",
+        "PRKAA1_MASLD": "ac66006ee13997cb754a04d54afbed6637e3243db674cc3ccd6316c61f0c8e8e",
+        "NR1H4_MASLD": "7394b374d9d49674540d502f755d4e8ef1aef961da70358a9f7d96ba4156227d"
+      }
+    },
+    {
+      "source": "Reactome",
+      "purpose": "target entity normalization and human low-level pathway context",
+      "base_url": "https://reactome.org/ContentService",
+      "retrieval_precision": "date",
+      "response_sha256": {
+        "PRKAA1_search": "352f2620fa2e4f164702366bb9c02783b81d31fb284caf78357382268d3a7fa4",
+        "PRKAA1_pathways": "e579e51115dd87fcf29403b0509b17f1540855d2f2d045c551dfa32f2b77cb13",
+        "NR1H4_search": "daecc70f9629fae3abbf9f6e29078a87c25b39c91b4156ff022bfd656ad313aa",
+        "NR1H4_pathways": "0d1f3363acb46008f7405194c78b567ad6d37a08cbe01bf91fc52452a8af42b9"
+      }
+    }
+  ],
+  "targets": {
+    "PRKAA1": {
+      "ensembl_id": "ENSG00000132356",
+      "uniprot_accession": "Q13131",
+      "reactome_entity": "R-HSA-380935",
+      "masld_context": {
+        "datasource_scores": {"europepmc": 0.8993973342226894},
+        "pages_fetched": 8,
+        "total_associated_diseases": 766,
+        "truncated": false
+      },
+      "pathways": [
+        {"stable_id": "R-HSA-380972", "name": "Energy dependent regulation of mTOR by LKB1-AMPK", "stable_id_version": "R-HSA-380972.4"},
+        {"stable_id": "R-HSA-9619483", "name": "Activation of AMPK downstream of NMDARs", "stable_id_version": "R-HSA-9619483.3"}
+      ]
+    },
+    "NR1H4": {
+      "ensembl_id": "ENSG00000012504",
+      "uniprot_accession": "Q96RI1",
+      "reactome_entity": "R-HSA-5340228",
+      "masld_context": {
+        "datasource_scores": {"europepmc": 0.919721587881095, "clinical_precedence": 0.18404443300037773},
+        "pages_fetched": 10,
+        "total_associated_diseases": 1196,
+        "truncated": true,
+        "truncation_reason": "max_pages=10"
+      },
+      "pathways": [
+        {"stable_id": "R-HSA-159418", "name": "Recycling of bile acids and salts", "stable_id_version": "R-HSA-159418.6"},
+        {"stable_id": "R-HSA-192105", "name": "Synthesis of bile acids and bile salts", "stable_id_version": "R-HSA-192105.4"},
+        {"stable_id": "R-HSA-211976", "name": "Endogenous sterols", "stable_id_version": "R-HSA-211976.8"},
+        {"stable_id": "R-HSA-193368", "name": "Synthesis of bile acids and bile salts via 7alpha-hydroxycholesterol", "stable_id_version": "R-HSA-193368.4"},
+        {"stable_id": "R-HSA-193807", "name": "Synthesis of bile acids and bile salts via 27-hydroxycholesterol", "stable_id_version": "R-HSA-193807.3"},
+        {"stable_id": "R-HSA-1989781", "name": "PPARA activates gene expression", "stable_id_version": "R-HSA-1989781.6"}
+      ]
+    }
+  }
+}

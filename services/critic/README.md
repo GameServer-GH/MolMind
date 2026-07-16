@@ -1,6 +1,6 @@
 # services/critic
 
-规则 Critic（交卷选榜，不改 `S_final` 公式）：
+规则 Critic（选榜，不改 `S_final` 公式）：
 
 1. 精确阳性 / 近阳性 soft-drop（含分药阈值，如他汀 0.45）  
 2. 低新颖性 / 低分子量碎片软踢  

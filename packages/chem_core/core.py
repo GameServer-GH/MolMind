@@ -16,7 +16,7 @@ _CHEM_CORE_BUILD = "mm.yluo.chem"
 # 硬过滤警示
 HARD_ALERT_SMARTS: list[tuple[str, str]] = [
     ("nitro_aromatic", "[N+](=O)[O-]"),
-    ("aniline", "c1ccccc1N"),
+    ("aniline", "c1ccccc1[NH2]"),
     ("epoxide", "C1OC1"),
     ("aldehyde", "[CH]=O"),
     ("isocyanate", "N=C=O"),
@@ -27,7 +27,7 @@ HARD_ALERT_SMARTS: list[tuple[str, str]] = [
 # 毒性警示（软分头）
 TOX_ALERT_SMARTS: list[tuple[str, str, float]] = [
     ("nitro_group", "[N+](=O)[O-]", 0.40),
-    ("aniline_like", "c1ccccc1N", 0.30),
+    ("aniline_like", "c1ccccc1[NH2]", 0.30),
     ("michael_acceptor", "C=CC(=O)", 0.25),
     ("quinone", "O=C1C=CC(=O)C=C1", 0.35),
     ("hydrazine", "[NX3][NX3]", 0.30),
@@ -38,7 +38,12 @@ TOX_ALERT_SMARTS: list[tuple[str, str, float]] = [
 # 降脂药效团（收紧 statin 模式，避免糖内酯等假阳性）
 LIPID_PHARMACOPHORE_SMARTS: list[tuple[str, str, float]] = [
     # 开环羟酸：需 β,δ-二羟基酸骨架（普伐他汀类），排除单糖
-    ("statin_like_hydroxy_acid", "[#6][C@H](O)C[C@H](O)CC(=O)O", 0.22),
+    # 他汀开链二羟酸必须为非环侧链；!R 防止葡萄糖醛酸糖环伪命中。
+    (
+        "statin_like_hydroxy_acid",
+        "[C;!R][C@H;!R](O)[C;!R][C@H;!R](O)[C;!R]C(=O)O",
+        0.22,
+    ),
     # 内酯：6 元环 + 4-OH + 6-位碳链（辛伐/洛伐类），排除葡萄糖酸内酯
     ("statin_lactone", "O=C1C[C@@H](O)C[C@@H](CC)O1", 0.20),
     ("fibrate_like", "CC(C)OC(=O)C(C)(C)O", 0.16),

@@ -54,5 +54,14 @@ def test_no_evidence_normalization_keeps_rule_weight() -> None:
     s_lipid, parts, _, rationale = score_lipid(_record(sim.smiles, "Sim"), cfg, gold, evidence)
     assert parts["evidence"] == 0.0
     assert parts["ml"] == 0.0
+    assert float(cfg.lipid_fuse.get("ml", 0)) == 0.0
+    assert "lipid_ml" not in cfg.degraded_channels
+    assert "lipid_ml_missing" not in cfg.degraded_channels
     assert s_lipid > 0.3
     assert "阳性相似" in rationale or "药效团" in rationale
+
+
+def test_lipid_ml_weight_zero_is_honest() -> None:
+    """P0-A1：默认 lipid ML 权重为 0，不假装有通道。"""
+    cfg = load_config(mode="offline")
+    assert float(cfg.lipid_fuse.get("ml", 0)) == 0.0

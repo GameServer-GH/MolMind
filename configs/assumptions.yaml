@@ -1,0 +1,29 @@
+version: competition-assumptions-v1
+assumptions:
+  - id: viability_proxy
+    official_status: unspecified
+    value: 0.80
+    unit: fraction_of_vehicle_control
+    role: project_experimental_reference
+    replacement_condition: organizer_SOP_or_same_condition_HepG2_FFA_data
+  - id: toxicity_nomination_proxy
+    official_status: unspecified
+    value: 0.45
+    unit: normalized_proxy_risk
+    role: project_nomination_gate
+    replacement_condition: calibrated_same_condition_dual_endpoint_data
+  - id: novelty_proxy
+    official_status: unspecified
+    value: morgan_tanimoto_distance_to_frozen_relevant_reference
+    role: transparent_structural_proxy
+    replacement_condition: organizer_novelty_definition_or_frozen_official_reference
+  - id: unresolved_mechanism
+    official_status: unspecified
+    value: allowed_with_evidence_level_and_unbiased_validation
+    role: anti_hallucination_policy
+    replacement_condition: direct_candidate_level_mechanistic_evidence
+  - id: delivery_platform
+    official_status: unspecified
+    value: linux/amd64
+    role: primary_container_platform
+    replacement_condition: organizer_runtime_specification

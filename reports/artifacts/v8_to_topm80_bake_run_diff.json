@@ -1,0 +1,119 @@
+{
+  "baseline": {
+    "candidate_count": 10,
+    "config_hash": "75edc449e123b3da",
+    "ordered_ids": [
+      "T37177",
+      "T23557",
+      "T64737",
+      "T67958",
+      "T84225",
+      "T17044",
+      "TN7120",
+      "T39740",
+      "T8188",
+      "TN1037"
+    ],
+    "path": "/tmp/molmind-v8-canonical/nomination_top10.csv",
+    "run_id": "mm-4df40a7e6fea829e3ba6f346"
+  },
+  "baseline_monotonic_descending": true,
+  "candidate": {
+    "candidate_count": 10,
+    "config_hash": "58dc834fdeeb805c",
+    "ordered_ids": [
+      "T37177",
+      "T39740",
+      "T19124",
+      "T23557",
+      "T64737",
+      "T67958",
+      "T84225",
+      "TN1037",
+      "T86470",
+      "T207106"
+    ],
+    "path": "/tmp/molmind-v8-with-bake/nomination_top10.csv",
+    "run_id": "mm-efff58d7bbf6f4bd8ed9ba33"
+  },
+  "candidate_monotonic_descending": true,
+  "entered": [
+    "T19124",
+    "T207106",
+    "T86470"
+  ],
+  "exited": [
+    "T17044",
+    "T8188",
+    "TN7120"
+  ],
+  "rank_deltas": [
+    {
+      "baseline_final_score": 0.5577,
+      "baseline_rank": 1,
+      "candidate_final_score": 0.5577,
+      "candidate_rank": 1,
+      "molecule_id": "T37177",
+      "rank_delta": 0,
+      "score_delta": 0.0
+    },
+    {
+      "baseline_final_score": 0.5399,
+      "baseline_rank": 8,
+      "candidate_final_score": 0.5539,
+      "candidate_rank": 2,
+      "molecule_id": "T39740",
+      "rank_delta": -6,
+      "score_delta": 0.014
+    },
+    {
+      "baseline_final_score": 0.553,
+      "baseline_rank": 2,
+      "candidate_final_score": 0.553,
+      "candidate_rank": 4,
+      "molecule_id": "T23557",
+      "rank_delta": 2,
+      "score_delta": 0.0
+    },
+    {
+      "baseline_final_score": 0.5513,
+      "baseline_rank": 3,
+      "candidate_final_score": 0.5513,
+      "candidate_rank": 5,
+      "molecule_id": "T64737",
+      "rank_delta": 2,
+      "score_delta": 0.0
+    },
+    {
+      "baseline_final_score": 0.5491,
+      "baseline_rank": 4,
+      "candidate_final_score": 0.5491,
+      "candidate_rank": 6,
+      "molecule_id": "T67958",
+      "rank_delta": 2,
+      "score_delta": 0.0
+    },
+    {
+      "baseline_final_score": 0.5414,
+      "baseline_rank": 5,
+      "candidate_final_score": 0.5414,
+      "candidate_rank": 7,
+      "molecule_id": "T84225",
+      "rank_delta": 2,
+      "score_delta": 0.0
+    },
+    {
+      "baseline_final_score": 0.5385,
+      "baseline_rank": 10,
+      "candidate_final_score": 0.5385,
+      "candidate_rank": 8,
+      "molecule_id": "TN1037",
+      "rank_delta": -2,
+      "score_delta": 0.0
+    }
+  ],
+  "schema_version": "molmind-run-diff-v1",
+  "shared_count": 7,
+  "top_k": 10,
+  "top_k_jaccard": 0.53846154
+}

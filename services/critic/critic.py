@@ -5,9 +5,10 @@ from __future__ import annotations
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
+from packages.chem_core import tanimoto
 from packages.goldset import GoldSet, max_similarity
 from packages.goldset.hypothesis import family_tag, infer_hypothesis_pathway
-from packages.models import CriticAction, ScoreRecord
+from packages.models import CriticAction, ScoreRecord, format_selection_reason
 from services.pipeline.config_loader import AppConfig
 
 
@@ -98,7 +99,7 @@ def _should_drop(
     if min_novelty > 0 and mol.novelty_score < min_novelty:
         return True, (
             f"新颖性过低 novelty={mol.novelty_score:.3f}<{min_novelty:.2f}，"
-            "不利于效果×新颖性交卷"
+            "不利于效力×新颖性组合"
         )
 
     if min_mw > 0:
@@ -139,10 +140,14 @@ def _select_with_quotas(
     scaffold_counts: dict[str, int] = {}
     family_counts: dict[str, int] = {}
     pathway_counts: dict[str, int] = {}
+    cluster_counts: dict[str, int] = {}
 
     max_per_scaffold = int(cfg.diversity.get("max_per_scaffold", 2))
     max_family = _max_family(cfg)
     max_per_pathway = int(cfg.diversity.get("max_per_pathway", 0) or 0)
+    max_pairwise = float(cfg.diversity.get("max_pairwise_tanimoto", 1.0))
+    cluster_threshold = float(cfg.diversity.get("similarity_cluster_threshold", 1.0))
+    max_per_cluster = int(cfg.diversity.get("max_per_similarity_cluster", 999999))
 
     for mol in final:
         scaf = mol.scaffold_smiles or mol.molecule_id
@@ -152,6 +157,8 @@ def _select_with_quotas(
             family_counts[tag] = family_counts.get(tag, 0) + 1
         pid = _pathway_id(mol)
         pathway_counts[pid] = pathway_counts.get(pid, 0) + 1
+        cluster = mol.similarity_cluster or mol.molecule_id
+        cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
 
     have = {m.molecule_id for m in final}
     for mol in ordered:
@@ -186,6 +193,34 @@ def _select_with_quotas(
             )
             continue
 
+        similarities = [tanimoto(mol.fp_bits, prior.fp_bits) for prior in final]
+        nearest = max(similarities, default=0.0)
+        nearest_mol = final[similarities.index(nearest)] if similarities else None
+        if nearest > max_pairwise:
+            actions.append(
+                CriticAction(
+                    action="drop",
+                    molecule_id=mol.molecule_id,
+                    reason=(
+                        f"候选内部相似度超额 nearest={getattr(nearest_mol, 'molecule_id', '')} "
+                        f"sim={nearest:.3f}>{max_pairwise:.2f}"
+                    ),
+                )
+            )
+            continue
+        cluster = mol.molecule_id
+        if nearest_mol is not None and nearest >= cluster_threshold:
+            cluster = nearest_mol.similarity_cluster or nearest_mol.molecule_id
+        if cluster_counts.get(cluster, 0) >= max_per_cluster:
+            actions.append(
+                CriticAction(
+                    action="drop",
+                    molecule_id=mol.molecule_id,
+                    reason=f"相似簇配额已满 cluster={cluster} max={max_per_cluster}",
+                )
+            )
+            continue
+
         pid = _pathway_id(mol)
         if (
             enforce_pathway
@@ -205,6 +240,24 @@ def _select_with_quotas(
         if tag:
             family_counts[tag] = family_counts.get(tag, 0) + 1
         pathway_counts[pid] = pathway_counts.get(pid, 0) + 1
+        cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
+        mol.internal_nearest_similarity = round(nearest, 4)
+        mol.similarity_cluster = cluster
+        mol.selection_tier = "quota_strict" if enforce_pathway else "pathway_relaxed"
+        mol.selection_factors = dict(mol.selection_factors or {})
+        mol.selection_factors["eligibility"] = mol.eligibility_status
+        mol.selection_factors["score"] = f"{mol.final_score:.4f}"
+        mol.selection_factors["combo_adjustment"] = (
+            f"{mol.selection_tier}; pathway={pid}; cluster={cluster}; "
+            f"nearest_similarity={nearest:.3f}"
+        )
+        mol.selection_factors["evidence_coverage"] = mol.selection_factors.get(
+            "evidence_coverage"
+        ) or (
+            f"lipid_conf={mol.conf_e:.3f};tox_coverage={mol.toxicity_evidence_coverage:.3f};"
+            f"safety_clearance={mol.safety_clearance_confidence:.3f}"
+        )
+        mol.selection_reason = format_selection_reason(mol.selection_factors)
         note = f"规则 Critic 通过（pathway={pid}"
         if tag:
             note += f", family={tag}"
@@ -218,6 +271,8 @@ def _select_with_quotas(
             mol.overall_reason += "；pathway_quota_relaxed"
             note = f"通路配额放宽回填；{note}"
             actions[-1].reason = note
+            mol.selection_factors["combo_adjustment"] += "; pathway_quota_relaxed"
+            mol.selection_reason = format_selection_reason(mol.selection_factors)
         final.append(mol)
         have.add(mol.molecule_id)
 
@@ -232,7 +287,7 @@ def rule_critic(
     *,
     top_n: int,
 ) -> tuple[list[ScoreRecord], list[CriticAction]]:
-    """交卷选榜：软踢 me-too/碎片 + 骨架/家族/通路配额，不足时放宽通路配额回填。"""
+    """选榜：软踢 me-too/碎片 + 骨架/家族/通路配额，不足时放宽通路配额回填。"""
     seen: set[str] = set()
     ordered: list[ScoreRecord] = []
     top_ids = {m.molecule_id for m in top_k}
@@ -261,7 +316,81 @@ def rule_critic(
         final = more
         actions.extend(more_actions)
 
-    return final[:top_n], actions
+    final = final[:top_n]
+    # 配额决定“是否入选”，不应覆盖入选后的分数顺序。旧实现把
+    # pathway_relaxed 一律排到末尾，产生 rank 9 的分数高于 rank 5–8 的倒挂。
+    final.sort(key=lambda mol: (-mol.final_score, mol.molecule_id))
+    before_rank = {m.molecule_id: i for i, m in enumerate(ordered, start=1)}
+    after_rank = {m.molecule_id: i for i, m in enumerate(final, start=1)}
+    by_id = {m.molecule_id: m for m in ordered}
+    checks = (
+        "known_positive_similarity",
+        "novelty_floor",
+        "molecular_weight_floor",
+        "false_positive_similarity",
+        "toxicity_conflict",
+        "scaffold_quota",
+        "family_quota",
+        "pathway_quota",
+        "pairwise_similarity",
+        "similarity_cluster_quota",
+    )
+    for action in actions:
+        mol = by_id.get(action.molecule_id)
+        if mol is None:
+            continue
+        action.original_status = "ranked_pool"
+        action.checks_performed = checks
+        action.score_before = mol.final_score
+        action.score_after = mol.final_score
+        action.eligibility_before = mol.eligibility_status
+        action.eligibility_after = mol.eligibility_status
+        action.rank_before = before_rank.get(mol.molecule_id)
+        action.rank_after = after_rank.get(mol.molecule_id)
+        action.final_decision = "selected" if mol.molecule_id in after_rank else "not_selected"
+    return final, actions
+
+
+def summarize_critic_actions(actions: list[CriticAction]) -> dict[str, int]:
+    """P1-D：按 drop 原因粗分类计数（日志 / 诊断用）。"""
+    buckets = {
+        "known_positive": 0,
+        "near_positive": 0,
+        "fp_tox": 0,
+        "novelty": 0,
+        "mw": 0,
+        "scaffold": 0,
+        "family": 0,
+        "pathway": 0,
+        "keep": 0,
+        "other_drop": 0,
+    }
+    for a in actions:
+        if a.action == "keep":
+            buckets["keep"] += 1
+            continue
+        if a.action != "drop":
+            continue
+        r = a.reason or ""
+        if "阳性对照本身" in r or "库内命中" in r:
+            buckets["known_positive"] += 1
+        elif "过度近似阳性" in r or "near_positive" in r or "named=" in r:
+            buckets["near_positive"] += 1
+        elif "假阳性" in r:
+            buckets["fp_tox"] += 1
+        elif "新颖性过低" in r:
+            buckets["novelty"] += 1
+        elif "分子量过低" in r:
+            buckets["mw"] += 1
+        elif "骨架超额" in r:
+            buckets["scaffold"] += 1
+        elif "家族配额" in r:
+            buckets["family"] += 1
+        elif "通路" in r:
+            buckets["pathway"] += 1
+        else:
+            buckets["other_drop"] += 1
+    return buckets
 
 
 def llm_critic_stub(
@@ -286,6 +415,11 @@ def llm_critic_stub(
                 molecule_id=mol.molecule_id,
                 reason="llm_critic_stub: evidence-bound keep",
                 evidence_ids=evidence_ids,
+                original_status="critic_shortlist",
+                checks_performed=("llm_evidence_binding",),
+                eligibility_before=mol.eligibility_status,
+                eligibility_after=mol.eligibility_status,
+                final_decision="keep",
             )
         )
     return actions

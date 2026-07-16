@@ -1,0 +1,283 @@
+{
+  "assays": {
+    "CHEMBL3107293": {
+      "assay_id": "CHEMBL3107293",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Antihyperlipidemic activity in human HepG2 cells assessed as reduction of oleic acid-induced intracellular triglyceride accumulation at 10 uM pretreated 12 hrs before oleic acid addition measured after 6 hrs"
+    },
+    "CHEMBL3107294": {
+      "assay_id": "CHEMBL3107294",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Antihyperlipidemic activity in human HepG2 cells assessed as reduction of oleic acid-induced lipid accumulation at 10 uM pretreated 12 hrs before oleic acid addition measured after 6 hrs by Oil Red O staining"
+    },
+    "CHEMBL3372774": {
+      "assay_id": "CHEMBL3372774",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering activity in human HepG2 cells assessed as reduction in oleic acid-elicited intracellular lipid accumulation at 10 uM after 6 hrs by Oil Red O staining method"
+    },
+    "CHEMBL3372894": {
+      "assay_id": "CHEMBL3372894",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced lipid accumulation at 1 uM after 6 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3372895": {
+      "assay_id": "CHEMBL3372895",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced neutral lipid accumulation at 1 and 10 uM after 24 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3372896": {
+      "assay_id": "CHEMBL3372896",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced total cholesterol accumulation at 1 and 10 uM after 24 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3373471": {
+      "assay_id": "CHEMBL3373471",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced triglyceride accumulation at 1 and 10 uM after 24 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3373472": {
+      "assay_id": "CHEMBL3373472",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced total cholesterol accumulation at 10 uM after 24 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3373473": {
+      "assay_id": "CHEMBL3373473",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced triglyceride accumulation at 10 uM after 24 hrs by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3373488": {
+      "assay_id": "CHEMBL3373488",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced total cholesterol accumulation at 10 uM in presence of 10 uM PPARalpha antagonist MK886 by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL3373489": {
+      "assay_id": "CHEMBL3373489",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid-lowering effect in human HepG2 cells assessed as reduction in oleic acid-induced triglyceride accumulation at 10 uM in presence of 10 uM PPARalpha antagonist MK886 by oil-red O staining based spectrophotometry"
+    },
+    "CHEMBL947324": {
+      "assay_id": "CHEMBL947324",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on triglyceride accumulation in human HepG2 cells"
+    },
+    "CHEMBL947325": {
+      "assay_id": "CHEMBL947325",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on triglyceride accumulation in human HepG2 cells relative to TO901317"
+    },
+    "CHEMBL1049557": {
+      "assay_id": "CHEMBL1049557",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on triglyceride accumulation in human HepG2 cells"
+    },
+    "CHEMBL1049558": {
+      "assay_id": "CHEMBL1049558",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on triglyceride accumulation in human HepG2 cells relative to TO901317"
+    },
+    "CHEMBL1071231": {
+      "assay_id": "CHEMBL1071231",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Selectivity ratio, EC50 for triglyceride accumulation in human HepG2 cells to EC50 for ABCA1 mRNA expression in human THP1 cells"
+    },
+    "CHEMBL1107086": {
+      "assay_id": "CHEMBL1107086",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Inhibition of T1317-induced triglyceride accumulation in human HepG2 cells"
+    },
+    "CHEMBL2071820": {
+      "assay_id": "CHEMBL2071820",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Antagonist activity at LXRbeta in human HepG2 cells assessed as rightward shift in [3H]N-(4-(1,1,1,3,3,3-hexafluoro-2-hydroxypropan-2-yl)phenyl)-N-methylbenzenesulfonamide-induced triglyceride accumulation at 10 uM relative to control"
+    },
+    "CHEMBL927497": {
+      "assay_id": "CHEMBL927497",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on LXR-mediated intracellular triglyceride level in human HepG2 cells after 4 to 5 days"
+    },
+    "CHEMBL927498": {
+      "assay_id": "CHEMBL927498",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Effect on LXR-mediated intracellular triglyceride level in human HepG2 cells after 4 to 5 days"
+    },
+    "CHEMBL2422489": {
+      "assay_id": "CHEMBL2422489",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Induction of intracellular triglyceride accumulation in human HepG2 cells at 10 uM after 4 days relative to vehicle-treated control"
+    },
+    "CHEMBL2422490": {
+      "assay_id": "CHEMBL2422490",
+      "classification": "annotation",
+      "ffa": false,
+      "desc": "Induction of intracellular triglyceride accumulation in human HepG2 cells at 1 uM after 4 days relative to vehicle-treated control"
+    },
+    "CHEMBL3606720": {
+      "assay_id": "CHEMBL3606720",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Lipid lowering activity in human HepG2 cells assessed as decrease in intracellular triglycerides level at 10 uM after 2.5 hrs by [14C]acetate absorption assay"
+    },
+    "CHEMBL4735031": {
+      "assay_id": "CHEMBL4735031",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Inhibition of ACC1 in human HepG2 cells assessed as reduction in intracellular triglyceride level measured after 48 hrs by GPO-PAP method"
+    },
+    "CHEMBL4735033": {
+      "assay_id": "CHEMBL4735033",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Inhibition of ACC1 in human HepG2 cells assessed as reduction in intracellular triglyceride level at 10 uM measured after 48 hrs by GPO-PAP method relative to control"
+    },
+    "CHEMBL5322681": {
+      "assay_id": "CHEMBL5322681",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Hypolipidemic activity in sodium oleate and sodium palmitate induced human HepG2 cells assessed as decrease in intracellular triglyceride level at 50 uM"
+    },
+    "CHEMBL5322682": {
+      "assay_id": "CHEMBL5322682",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Hypolipidemic activity in sodium oleate and sodium palmitate induced human HepG2 cells assessed as decrease in intracellular triglyceride level at 10 uM"
+    },
+    "CHEMBL5322683": {
+      "assay_id": "CHEMBL5322683",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Hypolipidemic activity in sodium oleate and sodium palmitate induced human HepG2 cells assessed as decrease in intracellular triglyceride level at 5 uM"
+    },
+    "CHEMBL5322684": {
+      "assay_id": "CHEMBL5322684",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Hypolipidemic activity in sodium oleate and sodium palmitate induced human HepG2 cells assessed as decrease in intracellular triglyceride level at 1 uM"
+    },
+    "CHEMBL5322685": {
+      "assay_id": "CHEMBL5322685",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Hypolipidemic activity in sodium oleate and sodium palmitate induced human HepG2 cells assessed as decrease in intracellular triglyceride level at 0.2 uM"
+    },
+    "CHEMBL5389126": {
+      "assay_id": "CHEMBL5389126",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Anti-lipid accumulation activity in human HepG2 cells assessed as reduction in FFA-induced intracellular triglyceride content incubated for 24 hrs"
+    },
+    "CHEMBL5546883": {
+      "assay_id": "CHEMBL5546883",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Lipid lowering effect on oleic and palmitic acid induced lipid accumulation in human HepG2 cells assessed as decrease in intracellular triglyceride level"
+    },
+    "CHEMBL5546885": {
+      "assay_id": "CHEMBL5546885",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Lipid lowering effect on PCN-induced lipid accumulation in human HepG2 cells assessed as decrease in intracellular triglyceride level"
+    },
+    "CHEMBL2156870": {
+      "assay_id": "CHEMBL2156870",
+      "classification": "positive_phenotype",
+      "ffa": true,
+      "desc": "Inhibition of oleic acid-induced triglyceride over-accumulation in human HepG2 cells incubated for 24 hrs relative to untreated control"
+    },
+    "CHEMBL2328362": {
+      "assay_id": "CHEMBL2328362",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Reduction in lipid accumulation in human HepG2 cells at 100 microM by Oil Red O staining"
+    },
+    "CHEMBL2328363": {
+      "assay_id": "CHEMBL2328363",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Reduction in lipid accumulation in human HepG2 cells at 50 microM by Oil Red O staining"
+    },
+    "CHEMBL2341480": {
+      "assay_id": "CHEMBL2341480",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Inhibition of ACAT in human HepG2 cells assessed as reduction of cellular lipid accumulation at 5 to 50 uM after 6 to 24 hrs by Vybrant Dil staining-based inverted microscopic analysis"
+    },
+    "CHEMBL2341481": {
+      "assay_id": "CHEMBL2341481",
+      "classification": "positive_phenotype",
+      "ffa": false,
+      "desc": "Inhibition of ACAT in human HepG2 cells assessed as reduction of cellular lipid accumulation at 5 to 50 uM after 6 to 24 hrs by Oil red O staining-based inverted microscopic analysis"
+    }
+  },
+  "hepg2_ffa_positive_ids": [
+    "CHEMBL2156870",
+    "CHEMBL3107293",
+    "CHEMBL3107294",
+    "CHEMBL3372774",
+    "CHEMBL3372894",
+    "CHEMBL3372895",
+    "CHEMBL3372896",
+    "CHEMBL3373471",
+    "CHEMBL3373472",
+    "CHEMBL3373473",
+    "CHEMBL3373488",
+    "CHEMBL3373489",
+    "CHEMBL5322681",
+    "CHEMBL5322682",
+    "CHEMBL5322683",
+    "CHEMBL5322684",
+    "CHEMBL5322685",
+    "CHEMBL5389126",
+    "CHEMBL5546883"
+  ],
+  "hepg2_positive_ids": [
+    "CHEMBL1107086",
+    "CHEMBL2156870",
+    "CHEMBL2328362",
+    "CHEMBL2328363",
+    "CHEMBL2341480",
+    "CHEMBL2341481",
+    "CHEMBL3107293",
+    "CHEMBL3107294",
+    "CHEMBL3372774",
+    "CHEMBL3372894",
+    "CHEMBL3372895",
+    "CHEMBL3372896",
+    "CHEMBL3373471",
+    "CHEMBL3373472",
+    "CHEMBL3373473",
+    "CHEMBL3373488",
+    "CHEMBL3373489",
+    "CHEMBL3606720",
+    "CHEMBL4735031",
+    "CHEMBL4735033",
+    "CHEMBL5322681",
+    "CHEMBL5322682",
+    "CHEMBL5322683",
+    "CHEMBL5322684",
+    "CHEMBL5322685",
+    "CHEMBL5389126",
+    "CHEMBL5546883",
+    "CHEMBL5546885"
+  ]
+}

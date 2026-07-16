@@ -54,15 +54,6 @@ def _resolve_mode(mode: str) -> str:
     return resolved
 
 
-def _apply_snapshot_flag(cfg: Any, use_snapshot: bool) -> None:
-    evidence = cfg.raw.setdefault("evidence", {})
-    evidence["use_snapshot"] = bool(use_snapshot)
-    if not use_snapshot:
-        evidence["prefer_snapshot"] = False
-    elif "prefer_snapshot" not in evidence:
-        evidence["prefer_snapshot"] = True
-
-
 def _start_mechanism_async(result: Any, *, log_sink: Any | None = None) -> str:
     """启动机制 PDF 后台任务，立即返回 job_id（不阻塞筛选结果）。"""
     if log_sink is not None:
@@ -87,6 +78,14 @@ def _start_mechanism_async(result: Any, *, log_sink: Any | None = None) -> str:
         llm_cfg=result.config.llm,
         mark_degraded=result.config.mark_degraded,
         source_filename=result.source_filename or "",
+        assumptions=result.config.assumptions,
+        run_context={
+            "run_id": result.run_id,
+            "input_sha256": result.input_sha256,
+            "config_hash": result.config.config_hash,
+            "selection_sha256": result.selection_sha256,
+        },
+        mechanism_graphs=result.mechanism_graphs,
     )
 
 
@@ -101,17 +100,25 @@ def _result_payload(result: Any, *, mechanism_job_id: str = "") -> dict:
             "inchikey_missing": result.inchikey_missing,
             "input_count": result.input_count,
             "filtered_out": result.filtered_out,
+            "review_required_count": result.review_required_count,
             "eligible_count": result.eligible_count,
             "output_count": result.output_count,
             "requested_top_n": result.requested_top_n,
             "mode": result.config.mode,
             "use_snapshot": use_snapshot,
             "config_hash": result.config.config_hash,
+            "run_id": result.run_id,
+            "input_sha256": result.input_sha256,
+            "selection_sha256": result.selection_sha256,
             "degraded_channels": result.config.degraded_channels,
             "diagnostics": {
                 "std_tox": result.diagnostics.std_tox,
                 "scaffold_diversity_top10": result.diagnostics.scaffold_diversity_top10,
                 "quality_pass": result.diagnostics.quality_pass,
+                "engineering_pass": result.diagnostics.engineering_pass,
+                "model_coverage_status": result.diagnostics.model_coverage_status,
+                "scientific_validation_status": result.diagnostics.scientific_validation_status,
+                "evidence_coverage_ratio": result.diagnostics.evidence_coverage_ratio,
                 "parse_skipped": result.parse_skipped,
             },
             "note": result.note,
@@ -120,6 +127,8 @@ def _result_payload(result: Any, *, mechanism_job_id: str = "") -> dict:
         "rows": result.to_row_dicts(),
         "csv": result.to_csv_text(),
         "logs": result.logs,
+        "mechanism_graphs": [graph.to_dict() for graph in result.mechanism_graphs],
+        "hepg2_ffa_resources": result.hepg2_ffa_resources,
         "mechanism_job_id": mechanism_job_id,
         # 兼容旧前端字段：异步后初值为空
         "mechanism_md": "",
@@ -204,8 +213,7 @@ async def screen_endpoint(
         tmp_path = Path(tmp.name)
 
     try:
-        cfg = load_config(mode=resolved_mode)
-        _apply_snapshot_flag(cfg, use_snapshot)
+        cfg = load_config(mode=resolved_mode, use_snapshot=use_snapshot)
         result = screen_sdf(tmp_path, cfg=cfg, top_n=top, source_filename=file.filename)
         job_id = _start_mechanism_async(result)
     except ValueError as exc:
@@ -250,8 +258,7 @@ async def screen_stream(
             with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp:
                 tmp.write(content)
                 tmp_path = Path(tmp.name)
-            cfg = load_config(mode=resolved_mode)
-            _apply_snapshot_flag(cfg, use_snapshot)
+            cfg = load_config(mode=resolved_mode, use_snapshot=use_snapshot)
             result = screen_sdf(
                 tmp_path,
                 cfg=cfg,
@@ -296,7 +303,7 @@ async def screen_download(
         file=file, top=top, mode=mode, use_snapshot=use_snapshot
     )
     return Response(
-        content=payload["csv"],
-        media_type="text/csv",
+        content="\ufeff" + payload["csv"],
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=nomination_top10.csv"},
     )

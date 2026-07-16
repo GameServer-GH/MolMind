@@ -1,0 +1,131 @@
+{
+  "schema_version": "molmind-run-manifest-v2",
+  "run_id": "mm-efff58d7bbf6f4bd8ed9ba33",
+  "selection_sha256": "d313625234fa924ec51f8387417b340f3148fd09411294e3abb8b3f1207eaf0e",
+  "ordered_candidates": [
+    {
+      "rank": 1,
+      "molecule_id": "T37177",
+      "inchikey": "SHUYNJFEXPRUGR-RTCCEZQESA-N",
+      "canonical_smiles": "C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "eligibility_status": "eligible",
+      "final_score": "0.5577"
+    },
+    {
+      "rank": 2,
+      "molecule_id": "T39740",
+      "inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N",
+      "canonical_smiles": "Cc1n[nH]c(C)c1CCCOc1cc(C(=O)O)ccc1F",
+      "eligibility_status": "eligible",
+      "final_score": "0.5539"
+    },
+    {
+      "rank": 3,
+      "molecule_id": "T19124",
+      "inchikey": "OEKUSRBIIZNLHZ-DJDNIQJZSA-N",
+      "canonical_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4CC(=O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "eligibility_status": "eligible",
+      "final_score": "0.5535"
+    },
+    {
+      "rank": 4,
+      "molecule_id": "T23557",
+      "inchikey": "SRBPKVWITYPHQR-KRWDZBQOSA-N",
+      "canonical_smiles": "O=C(O)Cc1ccc(OCCNC[C@H](O)c2ccccc2)cc1",
+      "eligibility_status": "eligible",
+      "final_score": "0.553"
+    },
+    {
+      "rank": 5,
+      "molecule_id": "T64737",
+      "inchikey": "JCZLABDVDPYLRZ-UHFFFAOYSA-N",
+      "canonical_smiles": "NC(Cc1ccc(-c2ccccc2)cc1)C(=O)O",
+      "eligibility_status": "eligible",
+      "final_score": "0.5513"
+    },
+    {
+      "rank": 6,
+      "molecule_id": "T67958",
+      "inchikey": "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+      "canonical_smiles": "O=C(O)CCCCCc1cccc2cncn12",
+      "eligibility_status": "eligible",
+      "final_score": "0.5491"
+    },
+    {
+      "rank": 7,
+      "molecule_id": "T84225",
+      "inchikey": "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
+      "canonical_smiles": "C[C@]12CC[C@H](O)C[C@@H]1[C@@H](O)C[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12",
+      "eligibility_status": "eligible",
+      "final_score": "0.5414"
+    },
+    {
+      "rank": 8,
+      "molecule_id": "TN1037",
+      "inchikey": "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
+      "canonical_smiles": "COc1cc2c(cc1O)CC[n+]1cc3c4c(ccc3cc1-2)OCO4",
+      "eligibility_status": "eligible",
+      "final_score": "0.5385"
+    },
+    {
+      "rank": 9,
+      "molecule_id": "T86470",
+      "inchikey": "PKUPFNJHQHKECO-UHFFFAOYSA-N",
+      "canonical_smiles": "COc1cccc(C(c2cc3c(cc2O)OCO3)N2CCOCC2)c1OC",
+      "eligibility_status": "eligible",
+      "final_score": "0.5379"
+    },
+    {
+      "rank": 10,
+      "molecule_id": "T207106",
+      "inchikey": "JWZBXKZZDYMDCJ-WSSJWYCMSA-N",
+      "canonical_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2[C@@H]3CC(=O)C4C[C@H](O)CC[C@]4(C)[C@H]3CC[C@]12C",
+      "eligibility_status": "eligible",
+      "final_score": "0.4925"
+    }
+  ],
+  "input": {
+    "path": "T001 TargetMol现货产品22966.sdf",
+    "sha256": "3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456"
+  },
+  "config_hash": "58dc834fdeeb805c",
+  "algorithm_contract_version": "competition-eligibility-v8",
+  "assumption_policy_version": "competition-assumptions-v1",
+  "snapshot_sha256": "8880f8886e70aefdd3c3f0e97760e19c7a0bf4532ebd7fb5bb77492b323b5c8e",
+  "model_artifacts": {
+    "dili_knn_v1": "62851d6835319af83cc2b23835634e737016931f73bb0c0e5eb57a49b3725574",
+    "admet_proxy_v1": "44ddc2a95222d17bf8557b0023b064e9263e0d4c136ec735c8f459a0744228cf"
+  },
+  "python_version": "3.9.6",
+  "rdkit_version": "2025.09.2",
+  "platform": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python_implementation": "CPython"
+  },
+  "container_image_digest": "not_available",
+  "command": [
+    "/Users/gameserver/code/CloudCode/MolMind/.venv/bin/python",
+    "-m",
+    "apps.cli.main",
+    "--input",
+    "T001 TargetMol现货产品22966.sdf",
+    "--output",
+    "/tmp/molmind-v8-with-bake/nomination_top10.csv",
+    "--mode",
+    "auto"
+  ],
+  "random_seed": 42,
+  "started_at": "2026-07-15T06:17:48+00:00",
+  "runtime_seconds": 16.892,
+  "artifacts": {
+    "nomination_top10.csv": "fdcb3058ea32f7be5cccc3e6cc701828f8a54f74679fb78e3957e31a8aacc16f",
+    "nomination_top10.mechanism.md": "e1e8616bc007704600cec7dcaee27d729e4a2c082979ff799540c4dc5c0d51a7",
+    "nomination_top10.mechanism.pdf": "d953bb290eab37bf72ee4029853b9d21dda37b2ea67ef3a335dba7e6653dcd43",
+    "nomination_top10.screening_audit.csv": "7aa27f8b7932477fcf048c6b67efbea4c88e9c8e208c424963c216a7b1872d2f",
+    "nomination_top10.critic_audit.csv": "96bbb98d6ba96d09a981b6da14ad70d6e554503d1c1bf29063d3d82a145e36cf",
+    "nomination_top10.rank_robustness.json": "42f5d53f53190976700565d52ae598d5488d03a870837f4ead62186c62f3426b",
+    "nomination_top10.mechanism_graph.json": "fb4c344fd79aef9d5a4fd2c08cc7f20e471f558400f83d717d25792e4dd91948",
+    "nomination_top10.hepg2_ffa_resources.json": "7f1cf351675301cfabcbae97e00363bef72bc6c72fcdb18f8f40f0e9f7b2c48e"
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "schema_version": "molmind-hepg2-ffa-resource-registry-v1",
+  "captured_at": "2026-07-15T13:02:00+08:00",
+  "ranking_effect": "none",
+  "scope": "HepG2-FFA mechanistic context, model-QC and literature dual-endpoint curation; not a validated candidate-level benchmark",
+  "training_gate": {
+    "required_fields": [
+      "compound_id",
+      "standardized_smiles",
+      "dose",
+      "dose_unit",
+      "treatment_time_hours",
+      "ffa_composition",
+      "lipid_response",
+      "cell_viability_response",
+      "batch_id",
+      "vehicle_control_id",
+      "lipid_condition_id",
+      "viability_condition_id",
+      "lipid_assay",
+      "viability_assay",
+      "source_id"
+    ],
+    "requires_same_condition_paired_endpoints": true,
+    "requires_candidate_structure": true,
+    "current_status": "no_validated_independent_dual_endpoint_benchmark"
+  },
+  "aliases": {
+    "PXD012066-2": "PXD012066",
+    "PXD007902-2": "PXD007902"
+  },
+  "resources": [
+    {
+      "resource_id": "pride_PXD012066",
+      "canonical_accession": "PXD012066",
+      "source_type": "proteomexchange_pride",
+      "title": "the Effect of Fatty Acids in Hepatic Insulin resistance-part2",
+      "source_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD012066",
+      "metadata_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD012066",
+      "metadata_sha256": "7ca277904359c5c0e60acbb667028e9e7a5958c8365c87726732ed9e3982b589",
+      "role": "mechanistic_context",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "ineligibility_reasons": [
+        "proteomics_only",
+        "no_candidate_structure",
+        "no_paired_lipid_viability_endpoint"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2",
+        "inducer": "palmitic_acid",
+        "inducer_concentration": "0.5 mM",
+        "rescue_conditions": ["oleic_acid 0.2 mM", "eicosapentaenoic_acid 0.15 mM"],
+        "treatment_time_hours": 12,
+        "primary_readout": "SILAC quantitative proteomics and insulin resistance mechanism"
+      },
+      "mechanism_topics": ["ROS", "JUN", "lipid_metabolism", "OXPHOS", "TCA"]
+    },
+    {
+      "resource_id": "pride_PXD012065",
+      "canonical_accession": "PXD012065",
+      "source_type": "proteomexchange_pride",
+      "title": "The Effect of Fatty Acids in Hepatic Insulin Resistance - Part 1",
+      "source_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD012065",
+      "metadata_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD012065",
+      "metadata_sha256": "374a3301ca9e51a01520865705b04f38482474826f1cd05f2826b411236c2960",
+      "role": "mechanistic_context",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "ineligibility_reasons": [
+        "proteomics_only",
+        "no_candidate_structure",
+        "no_paired_lipid_viability_endpoint"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2",
+        "inducer": "palmitic_acid",
+        "rescue_conditions": ["oleic_acid", "eicosapentaenoic_acid"],
+        "primary_readout": "FFA-induced insulin resistance and proteomic response"
+      },
+      "mechanism_topics": ["insulin_resistance", "FFA_response", "mitochondrial_stress"]
+    },
+    {
+      "resource_id": "pride_PXD000760",
+      "canonical_accession": "PXD000760",
+      "source_type": "proteomexchange_pride",
+      "title": "SILAC study on the effect of trans fatty acids in HepG2 cells",
+      "source_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD000760",
+      "metadata_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD000760",
+      "metadata_sha256": "05d266860ef0102ca6e0be0f320356ec4b649fb123ec42ec568549917c0d189c",
+      "role": "mechanistic_context",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "ineligibility_reasons": [
+        "proteomics_only",
+        "no_candidate_structure",
+        "non_matching_long_exposure_condition"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2-SF",
+        "inducer": "trans_fatty_acids",
+        "fatty_acid_concentration": "100 uM",
+        "treatment_time_days": 7,
+        "primary_readout": "SILAC full proteome"
+      },
+      "mechanism_topics": ["trans_fatty_acid_response", "stress", "apoptosis"]
+    },
+    {
+      "resource_id": "pride_PXD007902",
+      "canonical_accession": "PXD007902",
+      "source_type": "proteomexchange_pride",
+      "title": "Myristic acid induces proteomic and secretomic changes associated with steatosis",
+      "source_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD007902",
+      "metadata_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD007902",
+      "metadata_sha256": "3e61d02a340d376300ab634e9c4c6aa453ca2a069d508716b55d1f7b8f42e1bc",
+      "role": "mechanistic_context",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "ineligibility_reasons": [
+        "proteomics_and_secretomics_only",
+        "no_candidate_structure",
+        "no_paired_lipid_viability_endpoint"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2",
+        "inducer": "myristic_acid",
+        "inducer_concentrations": ["50 uM", "125 uM", "250 uM"],
+        "treatment_time_hours": 24,
+        "primary_readout": "intracellular and secreted protein abundance"
+      },
+      "mechanism_topics": ["steatosis", "lipid_droplet", "ER_stress", "exosome_release"]
+    },
+    {
+      "resource_id": "ssbd_Fig4_HepG2FFA",
+      "canonical_accession": "SSBD:dataset-12051",
+      "source_type": "ssbd_raman",
+      "title": "Raman spectra data of HepG2 spheroids treated with various concentrations of FFA",
+      "source_url": "https://ssbd.riken.jp/database/dataset/12051/",
+      "download_url": "https://ssbd.riken.jp/data/371-Liao-RamanSpectra/source/Fig4_HepG2FFA.zip",
+      "archive_sha256": "cd14642952f1a0c264619e8492f030d2b3018b8ada6bce9ac481b5f5349d6ed9",
+      "xlsx_sha256": "f0bab62bfd09ff5e2a1795066eac3b76994e7c7ab6cbe1191eb141bc1b0d770d",
+      "role": "assay_qc",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "ineligibility_reasons": [
+        "no_candidate_structure",
+        "no_direct_lipid_quantitation",
+        "no_cell_viability_endpoint",
+        "three_dimensional_spheroid_not_competition_monolayer"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2 spheroid",
+        "inducer": "FFA",
+        "concentrations_mM": [0, 0.01, 0.1, 0.25, 0.5, 1.0, 2.0],
+        "spectra_replicates_by_condition": {
+          "Vehicle": 23,
+          "0.01mM": 22,
+          "0.1mM": 26,
+          "0.25mM": 21,
+          "0.5mM": 25,
+          "1mM": 28,
+          "2mM": 28
+        },
+        "wavenumber_rows": 548,
+        "spectra_columns": 173,
+        "primary_readout": "Raman spectral response"
+      }
+    },
+    {
+      "resource_id": "article_hepg2_pa_deep_proteomics_2026",
+      "canonical_accession": "DOI:10.7538/zpxb.2025.0158",
+      "source_type": "journal_article",
+      "title": "A Deep-coverage Proteomic Dataset Resource for Palmitic Acid-Induced Lipotoxicity Model in HepG2 Cells",
+      "source_url": "https://zpxb.xml-journal.net/article/doi/10.7538/zpxb.2025.0158?viewType=HTML",
+      "source_sha256": "7a2cfcf526cee243a27291b2bed9d7401f7dd0fbb9cdc0e490a296ac349432b0",
+      "role": "mechanistic_context",
+      "evidence_level": "L1",
+      "training_eligible": false,
+      "raw_data_status": "accession_not_identified_on_public_article_page",
+      "ineligibility_reasons": [
+        "proteomics_only",
+        "no_candidate_structure",
+        "no_paired_lipid_viability_endpoint",
+        "raw_accession_or_attachment_unresolved"
+      ],
+      "assay_context": {
+        "cell_line": "HepG2",
+        "inducer": "palmitic_acid",
+        "primary_readout": "label-free deep quantitative proteomics"
+      },
+      "mechanism_topics": ["fatty_acid_metabolism", "PPAR_signaling", "ER_stress", "calcium_homeostasis"]
+    }
+  ],
+  "literature_dual_endpoint": {
+    "role": "candidate_evidence_curation",
+    "training_eligible": "only_after_record_level_schema_and_paper_scaffold_split",
+    "required_source_examples": [
+      {
+        "pmid": "33631425",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/33631425/",
+        "note": "FFA mechanistic/proteomic context; not candidate dual endpoint"
+      },
+      {
+        "pmid": "26628894",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/26628894/",
+        "note": "trans-fatty-acid HepG2 proteomics with viability context; not standard candidate screen"
+      },
+      {
+        "pmid": "29654920",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/29654920/",
+        "note": "myristic-acid HepG2 proteomics/secretomics; no candidate paired endpoint"
+      }
+    ]
+  }
+}

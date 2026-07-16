@@ -1,11 +1,11 @@
 # MolMind 正式版默认排序与融合权重（纳入 config_hash）
 #
-# 定榜冻结口径（正式版交卷默认）：
+# 主路径冻结口径（Quality-Max 默认）：
 #   主证据 = chembl_lipid_v1 + pubchem_tox_v1（+ 已烘焙 evidence_snapshot）
 #   nafldkb_v1 / dili_table_v1 默认不进主排名（enabled: false, ranking_weight: 0）
 #   避免弱 S_lipid + 高 conf_e 刷榜
 #
-# mode_default: auto = Quality-Max 单路径（snapshot→live 补洞→规则）；offline/online 仅调试
+# mode_default: auto = 冻结快照 Quality-Max；只有显式 online 才 live 补洞
 mode_default: auto
 seed: 42
 top_n: 10
@@ -20,16 +20,27 @@ weights:
 gates:
   tox_hard: 0.65
   tox_soft: 0.45
+  tox_nomination_max: 0.45  # 0.45–0.65 仅人工复核，不自动进入 Top 10
   lipid_min: 0.35
+  # 计算提名允许进入 proxy_only 分层；真正的安全清除证据另行输出。
+  # 这样不会把“没有查到风险”伪装成低毒，但也不会因缺少实验数据而静默丢失全部候选。
+  min_toxicity_confidence: 0.0
+  min_safety_evidence_coverage: 0.0
+  local_toxicity_proxy_coverage: 0.20
+  tox_uncertainty_penalty: 0.10
+  # 仅有最低等级本地代理覆盖时，用保守上界做自动提名门控；非官方阈值。
+  low_confidence_tox_margin: 0.05
   viability_proxy: 0.80  # 实验层口径说明；不参与 SI（ADR-M16）
 
 lipid_fuse:
   rule: 0.35
   positive_similarity: 0.30
   evidence: 0.25
-  ml: 0.10
+  # lipid ML 未接线（P0-A1）：权重为 0，避免「配置有通道、分数恒 0」的虚假能力面
+  ml: 0.0
 
 tox_fuse:
+  aggregation: max_head_with_weighted_context
   alert: 0.25
   dili: 0.30
   admet: 0.20
@@ -61,27 +72,59 @@ evidence:
       ranking_weight: 0
   tox_analog_sim_threshold: 0.75
   tox_analog_boost_alpha: 0.25
-  deep_query_top_m: 40          # auto/online 仅对短名单 live 查证（保 SLA）
-  bake_top_m: 80                # bake-evidence 默认烘焙短名单更大一些
+  deep_query_top_m: 60          # auto/online 仅对短名单 live 查证（保 SLA）；覆盖 Critic 漂移席位
+  bake_top_m: 120               # bake-evidence 默认烘焙短名单，覆盖多样性/Critic 重排后的 Top10
   http_timeout_sec: 4.0
   circuit_fail_threshold: 5
+  chembl_max_activities: 500
   prefer_snapshot: true         # 有本地快照则优先用，不再打外网
-  auto_cache_snapshot: true     # Online 查到的结果自动写入 snapshot
+  auto_cache_snapshot: true     # 仅显式 online：查到的结果自动写入 snapshot
   local_tables:
-    enabled: false              # 定榜冻结：NAFLDkb/DILIrank 默认不进主排名
+    enabled: false              # 主路径冻结：NAFLDkb/DILIrank 默认不进主排名
     dili_csv: data/reference/dilirank.csv
     nafld_csv: data/reference/nafldkb.csv
     dili_sim_threshold: 0.70
     nafld_sim_threshold: 0.78
     neighbor: true
+  # Wave-1 public assay-grain QC tables (InChIKey exact match).
+  # PubChem Active → annotation_only；仅 ChEMBL phenotype 可进 lipid/tox 分。
+  public_assay_grain:
+    enabled: true
+    allow_chembl_phenotype_scores: true
+    qc_paths:
+      - data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl
+      - data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl
+      - data/public/processed/bindingdb/records_endpoint_qc.jsonl
+      - data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl
 
 diversity:
-  method: scaffold
-  # 交卷：每骨架 1 席，服务效果×新颖性，避免小檗碱等同核刷榜
+  method: similarity_mmr
+  # 默认每骨架 1 席，兼顾效力与新颖性，避免同核刷榜
   max_per_scaffold: 1
   redundancy_lambda: 0.05
   # 假设通路席位上限（Critic 选榜；不足时放宽回填）
   max_per_pathway: 3
+  max_pairwise_tanimoto: 0.60
+  similarity_cluster_threshold: 0.50
+  max_per_similarity_cluster: 2
+  mmr_lambda: 0.85
+
+novelty:
+  method: morgan_tanimoto_distance
+  reference_version: goldset_relevant_lipid_v1
+  fingerprint_radius: 2
+  fingerprint_bits: 2048
+  unknown_score: 0.50
+
+robustness:
+  enabled: true
+  weight_delta: 0.05
+  gate_delta: 0.03
+
+feature_cache:
+  enabled: true
+  directory: .molmind_cache/features
+  schema_version: ingest-features-v1
 
 ml:
   enabled: true  # 无 manifest 模型则自动跳过
@@ -121,10 +164,12 @@ critic:
     biguanide: 1
 
 quality_gates:
-  min_std_tox: 0.08
+  min_std_tox: 0.0  # 仅保留旧配置兼容；风险方差不再作为科学性能 PASS/FAIL
   max_goldset_fp_in_top10: 0
   min_scaffold_diversity_top10: 6
-  min_positive_percentile: 80
+  min_parse_success_rate: 0.95
+  max_missing_inchikey_rate: 0.05
+  min_model_coverage_warning: 0.20
 
 sla:
   full_library_cpu_minutes: 30

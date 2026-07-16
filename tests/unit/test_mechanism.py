@@ -7,11 +7,17 @@ from pathlib import Path
 from packages.goldset import load_goldset
 from services.evidence_facade import EvidenceBundle
 from services.mechanism import render_mechanism_markdown
+from services.mechanism.pdf_export import markdown_to_pdf_bytes
 from services.pipeline import load_config, screen_sdf
 from services.ranker import score_molecule
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_SDF = ROOT / "data" / "sample.sdf"
+
+
+def test_pdf_generation_is_byte_deterministic() -> None:
+    markdown = "# MolMind\n\n- 同一输入应生成同一 PDF。\n"
+    assert markdown_to_pdf_bytes(markdown) == markdown_to_pdf_bytes(markdown)
 
 
 def test_mechanism_does_not_change_csv_bytes(tmp_path: Path) -> None:
@@ -31,6 +37,7 @@ def test_mechanism_does_not_change_csv_bytes(tmp_path: Path) -> None:
 
 def test_mechanism_template_unchanged_by_editing_top_only() -> None:
     cfg = load_config(mode="offline")
+    cfg.raw["gates"]["tox_nomination_max"] = cfg.raw["gates"]["tox_hard"]
     gold = load_goldset()
     sim = next(c for c in gold.positives if c.name == "Simvastatin")
     from packages.chem_core import compute_descriptors, morgan_fp

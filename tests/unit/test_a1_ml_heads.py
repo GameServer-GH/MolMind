@@ -79,6 +79,7 @@ def test_ml_raises_fp_tox_vs_baseline() -> None:
 
     assert heads_ml.get("dili", 0) > 0
     assert r_ml >= r_base
+    assert "dili_ml_missing" not in cfg_ml.degraded_channels
     assert "dili_ml" not in cfg_ml.degraded_channels
 
 
@@ -89,15 +90,19 @@ def test_ml_disabled_marks_degraded() -> None:
     gold = load_goldset()
     rec = _record("CCO", "EtOH")
     score_tox(rec, cfg, gold, EvidenceBundle())
-    assert "dili_ml" in cfg.degraded_channels
-    assert "admet_ml" in cfg.degraded_channels
+    assert "dili_ml_missing" in cfg.degraded_channels
+    assert "admet_ml_missing" in cfg.degraded_channels
 
 
-def test_benign_low_or_zero_dili_ml() -> None:
+def test_benign_notes_ml_no_neighbor_stats() -> None:
     clear_heads_cache()
     cfg = load_config(mode="offline")
     gold = load_goldset()
-    # 乙醇：与 DILIrank 训练集约不相似
     rec = _record("CCO", "EtOH")
     scored = score_molecule(rec, cfg, gold, EvidenceBundle())
     assert scored.tox_heads.get("dili", 0.0) < 0.5
+    # 有模型时乙醇多半无邻居：计入 run 统计，但不写 degraded no_neighbor
+    assert cfg.ml_predict_calls >= 1
+    note = cfg.finalize_ml_run_stats()
+    assert note is not None and "ml_neighbors" in note
+    assert "dili_ml_no_neighbor" not in cfg.degraded_channels

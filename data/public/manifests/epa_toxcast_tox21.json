@@ -1,0 +1,85 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "epa_toxcast_tox21",
+  "import_wave": "wave_2_toxicology",
+  "source_url": "https://www.epa.gov/comptox-tools/exploring-toxcast-data",
+  "license_policy": "preserve_version_and_endpoint_provenance",
+  "captured_at": "2026-07-15T11:23:27.701046+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 9,
+  "raw_path": "data/public/raw/epa_toxcast_tox21/toxcast_ctx_1784114607.json",
+  "processed_path": "data/public/processed/epa_toxcast_tox21/records.jsonl",
+  "raw_sha256": "ea50d90199191f77e7b9b352312eed5842f0840471dc0d18c50aca3586e191bc",
+  "processed_sha256": "e96250e8625aa6aa05e262fa28b3b5c6a19efe5e1cb877e6e565127f6cf59f73",
+  "query": {
+    "activity_count": 9,
+    "active_hit_count": 7,
+    "dtxsid_count": 6,
+    "dtxsid_stats": [
+      {
+        "dtxsid": "DTXSID7020182",
+        "returned": 3,
+        "kept": 3,
+        "mode": "fixture",
+        "active_hits": 2
+      },
+      {
+        "dtxsid": "DTXSID3020966",
+        "returned": 2,
+        "kept": 2,
+        "mode": "fixture",
+        "active_hits": 1
+      },
+      {
+        "dtxsid": "DTXSID2021300",
+        "returned": 1,
+        "kept": 1,
+        "mode": "fixture",
+        "active_hits": 1
+      },
+      {
+        "dtxsid": "DTXSID9044297",
+        "returned": 1,
+        "kept": 1,
+        "mode": "fixture",
+        "active_hits": 1
+      },
+      {
+        "dtxsid": "DTXSID2045232",
+        "returned": 1,
+        "kept": 1,
+        "mode": "fixture",
+        "active_hits": 1
+      },
+      {
+        "dtxsid": "DTXSID30944145",
+        "returned": 1,
+        "kept": 1,
+        "mode": "fixture",
+        "active_hits": 1
+      }
+    ],
+    "dtxsid_errors": [],
+    "resolve_errors": [
+      {
+        "error_type": "AuthMissingError",
+        "error": "InChIKey→DTXSID resolution requires CTX_API_KEY"
+      }
+    ],
+    "mode_counts": {
+      "cache": 0,
+      "live": 0,
+      "fixture": 6
+    },
+    "api_key_present": false,
+    "hitc_active_threshold": 0.9,
+    "api_base": "https://comptox.epa.gov/ctx-api/bioactivity",
+    "grain": "compound_x_assay_x_activity",
+    "ranking_effect": "risk_signal_only",
+    "dataset_version": "ToxCast via CTX Bioactivity API",
+    "note": "CTX DTXSID bioactivity subset. Active hits (hitc>=threshold) are risk_signal only; inactive/non-hit is never a safety clearance. Figshare invitrodb full dump is intentionally not shipped."
+  },
+  "grain": "compound_x_assay_x_activity"
+}

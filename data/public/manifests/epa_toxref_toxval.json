@@ -1,0 +1,14 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "epa_toxref_toxval",
+  "import_wave": "wave_2_toxicology",
+  "source_url": "https://www.epa.gov/comptox-tools/downloadable-computational-toxicology-data",
+  "license_policy": "preserve_source_and_species_route_duration",
+  "captured_at": "2026-07-15T07:47:39.602073+00:00",
+  "status": "planned",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "warnings": [
+    "large/download source requires explicit file transfer; no implicit GB-scale download"
+  ]
+}

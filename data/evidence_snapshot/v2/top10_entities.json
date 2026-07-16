@@ -1,0 +1,123 @@
+{
+  "schema_version": "molmind-candidate-entities-v3",
+  "source_input_sha256": "3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456",
+  "algorithm_contract_version": "competition-eligibility-v8",
+  "baseline_config_hash": "75edc449e123b3da",
+  "canonical_run_id": "mm-4df40a7e6fea829e3ba6f346",
+  "selection_sha256": "8b29798ff8c4b2cf97dfb1c63a7f0a09c92ae88ede48f45f56f4c9f38016cae0",
+  "canonical_artifacts": {
+    "nomination_top10.csv": "bf7be27a3638964f4b597aa8983ac5cd678505b07e828cf9729769d78040c61b",
+    "nomination_top10.mechanism.pdf": "ea0803fde9c1d130218480c52b33fd601601bc22b7784386e2c8081f4735f4f8",
+    "nomination_top10.mechanism_graph.json": "17b6cd58f81ca792d3a9751fac26607906d97f639805b76552556051a6330f03"
+  },
+  "identity_policy": {
+    "primary": "original structure from competition SDF",
+    "search_keys": ["original_inchikey", "standardized_inchikey", "cas"],
+    "exact_evidence_rule": "Exact-compound evidence requires matching connectivity, stereochemistry and salt/protonation context where relevant.",
+    "analogue_rule": "Non-exact structures are labelled analogue evidence and never promoted to direct evidence."
+  },
+  "candidates": [
+    {
+      "baseline_rank": 5,
+      "molecule_id": "T84225",
+      "source_index": 20546,
+      "cas": "49644-04-4",
+      "standardized_inchikey": "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
+      "original_inchikey": "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
+      "standardized_smiles": "C[C@]12CC[C@H](O)C[C@@H]1[C@@H](O)C[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12",
+      "original_smiles": "[H][C@@]12C[C@H](O)[C@@]3([H])C[C@@H](O)CC[C@]3(C)[C@@]1([H])CC[C@]1(C)[C@@H](O)CC[C@@]21[H]"
+    },
+    {
+      "baseline_rank": 1,
+      "molecule_id": "T37177",
+      "source_index": 18906,
+      "cas": "60696-62-0",
+      "standardized_inchikey": "SHUYNJFEXPRUGR-RTCCEZQESA-N",
+      "original_inchikey": "SHUYNJFEXPRUGR-RTCCEZQESA-N",
+      "standardized_smiles": "C[C@H](CC(=O)O)[C@H]1CC[C@H]2[C@@H]3[C@H](O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "original_smiles": "[H][C@@]12C[C@H](O)CC[C@]1(C)[C@@]1([H])C[C@H](O)[C@@]3(C)[C@@]([H])(CC[C@]3([H])[C@H](C)CC(=O)O)[C@]1([H])[C@H](O)C2"
+    },
+    {
+      "baseline_rank": 2,
+      "molecule_id": "T23557",
+      "source_index": 15591,
+      "cas": "178600-17-4",
+      "standardized_inchikey": "SRBPKVWITYPHQR-KRWDZBQOSA-N",
+      "original_inchikey": "KCEFVYIWOQSJCH-LMOVPXPDSA-N",
+      "standardized_smiles": "O=C(O)Cc1ccc(OCCNC[C@H](O)c2ccccc2)cc1",
+      "original_smiles": "Cl.O=C(O)Cc1ccc(OCCNC[C@H](O)c2ccccc2)cc1"
+    },
+    {
+      "baseline_rank": 3,
+      "molecule_id": "T64737",
+      "source_index": 22326,
+      "cas": "155760-02-4",
+      "standardized_inchikey": "JCZLABDVDPYLRZ-UHFFFAOYSA-N",
+      "original_inchikey": "JCZLABDVDPYLRZ-AWEZNQCLSA-N",
+      "standardized_smiles": "NC(Cc1ccc(-c2ccccc2)cc1)C(=O)O",
+      "original_smiles": "N[C@@H](Cc1ccc(-c2ccccc2)cc1)C(=O)O",
+      "identity_warning": "Current canonical tautomer standardization removed specified stereochemistry; exact evidence must use original_inchikey."
+    },
+    {
+      "baseline_rank": 7,
+      "molecule_id": "TN7120",
+      "source_index": 14024,
+      "cas": "911-40-0",
+      "standardized_inchikey": "RHCPKKNRWFXMAT-QHMGNDAISA-N",
+      "original_inchikey": "RHCPKKNRWFXMAT-RRWYKFPJSA-N",
+      "standardized_smiles": "C[C@H](CCC(=O)O)[C@H]1CC[C@H]2C3C(=O)C[C@@H]4C[C@H](O)CC[C@]4(C)[C@H]3C[C@H](O)[C@]12C",
+      "original_smiles": "[H][C@]12CC(=O)[C@@]3([H])[C@]4([H])CC[C@]([H])([C@H](C)CCC(=O)O)[C@@]4(C)[C@@H](O)C[C@]3([H])[C@@]1(C)CC[C@@H](O)C2"
+    },
+    {
+      "baseline_rank": 10,
+      "molecule_id": "TN1037",
+      "source_index": 9628,
+      "cas": "38691-95-1",
+      "standardized_inchikey": "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
+      "original_inchikey": "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
+      "standardized_smiles": "COc1cc2c(cc1O)CC[n+]1cc3c4c(ccc3cc1-2)OCO4",
+      "original_smiles": "COc1cc2c(cc1O)CC[n+]1cc3c4c(ccc3cc1-2)OCO4"
+    },
+    {
+      "baseline_rank": 6,
+      "molecule_id": "T17044",
+      "source_index": 15792,
+      "cas": "251565-85-2",
+      "standardized_inchikey": "CXGTZJYQWSUFET-UHFFFAOYSA-N",
+      "original_inchikey": "CXGTZJYQWSUFET-IBGZPJMESA-N",
+      "standardized_smiles": "CCOC(Cc1ccc(OCCc2ccc(OS(C)(=O)=O)cc2)cc1)C(=O)O",
+      "original_smiles": "CCO[C@@H](Cc1ccc(OCCc2ccc(OS(C)(=O)=O)cc2)cc1)C(=O)O"
+    },
+    {
+      "baseline_rank": 9,
+      "molecule_id": "T8188",
+      "source_index": 7558,
+      "cas": "477-49-6",
+      "standardized_inchikey": "ISCQYPPCSYRZOT-HRJVKACCSA-N",
+      "original_inchikey": "ISCQYPPCSYRZOT-BKTGTZMESA-N",
+      "standardized_smiles": "COc1cc([C@@H]2c3cc4c(cc3C(=O)C3COC(=O)C32)OCO4)cc(OC)c1OC",
+      "original_smiles": "[H][C@]12COC(=O)[C@]1([H])[C@H](c1cc(OC)c(OC)c(OC)c1)c1cc3c(cc1C2=O)OCO3",
+      "identity_warning": "Canonical tautomer standardization changed specified stereochemistry; exact evidence must use original_inchikey."
+    },
+    {
+      "baseline_rank": 8,
+      "molecule_id": "T39740",
+      "source_index": 14881,
+      "cas": "2242751-53-5",
+      "standardized_inchikey": "WBFUHHBPNXWNCC-UHFFFAOYSA-N",
+      "original_inchikey": "MGFZEARHINUOMX-UHFFFAOYSA-N",
+      "standardized_smiles": "Cc1n[nH]c(C)c1CCCOc1cc(C(=O)O)ccc1F",
+      "original_smiles": "Cc1n[nH]c(C)c1CCCOc1cc(C(=O)O)ccc1F.Cl"
+    },
+    {
+      "baseline_rank": 4,
+      "molecule_id": "T67958",
+      "source_index": 16974,
+      "cas": "85691-74-3",
+      "standardized_inchikey": "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+      "original_inchikey": "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+      "standardized_smiles": "O=C(O)CCCCCc1cccc2cncn12",
+      "original_smiles": "O=C(O)CCCCCc1cccc2cncn12"
+    }
+  ]
+}

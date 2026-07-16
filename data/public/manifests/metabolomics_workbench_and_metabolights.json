@@ -1,0 +1,21 @@
+{
+  "schema_version": "molmind-public-import-manifest-v1",
+  "source_id": "metabolomics_workbench_and_metabolights",
+  "import_wave": "wave_3_multiomics",
+  "source_url": "https://www.metabolomicsworkbench.org/about/index.html",
+  "license_policy": "verify_record_terms_and_noncommercial_restrictions",
+  "captured_at": "2026-07-15T07:49:09.142542+00:00",
+  "status": "imported",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "row_count": 1,
+  "raw_path": "data/public/raw/metabolomics_workbench_and_metabolights/response_1784101749.json",
+  "processed_path": "data/public/processed/metabolomics_workbench_and_metabolights/records.jsonl",
+  "raw_sha256": "81d0e517abc197bae8e3b9b82bff1e47c3c1749145fcc318ed8acde0bb95428d",
+  "processed_sha256": "4b51d3c090a42b8789181dd3c89ab42cdf13cce7d110e5ee365555cc40c27afa",
+  "query": {
+    "accessions": [
+      "ST003475"
+    ]
+  }
+}

@@ -52,17 +52,28 @@ def score_lipid(
                 evidence_id=hit.evidence_id,
             )
         )
+    for hit in evidence.pathway:
+        attrs.append(
+            Attribution(
+                "pathway_evidence",
+                hit.adapter_id,
+                value=hit.score,
+                evidence_id=hit.evidence_id,
+            )
+        )
 
+    # lipid ML 头未接线：s_ml 恒 0。仅当配置仍期望 ml 权重>0 且 ml 总开关关闭时记降级。
     s_ml = 0.0
-    if not cfg.ml_enabled:
-        cfg.mark_degraded("lipid_ml")
-
     fuse = cfg.lipid_fuse
+    ml_weight = float(fuse.get("ml", 0.0) or 0.0)
+    if ml_weight > 0 and not cfg.ml_enabled:
+        cfg.mark_degraded("lipid_ml_missing")
+
     active = {
         "rule": fuse["rule"],
         "positive_similarity": fuse["positive_similarity"],
         "evidence": fuse["evidence"] if s_evidence > 0 else 0.0,
-        "ml": fuse["ml"] if s_ml > 0 else 0.0,
+        "ml": ml_weight if s_ml > 0 else 0.0,
     }
     weight_sum = sum(active.values()) or 1.0
     parts = {

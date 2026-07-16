@@ -82,6 +82,7 @@ def test_no_hit_weight_normalization() -> None:
 
 def test_evidence_ablation_changes_final_score() -> None:
     cfg = load_config(mode="offline")
+    cfg.raw["gates"]["tox_nomination_max"] = cfg.raw["gates"]["tox_hard"]
     gold = load_goldset()
     record = _simvastatin_record()
 

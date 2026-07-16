@@ -1,0 +1,67 @@
+name: MolMind reproducibility gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: molmind-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-reproduce:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.11"
+          activate-environment: molmind
+          channels: conda-forge
+          auto-activate-base: false
+      - name: Install pinned runtime
+        run: |
+          conda install -y -c conda-forge rdkit=2025.09.2
+          python -m pip install -r deploy/requirements.lock
+          python -m pip install -e .
+      - name: Verify frozen algorithm and rank policy
+        run: |
+          python scripts/check_algorithm_freeze.py
+          python scripts/check_rank_config_gate.py
+      - name: Run complete test suite
+        run: pytest
+      - name: Reproduce sample delivery
+        run: |
+          python -m apps.cli.main --input data/sample.sdf --output output/ci_nomination.csv --mode offline
+          test -s output/ci_nomination.csv
+          test -s output/ci_nomination.mechanism.pdf
+          test -s output/ci_nomination.run_manifest.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: molmind-sample-delivery
+          path: output/ci_nomination*
+          if-no-files-found: error
+
+  linux-amd64-container:
+    needs: test-and-reproduce
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build linux/amd64 image
+        run: docker buildx build --platform linux/amd64 -f deploy/Dockerfile -t molmind:ci --load .
+      - name: Run tests in container
+        run: docker run --rm molmind:ci pytest
+      - name: Run frozen algorithm gate in container
+        run: docker run --rm molmind:ci python scripts/check_algorithm_freeze.py
+      - name: Run offline delivery in container
+        run: docker run --rm molmind:ci python -m apps.cli.main --input data/sample.sdf --output /tmp/nomination.csv --mode offline

@@ -91,3 +91,24 @@ def test_gate_out_explainable() -> None:
     if scored.gated_out:
         assert scored.gate_reason
         assert scored.final_score == 0.0
+
+
+def test_soft_tox_caution_in_overall_reason() -> None:
+    """P1-C：放宽门控后，落在 soft~hard 的候选 overall_reason 含 soft_tox_caution。"""
+    cfg = load_config(mode="offline")
+    cfg.raw["gates"]["tox_soft"] = 0.0
+    cfg.raw["gates"]["tox_hard"] = 1.0
+    cfg.raw["gates"]["lipid_min"] = 0.0
+    gold = load_goldset()
+    scored = score_molecule(_record("CCO", "EtOH"), cfg, gold, EvidenceBundle())
+    assert scored.gated_out is False
+    assert scored.tox_risk > 0.0
+    assert "soft_tox_caution" in scored.overall_reason
+    w = cfg.weights
+    expected = (
+        w["lipid"] * scored.lipid_score
+        + w["tox_safety"] * (1.0 - scored.tox_risk)
+        + w["novelty"] * scored.novelty_score
+        + w["evidence_confidence"] * scored.conf_e
+    )
+    assert abs(expected - scored.final_score) < 1e-3

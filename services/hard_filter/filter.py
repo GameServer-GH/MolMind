@@ -7,8 +7,7 @@ from __future__ import annotations
 
 from rdkit import Chem
 
-from packages.chem_core import HARD_PATTERNS
-from packages.models import FilterDecision, MoleculeRecord
+from packages.models import FilterDecision, MoleculeRecord, StructuralAlertHit
 from services.pipeline.config_loader import AppConfig
 
 
@@ -23,35 +22,97 @@ def apply_hard_filters(record: MoleculeRecord, cfg: AppConfig) -> FilterDecision
     max_hbd = int(params.get("max_hbd", 5))
     max_hba = int(params.get("max_hba", 10))
 
+    ro5_violations: list[tuple[str, str]] = []
     if record.mw > max_mw:
-        return FilterDecision(False, ["lipinski_ro5"], f"MW {record.mw:.1f} > {max_mw}")
-    step_codes.append("lipinski_ro5")
-
+        ro5_violations.append(("ro5_mw", f"MW {record.mw:.1f} > {max_mw}"))
     if record.logp > max_logp:
-        return FilterDecision(False, step_codes, f"LogP {record.logp:.2f} > {max_logp}")
+        ro5_violations.append(("ro5_logp", f"LogP {record.logp:.2f} > {max_logp}"))
     if record.hbd > max_hbd:
-        return FilterDecision(False, step_codes, f"HBD {record.hbd} > {max_hbd}")
+        ro5_violations.append(("ro5_hbd", f"HBD {record.hbd} > {max_hbd}"))
     if record.hba > max_hba:
-        return FilterDecision(False, step_codes, f"HBA {record.hba} > {max_hba}")
+        ro5_violations.append(("ro5_hba", f"HBA {record.hba} > {max_hba}"))
+    step_codes.append("lipinski_ro5")
+    reason_codes = [code for code, _ in ro5_violations]
+    reasons = [reason for _, reason in ro5_violations]
+    status = "review_required" if ro5_violations else "passed"
+    if ro5_violations and ro5.get("classification") == "hard_exclusion":
+        return FilterDecision(
+            False,
+            step_codes,
+            "; ".join(reasons),
+            status="rejected",
+            reason_codes=reason_codes,
+        )
 
     red = next((s for s in steps if s.get("id") == "expert_redlines"), {})
     red_params = red.get("params", {})
     max_mw_hard = float(red_params.get("max_mw_hard", 600.0))
+    max_logp_hard = float(red_params.get("max_logp_hard", 5.0))
     if record.mw > max_mw_hard:
-        return FilterDecision(False, step_codes + ["expert_redlines"], f"红线 MW>{max_mw_hard}")
+        return FilterDecision(
+            False,
+            step_codes + ["expert_redlines"],
+            f"红线 MW>{max_mw_hard}",
+            status="rejected",
+            reason_codes=reason_codes + ["hard_mw"],
+        )
+    if record.logp > max_logp_hard:
+        return FilterDecision(
+            False,
+            step_codes + ["expert_redlines"],
+            f"红线 LogP {record.logp:.2f} > {max_logp_hard}",
+            status="rejected",
+            reason_codes=reason_codes + ["hard_logp"],
+        )
     step_codes.append("expert_redlines")
 
     mol = Chem.MolFromSmiles(record.smiles)
     if mol is None:
-        return FilterDecision(False, step_codes + ["structural_alerts"], "SMILES 无法解析")
+        return FilterDecision(
+            False,
+            step_codes + ["structural_alerts"],
+            "SMILES 无法解析",
+            status="invalid",
+            reason_codes=reason_codes + ["invalid_smiles"],
+        )
 
-    for name, pattern in HARD_PATTERNS:
-        if mol.HasSubstructMatch(pattern):
-            return FilterDecision(
-                False,
-                step_codes + ["structural_alerts"],
-                f"硬过滤警示: {name}",
-            )
+    alert_step = next((s for s in steps if s.get("id") == "structural_alerts"), {})
+    alert_hits: list[StructuralAlertHit] = []
+    for rule in alert_step.get("rules") or []:
+        name = str(rule.get("id") or "unnamed_alert")
+        smarts = str(rule.get("smarts") or "")
+        classification = str(rule.get("classification") or "review_required")
+        pattern = Chem.MolFromSmarts(smarts)
+        if pattern is not None and mol.HasSubstructMatch(pattern):
+            hit = StructuralAlertHit(name, classification, smarts)
+            alert_hits.append(hit)
+            reason_codes.append(f"alert:{name}:{classification}")
+            if classification == "hard_exclusion":
+                reasons.append(f"硬排除结构警示: {name}")
+                return FilterDecision(
+                    False,
+                    step_codes + ["structural_alerts"],
+                    "; ".join(reasons),
+                    status="rejected",
+                    reason_codes=reason_codes,
+                    alert_hits=alert_hits,
+                )
+            if classification == "review_required":
+                status = "review_required"
+                reasons.append(f"需复核结构警示: {name}")
+            elif classification == "soft_penalty":
+                reasons.append(f"软毒性警示: {name}")
+            elif classification == "information_only":
+                reasons.append(f"信息性结构提示: {name}")
     step_codes.append("structural_alerts")
     step_codes.append("basic_props")
-    return FilterDecision(True, step_codes, "类药与红线通过")
+    if not reasons:
+        reasons.append("类药性复核与专家红线通过")
+    return FilterDecision(
+        True,
+        step_codes,
+        "; ".join(reasons),
+        status=status,
+        reason_codes=reason_codes,
+        alert_hits=alert_hits,
+    )

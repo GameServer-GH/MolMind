@@ -43,7 +43,20 @@ def test_screen_upload(client: TestClient) -> None:
     data = resp.json()
     assert data["summary"]["mode"] == "auto"
     assert data["summary"]["use_snapshot"] is True
+    diagnostics = data["summary"]["diagnostics"]
+    assert diagnostics["engineering_pass"] is True
+    assert diagnostics["scientific_validation_status"].startswith("not_available")
+    assert data["hepg2_ffa_resources"]["ranking_effect"] == "none"
+    assert data["hepg2_ffa_resources"]["dual_endpoint_model_available"] is False
+    assert data["hepg2_ffa_resources"]["resource_counts"]["total"] == 6
     assert len(data["rows"]) >= 1
+    assert all(row["eligibility_status"] == "eligible" for row in data["rows"])
+    csv_ids = []
+    import csv
+    import io
+
+    csv_ids = [row["molecule_id"] for row in csv.DictReader(io.StringIO(data["csv"]))]
+    assert csv_ids == [row["molecule_id"] for row in data["rows"]]
     assert "SI" not in data["csv"]
     assert "EC50" not in data["csv"]
     assert isinstance(data["logs"], list)
@@ -95,6 +108,16 @@ def test_screen_use_snapshot_off(client: TestClient) -> None:
     assert resp.json()["summary"]["use_snapshot"] is False
 
 
+def test_quality_max_cannot_disable_frozen_snapshot(client: TestClient) -> None:
+    with SAMPLE_SDF.open("rb") as fh:
+        resp = client.post(
+            "/api/screen?top=3&mode=auto&use_snapshot=false",
+            files={"file": ("sample.sdf", fh, "chemical/x-mdl-sdf")},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["use_snapshot"] is True
+
+
 def test_screen_top_bounds(client: TestClient) -> None:
     with SAMPLE_SDF.open("rb") as fh:
         resp = client.post(
@@ -131,3 +154,5 @@ def test_web_mode_selector_present() -> None:
     assert 'data-mode="offline"' in html
     assert "historyBtn" in html
     assert "下载运行日志" in html
+    js = (ROOT / "apps" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "row.eligibility_status" in js

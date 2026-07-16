@@ -1,4 +1,4 @@
-"""机制 Markdown → PDF（交卷用；字符集净化防乱码）。"""
+"""机制 Markdown → PDF（交付用；字符集净化防乱码）。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
@@ -190,5 +191,11 @@ def markdown_to_pdf_bytes(md: str, *, title: str = "MolMind 机制与验证方�
 
     if not story:
         story.append(Paragraph(_escape(sanitize_pdf_text(title)), styles["h1"]))
-    doc.build(story)
+    def invariant_canvas(*args, **kwargs):
+        # ReportLab 默认写入当前时间和随机文档 ID；固定元数据后，同一 Markdown
+        # 在不同运行中生成逐字节一致的交付物。
+        kwargs["invariant"] = 1
+        return Canvas(*args, **kwargs)
+
+    doc.build(story, canvasmaker=invariant_canvas)
     return buf.getvalue()

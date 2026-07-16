@@ -5,6 +5,7 @@ from packages.goldset.loader import (
     GoldCase,
     GoldSet,
     load_goldset,
+    leave_one_case_out,
     max_similarity,
 )
 from packages.goldset.hypothesis import family_tag, infer_hypothesis_pathway
@@ -22,6 +23,7 @@ __all__ = [
     "infer_hypothesis_pathway",
     "infer_pathway_for_positive",
     "load_goldset",
+    "leave_one_case_out",
     "load_nafld_pathways",
     "max_similarity",
     "pathway_by_id",

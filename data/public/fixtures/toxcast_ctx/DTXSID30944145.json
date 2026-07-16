@@ -1,0 +1,17 @@
+[
+  {
+    "dtxsid": "DTXSID30944145",
+    "casn": "21535-47-7",
+    "chnm": "Mianserin hydrochloride",
+    "aeid": 3094,
+    "assayComponentEndpointName": "LTEA_HepaRG_CYP3A4_up",
+    "hitc": 1.0,
+    "ac50": 34.3,
+    "cellViabilityAssay": 0,
+    "intendedTargetFamily": "cyp",
+    "inchikey": "YJPIGAIKUZMOQA-UHFFFAOYSA-N",
+    "smiles": "CN1CCN2c3ccccc3Cc3ccccc3C2C1",
+    "m4id": 6001,
+    "spid": "ES211_47_47"
+  }
+]

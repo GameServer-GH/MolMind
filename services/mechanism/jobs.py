@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from packages.models import ScoreRecord
+from services.evidence_facade.mechanism_graph import MechanismGraph
 from services.mechanism import build_mechanism_markdown, markdown_to_pdf_bytes
 
 _LOCK = threading.Lock()
@@ -57,6 +58,9 @@ def _run_job(
     llm_cfg: dict[str, Any],
     mark_degraded: Callable[[str], None] | None,
     pdf_name: str,
+    assumptions: dict[str, Any],
+    run_context: dict[str, str],
+    mechanism_graphs: list[MechanismGraph],
 ) -> None:
     _update(job_id, status="running")
     try:
@@ -64,6 +68,9 @@ def _run_job(
             top,
             llm_cfg=llm_cfg,
             mark_degraded=mark_degraded,
+            assumptions=assumptions,
+            run_context=run_context,
+            mechanism_graphs=mechanism_graphs,
         )
         pdf_bytes = markdown_to_pdf_bytes(md)
         _update(
@@ -84,6 +91,9 @@ def start_mechanism_job(
     llm_cfg: dict[str, Any] | None,
     mark_degraded: Callable[[str], None] | None,
     source_filename: str = "",
+    assumptions: dict[str, Any] | None = None,
+    run_context: dict[str, str] | None = None,
+    mechanism_graphs: list[MechanismGraph] | None = None,
 ) -> str:
     """提交异步机制生成；立即返回 job_id。空候选则直接 ready 空结果。"""
     job_id = uuid.uuid4().hex
@@ -114,5 +124,8 @@ def start_mechanism_job(
         dict(llm_cfg or {}),
         mark_degraded,
         pdf_name,
+        dict(assumptions or {}),
+        dict(run_context or {}),
+        list(mechanism_graphs or []),
     )
     return job_id
