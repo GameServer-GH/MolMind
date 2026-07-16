@@ -12,6 +12,8 @@ from typing import Any, Callable
 from packages.models import ScoreRecord
 from services.evidence_facade.mechanism_graph import MechanismGraph
 from services.mechanism import build_mechanism_markdown, markdown_to_pdf_bytes
+from services.mechanism.browser_pdf import BrowserPdfUnavailable, html_to_pdf_bytes
+from services.mechanism.html_report import build_mechanism_html
 
 _LOCK = threading.Lock()
 _JOBS: dict[str, dict[str, Any]] = {}
@@ -34,12 +36,15 @@ def job_public_view(job: dict[str, Any], *, include_payload: bool = False) -> di
         "status": job["status"],
         "error": job.get("error") or "",
         "mechanism_pdf_name": job.get("mechanism_pdf_name") or "",
+        "pdf_renderer": job.get("pdf_renderer") or "",
+        "preview_url": f"/api/mechanism/{job['job_id']}/preview",
         "created_at": job.get("created_at") or "",
         "updated_at": job.get("updated_at") or "",
     }
     if include_payload and job.get("status") == "ready":
         out["mechanism_md"] = job.get("mechanism_md") or ""
         out["mechanism_pdf_base64"] = job.get("mechanism_pdf_base64") or ""
+        out["mechanism_html"] = job.get("mechanism_html") or ""
     return out
 
 
@@ -72,13 +77,27 @@ def _run_job(
             run_context=run_context,
             mechanism_graphs=mechanism_graphs,
         )
-        pdf_bytes = markdown_to_pdf_bytes(md)
+        html = build_mechanism_html(
+            top,
+            assumptions=assumptions,
+            run_context=run_context,
+        )
+        renderer = "html_chromium"
+        try:
+            pdf_bytes = html_to_pdf_bytes(html)
+        except BrowserPdfUnavailable:
+            renderer = "reportlab_fallback"
+            if mark_degraded is not None:
+                mark_degraded("html_pdf_renderer_unavailable")
+            pdf_bytes = markdown_to_pdf_bytes(md)
         _update(
             job_id,
             status="ready",
             mechanism_md=md,
+            mechanism_html=html,
             mechanism_pdf_base64=base64.b64encode(pdf_bytes).decode("ascii"),
             mechanism_pdf_name=pdf_name,
+            pdf_renderer=renderer,
             error="",
         )
     except Exception as exc:  # noqa: BLE001 — 后台任务边界
@@ -106,8 +125,10 @@ def start_mechanism_job(
             "status": "pending",
             "error": "",
             "mechanism_md": "",
+            "mechanism_html": "",
             "mechanism_pdf_base64": "",
             "mechanism_pdf_name": pdf_name,
+            "pdf_renderer": "",
             "created_at": now,
             "updated_at": now,
         }

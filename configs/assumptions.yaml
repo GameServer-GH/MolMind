@@ -1,11 +1,41 @@
-version: competition-assumptions-v1
+version: competition-assumptions-v2
 assumptions:
+  - id: screening_concentration
+    official_status: confirmed_2026_07_16
+    value: 10
+    unit: micromolar
+    role: official_primary_screen_condition
+    replacement_condition: organizer_revision
+  - id: viability_endpoint
+    official_status: confirmed_2026_07_16
+    value: CCK-8
+    unit: assay
+    role: official_primary_viability_endpoint
+    replacement_condition: organizer_revision
   - id: viability_proxy
-    official_status: unspecified
+    official_status: confirmed_2026_07_16
     value: 0.80
     unit: fraction_of_vehicle_control
-    role: project_experimental_reference
-    replacement_condition: organizer_SOP_or_same_condition_HepG2_FFA_data
+    role: official_no_obvious_damage_reference
+    replacement_condition: organizer_revision
+  - id: viability_secondary_endpoint
+    official_status: confirmed_2026_07_16
+    value: Hoechst
+    unit: assay
+    role: auxiliary_viability_endpoint
+    replacement_condition: organizer_revision
+  - id: parallel_endpoint_required
+    official_status: confirmed_2026_07_16
+    value: true
+    unit: boolean
+    role: lipid_and_viability_parallel_interpretation
+    replacement_condition: organizer_revision
+  - id: lipid_hit_threshold
+    official_status: unresolved
+    value: null
+    unit: unspecified
+    role: continuous_proxy_ranking_only_until_confirmed
+    replacement_condition: organizer_lipid_endpoint_and_threshold
   - id: toxicity_nomination_proxy
     official_status: unspecified
     value: 0.45

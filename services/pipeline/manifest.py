@@ -19,7 +19,7 @@ from services.pipeline.config_loader import (
     SNAPSHOT_DIR,
     AppConfig,
 )
-from services.pipeline.run_identity import canonical_selection
+from services.pipeline.run_identity import canonical_selection, selection_sha256
 
 
 def _hash_files(paths: list[Path]) -> str:
@@ -44,15 +44,19 @@ def write_run_manifest(
     run_id: str,
     selection_hash: str,
     top_molecules: list[ScoreRecord],
+    reserve_molecules: list[ScoreRecord] | None = None,
+    reserve_selection_hash: str = "",
 ) -> Path:
     artifacts: dict[str, str] = {}
     candidates = [
         output_path,
         output_path.with_suffix(".mechanism.md"),
+        output_path.with_suffix(".mechanism.html"),
         output_path.with_suffix(".mechanism.pdf"),
         output_path.with_suffix(".screening_audit.csv"),
         output_path.with_suffix(".critic_audit.csv"),
         output_path.with_suffix(".rank_robustness.json"),
+        output_path.with_suffix(".reserve.csv"),
         output_path.with_suffix(".mechanism_graph.json"),
         output_path.with_suffix(".hepg2_ffa_resources.json"),
     ]
@@ -72,6 +76,9 @@ def write_run_manifest(
         "schema_version": "molmind-run-manifest-v2",
         "run_id": run_id,
         "selection_sha256": selection_hash,
+        "reserve_selection_sha256": reserve_selection_hash
+        or selection_sha256(list(reserve_molecules or [])),
+        "ordered_reserve_candidates": canonical_selection(list(reserve_molecules or [])),
         "ordered_candidates": canonical_selection(top_molecules),
         "input": {
             "path": input_path.name,

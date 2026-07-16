@@ -22,6 +22,9 @@ def test_csv_columns_include_run_metadata(tmp_path: Path) -> None:
     assert CSV_COLUMNS[:5] == ["排名", "化合物标识符", "降脂依据", "毒性判断", "排序理由"]
     assert "SI" not in CSV_COLUMNS
     assert "EC50" not in CSV_COLUMNS
+    assert "effect_x_novelty" in CSV_COLUMNS
+    assert "screening_concentration_um" in CSV_COLUMNS
+    assert "viability_endpoint" in CSV_COLUMNS
 
 
 def test_pipeline_writes_candidate_scores_and_evidence_ledger(tmp_path: Path) -> None:
@@ -31,10 +34,12 @@ def test_pipeline_writes_candidate_scores_and_evidence_ledger(tmp_path: Path) ->
     ledger = out.with_suffix(".evidence_ledger.jsonl")
     citations = out.with_suffix(".citations.jsonl")
     selection_audit = out.with_suffix(".selection_audit.jsonl")
+    reserve = out.with_suffix(".reserve.csv")
     assert scores.is_file()
     assert ledger.is_file()
     assert citations.is_file()
     assert selection_audit.is_file()
+    assert reserve.is_file()
     score_rows = [json.loads(line) for line in scores.read_text(encoding="utf-8").splitlines()]
     ledger_rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
     audit_rows = [
@@ -49,3 +54,4 @@ def test_pipeline_writes_candidate_scores_and_evidence_ledger(tmp_path: Path) ->
     )
     assert any(row.get("outcome") == "selected" for row in audit_rows)
     assert all("selection_factors" in row for row in audit_rows)
+    assert all("effect_x_novelty" in row for row in score_rows)

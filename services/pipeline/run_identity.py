@@ -19,6 +19,9 @@ def canonical_selection(top: list[ScoreRecord]) -> list[dict[str, Any]]:
             "canonical_smiles": molecule.smiles,
             "eligibility_status": molecule.eligibility_status,
             "final_score": format(float(molecule.final_score), ".12g"),
+            "selection_score": format(float(molecule.selection_score), ".12g"),
+            "competition_scoring_version": molecule.competition_scoring_version,
+            "nomination_tier": molecule.nomination_tier,
         }
         for rank, molecule in enumerate(top, start=1)
     ]
@@ -42,4 +45,3 @@ def deterministic_run_id(
 ) -> str:
     payload = f"{input_sha256}\0{config_hash}\0{selection_hash}".encode("utf-8")
     return f"mm-{hashlib.sha256(payload).hexdigest()[:24]}"
-

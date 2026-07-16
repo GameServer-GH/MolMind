@@ -10,6 +10,16 @@ mode_default: auto
 seed: 42
 top_n: 10
 top_k_for_critic: 30
+reserve_n: 20
+
+# 组委会确认：更重相对排序；单候选关注效果×新颖性，Top10 等权求和。
+# 具体归一化仍未确认，故冻结为透明 percentile 代理并同时导出等权平均敏感性视图。
+competition_scoring:
+  enabled: true
+  normalization: percentile_rank
+  primary: product
+  sensitivity_view: equal_mean
+  pool: eligible_run_candidates
 
 weights:
   lipid: 0.40
@@ -30,7 +40,7 @@ gates:
   tox_uncertainty_penalty: 0.10
   # 仅有最低等级本地代理覆盖时，用保守上界做自动提名门控；非官方阈值。
   low_confidence_tox_margin: 0.05
-  viability_proxy: 0.80  # 实验层口径说明；不参与 SI（ADR-M16）
+  viability_proxy: 0.80  # 组委会已确认的未明显损伤参考；无湿实验值时不参与 SI（ADR-M16）
 
 lipid_fuse:
   rule: 0.35

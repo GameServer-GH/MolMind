@@ -29,7 +29,7 @@ def test_pipeline_sample_topn_csv(tmp_path: Path) -> None:
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     assert payload["input"]["sha256"]
     assert payload["config_hash"] == result.config.config_hash
-    assert payload["assumption_policy_version"] == "competition-assumptions-v1"
+    assert payload["assumption_policy_version"] == "competition-assumptions-v2"
     assert payload["rdkit_version"]
     assert payload["artifacts"][out.name]
     assert resources.name in payload["artifacts"]

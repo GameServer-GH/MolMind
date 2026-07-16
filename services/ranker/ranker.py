@@ -23,6 +23,68 @@ from services.scorer_lipid import score_lipid
 from services.scorer_tox import score_tox
 
 
+COMPETITION_SCORING_VERSION = "organizer-relative-effect-novelty-v1"
+
+
+def competition_selection_score(mol: ScoreRecord) -> float:
+    """Return the frozen portfolio score, falling back for legacy/unit records."""
+    if mol.competition_scoring_version != "unassigned":
+        return float(mol.selection_score)
+    return float(mol.final_score)
+
+
+def assign_competition_scores(
+    candidates: list[ScoreRecord], cfg: AppConfig
+) -> list[ScoreRecord]:
+    """Assign deterministic run-relative effect × novelty scoring proxies.
+
+    The organizer confirmed relative ranking and effect × novelty portfolio scoring,
+    but not the normalization formula. We therefore freeze a transparent ordinal
+    percentile proxy and export both product and equal-mean sensitivity views.
+    """
+    if not candidates:
+        return candidates
+    policy = cfg.competition_scoring
+    enabled = bool(policy.get("enabled", True))
+    primary = str(policy.get("primary") or "product")
+    n = len(candidates)
+
+    effect_order = sorted(candidates, key=lambda m: (-m.lipid_score, m.molecule_id))
+    novelty_order = sorted(candidates, key=lambda m: (-m.novelty_score, m.molecule_id))
+    effect_ranks = {m.molecule_id: rank for rank, m in enumerate(effect_order, start=1)}
+    novelty_ranks = {m.molecule_id: rank for rank, m in enumerate(novelty_order, start=1)}
+
+    def percentile(rank: int) -> float:
+        return 1.0 if n == 1 else (n - rank) / (n - 1)
+
+    for mol in candidates:
+        effect_rank = effect_ranks[mol.molecule_id]
+        novelty_rank = novelty_ranks[mol.molecule_id]
+        effect = percentile(effect_rank)
+        novelty = percentile(novelty_rank)
+        product = effect * novelty
+        equal_mean = 0.5 * (effect + novelty)
+        selection = product if primary == "product" else equal_mean
+        if not enabled:
+            selection = mol.final_score
+        mol.effect_proxy_score = round(effect, 6)
+        mol.novelty_proxy_score = round(novelty, 6)
+        mol.effect_rank = effect_rank
+        mol.novelty_rank = novelty_rank
+        mol.effect_x_novelty = round(product, 6)
+        mol.effect_novelty_equal_mean = round(equal_mean, 6)
+        mol.selection_score = round(selection, 6)
+        mol.competition_scoring_version = COMPETITION_SCORING_VERSION
+        mol.selection_factors = dict(mol.selection_factors or {})
+        mol.selection_factors["score"] = (
+            f"competition={mol.selection_score:.4f};legacy={mol.final_score:.4f};"
+            f"effect_rank={effect_rank};novelty_rank={novelty_rank}"
+        )
+        mol.selection_reason = format_selection_reason(mol.selection_factors)
+    candidates.sort(key=lambda m: (-competition_selection_score(m), m.molecule_id))
+    return candidates
+
+
 def _scientific_claim(evidence: EvidenceBundle) -> tuple[str, str, tuple[str, ...]]:
     """Separate computational eligibility from the maximum scientific claim."""
     lipid_task = [
@@ -219,6 +281,15 @@ def score_molecule(
         citations=citations_from_hits(evidence.all_hits()),
         evidence_run_id=evidence.run_id,
         input_structure_hash=evidence.input_structure_hash,
+        screening_concentration_um=10.0,
+        viability_endpoint="CCK-8",
+        viability_threshold_reference=">0.80_relative_to_control",
+        dual_endpoint_claim="lipid_and_viability_parallel_required",
+        identity_status=(
+            "review_required"
+            if scientific_status == "identity_review_required"
+            else "resolved"
+        ),
     )
 
 
@@ -261,10 +332,11 @@ def apply_scaffold_diversity(
                 if cluster_counts[cluster_key] >= max_per_similarity_cluster:
                     deferred.append(mol)
                     continue
-            mmr = mmr_lambda * mol.final_score + (1.0 - mmr_lambda) * (1.0 - nearest)
+            portfolio_score = competition_selection_score(mol)
+            mmr = mmr_lambda * portfolio_score + (1.0 - mmr_lambda) * (1.0 - nearest)
             if redundancy_lambda > 0:
                 mmr -= redundancy_lambda * nearest
-            candidates.append((mmr, mol.final_score, mol.molecule_id, mol, cluster_key))
+            candidates.append((mmr, portfolio_score, mol.molecule_id, mol, cluster_key))
             next_remaining.append(mol)
         if not candidates:
             break
@@ -278,7 +350,10 @@ def apply_scaffold_diversity(
         chosen.similarity_cluster = cluster_key or chosen.molecule_id
         chosen.selection_tier = "similarity_strict"
         chosen.selection_factors = dict(chosen.selection_factors or {})
-        chosen.selection_factors["score"] = f"{chosen.final_score:.4f}"
+        chosen.selection_factors["score"] = (
+            f"competition={competition_selection_score(chosen):.4f};"
+            f"legacy={chosen.final_score:.4f}"
+        )
         chosen.selection_factors["scaffold_diversity"] = (
             f"MMR={_mmr:.4f}; nearest_selected={nearest_id or 'none'}; sim={nearest:.3f}"
         )
@@ -292,7 +367,10 @@ def apply_scaffold_diversity(
 
     if len(selected) < top_n:
         seen = {mol.molecule_id for mol in selected}
-        for mol in sorted(deferred + remaining, key=lambda item: (-item.final_score, item.molecule_id)):
+        for mol in sorted(
+            deferred + remaining,
+            key=lambda item: (-competition_selection_score(item), item.molecule_id),
+        ):
             if len(selected) >= top_n or mol.molecule_id in seen:
                 continue
             similarities = [tanimoto(mol.fp_bits, prior.fp_bits) for prior in selected]
@@ -300,7 +378,10 @@ def apply_scaffold_diversity(
             mol.internal_nearest_similarity = round(nearest, 4)
             mol.selection_tier = "diversity_relaxed"
             mol.selection_factors = dict(mol.selection_factors or {})
-            mol.selection_factors["score"] = f"{mol.final_score:.4f}"
+            mol.selection_factors["score"] = (
+                f"competition={competition_selection_score(mol):.4f};"
+                f"legacy={mol.final_score:.4f}"
+            )
             mol.selection_factors["scaffold_diversity"] = (
                 f"diversity_relaxed; nearest_similarity={nearest:.3f}"
             )

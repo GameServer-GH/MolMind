@@ -10,6 +10,7 @@ from packages.goldset import GoldSet, max_similarity
 from packages.goldset.hypothesis import family_tag, infer_hypothesis_pathway
 from packages.models import CriticAction, ScoreRecord, format_selection_reason
 from services.pipeline.config_loader import AppConfig
+from services.ranker.ranker import competition_selection_score
 
 
 def collect_run_evidence_ids(candidates: list[ScoreRecord]) -> set[str]:
@@ -246,7 +247,10 @@ def _select_with_quotas(
         mol.selection_tier = "quota_strict" if enforce_pathway else "pathway_relaxed"
         mol.selection_factors = dict(mol.selection_factors or {})
         mol.selection_factors["eligibility"] = mol.eligibility_status
-        mol.selection_factors["score"] = f"{mol.final_score:.4f}"
+        mol.selection_factors["score"] = (
+            f"competition={competition_selection_score(mol):.4f};"
+            f"legacy={mol.final_score:.4f}"
+        )
         mol.selection_factors["combo_adjustment"] = (
             f"{mol.selection_tier}; pathway={pid}; cluster={cluster}; "
             f"nearest_similarity={nearest:.3f}"
@@ -298,7 +302,7 @@ def rule_critic(
             continue
         seen.add(mol.molecule_id)
         ordered.append(mol)
-    ordered.sort(key=lambda m: (-m.final_score, m.molecule_id))
+    ordered.sort(key=lambda m: (-competition_selection_score(m), m.molecule_id))
 
     final, actions = _select_with_quotas(
         ordered, cfg, gold, top_n=top_n, enforce_pathway=True
@@ -319,7 +323,7 @@ def rule_critic(
     final = final[:top_n]
     # 配额决定“是否入选”，不应覆盖入选后的分数顺序。旧实现把
     # pathway_relaxed 一律排到末尾，产生 rank 9 的分数高于 rank 5–8 的倒挂。
-    final.sort(key=lambda mol: (-mol.final_score, mol.molecule_id))
+    final.sort(key=lambda mol: (-competition_selection_score(mol), mol.molecule_id))
     before_rank = {m.molecule_id: i for i, m in enumerate(ordered, start=1)}
     after_rank = {m.molecule_id: i for i, m in enumerate(final, start=1)}
     by_id = {m.molecule_id: m for m in ordered}

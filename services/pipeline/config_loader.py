@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "configs"
 DATA_DIR = ROOT / "data"
 SNAPSHOT_DIR = DATA_DIR / "evidence_snapshot"
-ALGORITHM_CONTRACT_VERSION = "competition-eligibility-v8"
+ALGORITHM_CONTRACT_VERSION = "competition-eligibility-v10"
 
 REQUIRED_YAML = (
     "rank_weights.yaml",
@@ -97,6 +97,14 @@ class AppConfig:
     @property
     def top_k_for_critic(self) -> int:
         return int(self.raw.get("top_k_for_critic", 30))
+
+    @property
+    def reserve_n(self) -> int:
+        return int(self.raw.get("reserve_n", 20))
+
+    @property
+    def competition_scoring(self) -> dict[str, Any]:
+        return dict(self.raw.get("competition_scoring", {}))
 
     @property
     def ml_enabled(self) -> bool:
@@ -223,6 +231,15 @@ def _validate_config(
         raise ValueError("top_n 须在 1–50 之间")
     if int(rank.get("top_k_for_critic", top_n)) < top_n:
         raise ValueError("top_k_for_critic 不得小于 top_n")
+    reserve_n = int(rank.get("reserve_n", 20))
+    if reserve_n < 0 or reserve_n > 200:
+        raise ValueError("reserve_n 须在 0–200 之间")
+    scoring = rank.get("competition_scoring") or {}
+    if scoring.get("enabled", True):
+        if scoring.get("normalization") != "percentile_rank":
+            raise ValueError("competition_scoring.normalization 当前仅支持 percentile_rank")
+        if scoring.get("primary") not in {"product", "equal_mean"}:
+            raise ValueError("competition_scoring.primary 须为 product|equal_mean")
 
     steps = filter_steps.get("steps") or []
     alert_step = next((s for s in steps if s.get("id") == "structural_alerts"), {})
@@ -248,7 +265,12 @@ def _validate_config(
     assumption_rows = assumptions.get("assumptions") or []
     by_id = {str(row.get("id")): row for row in assumption_rows if isinstance(row, dict)}
     for required in (
+        "screening_concentration",
+        "viability_endpoint",
         "viability_proxy",
+        "viability_secondary_endpoint",
+        "parallel_endpoint_required",
+        "lipid_hit_threshold",
         "toxicity_nomination_proxy",
         "novelty_proxy",
         "unresolved_mechanism",
@@ -258,6 +280,12 @@ def _validate_config(
             raise ValueError(f"assumptions.yaml 缺少安全默认: {required}")
     if abs(float(by_id["viability_proxy"]["value"]) - float(gates["viability_proxy"])) > 1e-9:
         raise ValueError("viability_proxy 在 assumptions.yaml 与 rank_weights.yaml 不一致")
+    if abs(float(by_id["screening_concentration"]["value"]) - 10.0) > 1e-9:
+        raise ValueError("screening_concentration 必须为已确认的 10 μM")
+    if str(by_id["viability_endpoint"]["value"]) != "CCK-8":
+        raise ValueError("viability_endpoint 必须为已确认的 CCK-8")
+    if by_id["parallel_endpoint_required"].get("value") is not True:
+        raise ValueError("parallel_endpoint_required 必须为 true")
     if abs(
         float(by_id["toxicity_nomination_proxy"]["value"])
         - float(gates["tox_nomination_max"])

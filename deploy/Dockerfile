@@ -9,6 +9,12 @@ LABEL org.molmind.target-platform=${TARGETPLATFORM}
 
 WORKDIR /app
 
+# Embed a real CJK font in mechanism PDFs. Without this, CID-font output can
+# render as blank Chinese text in browsers/Poppler even though PDF generation succeeds.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 # 精确固定 RDKit 补丁；镜像源可注入，但默认使用可信官方源。
 RUN conda install -y -c "${CONDA_CHANNEL}" "rdkit=2025.09.2" "python=3.11"
 

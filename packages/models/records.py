@@ -243,6 +243,26 @@ class ScoreRecord:
     citations: list[EvidenceCitation] = field(default_factory=list)
     evidence_run_id: str = ""
     input_structure_hash: str = ""
+    # 评分代理：在同次运行的 eligible 池内做相对排序后赋值。
+    effect_proxy_score: float = 0.0
+    novelty_proxy_score: float = 0.0
+    effect_rank: int | None = None
+    novelty_rank: int | None = None
+    effect_x_novelty: float = 0.0
+    effect_novelty_equal_mean: float = 0.0
+    selection_score: float = 0.0
+    competition_scoring_version: str = "unassigned"
+    screening_concentration_um: float = 10.0
+    viability_endpoint: str = "CCK-8"
+    viability_threshold_reference: str = ">0.80_relative_to_control"
+    dual_endpoint_claim: str = "lipid_and_viability_parallel_required"
+    nomination_tier: str = "unassigned"
+    primary_rank: int | None = None
+    reserve_rank: int | None = None
+    replacement_for: str = ""
+    purchase_status: str = "unknown"
+    solubility_status: str = "unknown"
+    identity_status: str = "resolved"
 
 
 @dataclass

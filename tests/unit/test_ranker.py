@@ -8,7 +8,7 @@ from packages.models import MoleculeRecord, ScoreRecord
 from rdkit import Chem
 from services.evidence_facade import EvidenceBundle
 from services.pipeline.config_loader import load_config
-from services.ranker import apply_scaffold_diversity, score_molecule
+from services.ranker import apply_scaffold_diversity, assign_competition_scores, score_molecule
 
 
 def _record(smiles: str, mid: str) -> MoleculeRecord:
@@ -91,6 +91,41 @@ def test_gate_out_explainable() -> None:
     if scored.gated_out:
         assert scored.gate_reason
         assert scored.final_score == 0.0
+
+
+def test_competition_effect_x_novelty_is_run_relative_and_recomputable() -> None:
+    cfg = load_config(mode="offline")
+    base = ScoreRecord(
+        molecule_id="A",
+        smiles="CC",
+        inchikey="A",
+        cas=None,
+        scaffold_smiles="",
+        lipid_score=0.9,
+        tox_risk=0.1,
+        novelty_score=0.2,
+        conf_e=0.0,
+        final_score=0.7,
+        tox_heads={},
+        lipid_parts={},
+        attributions=[],
+        lipid_rationale="",
+        tox_rationale="",
+        overall_reason="",
+    )
+    candidates = [
+        base,
+        ScoreRecord(**{**base.__dict__, "molecule_id": "B", "lipid_score": 0.7, "novelty_score": 0.9}),
+        ScoreRecord(**{**base.__dict__, "molecule_id": "C", "lipid_score": 0.5, "novelty_score": 0.5}),
+    ]
+    assign_competition_scores(candidates, cfg)
+    assert all(m.effect_rank is not None and m.novelty_rank is not None for m in candidates)
+    assert all(abs(m.selection_score - m.effect_x_novelty) < 1e-9 for m in candidates)
+    assert all(
+        abs(m.effect_novelty_equal_mean - 0.5 * (m.effect_proxy_score + m.novelty_proxy_score))
+        < 1e-6
+        for m in candidates
+    )
 
 
 def test_soft_tox_caution_in_overall_reason() -> None:

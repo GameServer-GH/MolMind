@@ -83,6 +83,11 @@ def test_screen_upload(client: TestClient) -> None:
     assert payload is not None
     assert payload["status"] == "ready", payload
     assert payload.get("mechanism_pdf_base64")
+    assert payload.get("mechanism_html", "").startswith("<!doctype html>")
+    assert payload.get("pdf_renderer") in {"html_chromium", "reportlab_fallback"}
+    preview = client.get(f"/api/mechanism/{job_id}/preview")
+    assert preview.status_code == 200
+    assert "HepG2-FFA" in preview.text
     raw = __import__("base64").b64decode(payload["mechanism_pdf_base64"])
     assert raw[:4] == b"%PDF"
     assert "机制" in payload.get("mechanism_md", "") or "MolMind" in payload.get("mechanism_md", "")

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     HRFlowable,
@@ -20,6 +22,15 @@ from reportlab.platypus import (
 
 _FONT = "STSong-Light"
 _REGISTERED = False
+
+_CJK_FONT_CANDIDATES = (
+    # Explicit override for controlled/container deployments.
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    # macOS desktop runtime.
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Songti.ttc",
+)
 
 _UNICODE_FIXES: tuple[tuple[str, str], ...] = (
     ("EC₅₀", "EC50"),
@@ -70,9 +81,29 @@ _UNICODE_FIXES: tuple[tuple[str, str], ...] = (
 
 
 def _ensure_font() -> None:
-    global _REGISTERED
+    global _FONT, _REGISTERED
     if _REGISTERED:
         return
+    import os
+
+    configured = str(os.environ.get("MOLMIND_CJK_FONT") or "").strip()
+    candidates = ([configured] if configured else []) + list(_CJK_FONT_CANDIDATES)
+    for raw_path in candidates:
+        path = Path(raw_path)
+        if not path.is_file():
+            continue
+        try:
+            _FONT = "MolMindCJK"
+            # TrueType/TTC fonts are embedded in the PDF. This avoids the former
+            # non-embedded CID-font output whose Chinese text disappeared in
+            # browser and Poppler renderers.
+            pdfmetrics.registerFont(TTFont(_FONT, str(path)))
+            _REGISTERED = True
+            return
+        except Exception:
+            continue
+    # Last-resort compatibility fallback; delivery images should install Noto CJK.
+    _FONT = "STSong-Light"
     pdfmetrics.registerFont(UnicodeCIDFont(_FONT))
     _REGISTERED = True
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from services.mechanism.jobs import get_job, job_public_view, start_mechanism_job
@@ -103,6 +103,7 @@ def _result_payload(result: Any, *, mechanism_job_id: str = "") -> dict:
             "review_required_count": result.review_required_count,
             "eligible_count": result.eligible_count,
             "output_count": result.output_count,
+            "reserve_count": len(result.reserve_molecules),
             "requested_top_n": result.requested_top_n,
             "mode": result.config.mode,
             "use_snapshot": use_snapshot,
@@ -110,6 +111,7 @@ def _result_payload(result: Any, *, mechanism_job_id: str = "") -> dict:
             "run_id": result.run_id,
             "input_sha256": result.input_sha256,
             "selection_sha256": result.selection_sha256,
+            "reserve_selection_sha256": result.reserve_selection_sha256,
             "degraded_channels": result.config.degraded_channels,
             "diagnostics": {
                 "std_tox": result.diagnostics.std_tox,
@@ -125,6 +127,7 @@ def _result_payload(result: Any, *, mechanism_job_id: str = "") -> dict:
             "mechanism_job_id": mechanism_job_id,
         },
         "rows": result.to_row_dicts(),
+        "reserve_rows": result.to_reserve_row_dicts(),
         "csv": result.to_csv_text(),
         "logs": result.logs,
         "mechanism_graphs": [graph.to_dict() for graph in result.mechanism_graphs],
@@ -189,6 +192,20 @@ def mechanism_download(job_id: str) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+@app.get("/api/mechanism/{job_id}/preview", response_class=HTMLResponse)
+def mechanism_preview(job_id: str) -> HTMLResponse:
+    """Preview the exact HTML used by Chromium for PDF generation."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="机制报告不存在或已过期")
+    if job.get("status") != "ready":
+        raise HTTPException(status_code=409, detail=f"机制报告尚未就绪（status={job.get('status')}）")
+    html = str(job.get("mechanism_html") or "")
+    if not html:
+        raise HTTPException(status_code=404, detail="机制 HTML 预览为空")
+    return HTMLResponse(content=html)
 
 
 @app.post("/api/screen")

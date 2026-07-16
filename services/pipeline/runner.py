@@ -55,7 +55,13 @@ from services.pipeline.export import (
 )
 from services.pipeline.run_log import LogSink, RunLogCollector
 from services.pipeline.run_identity import deterministic_run_id, selection_sha256
-from services.ranker import analyze_rank_robustness, apply_scaffold_diversity, score_molecule
+from services.ranker import (
+    analyze_rank_robustness,
+    apply_scaffold_diversity,
+    assign_competition_scores,
+    competition_selection_score,
+    score_molecule,
+)
 
 # Top10 为主；短名单 live=40 / Critic top_k=30，上限 50 避免过重计算
 TOP_N_MIN = 1
@@ -74,6 +80,7 @@ class PipelineResult:
     requested_top_n: int
     config: AppConfig
     diagnostics: RunDiagnostics
+    reserve_molecules: list[ScoreRecord] = field(default_factory=list)
     critic_actions: list[CriticAction] = field(default_factory=list)
     source_filename: str = ""
     note: str | None = None
@@ -87,6 +94,7 @@ class PipelineResult:
     manifest_path: str = ""
     input_sha256: str = ""
     selection_sha256: str = ""
+    reserve_selection_sha256: str = ""
     run_id: str = ""
     mechanism_graphs: list[MechanismGraph] = field(default_factory=list)
     hepg2_ffa_resources: dict[str, object] = field(default_factory=dict)
@@ -117,6 +125,17 @@ class PipelineResult:
             run_id=self.run_id,
             input_sha256=self.input_sha256,
             selection_hash=self.selection_sha256,
+        )
+
+    def to_reserve_row_dicts(self) -> list[dict[str, str | int | float]]:
+        return rows_from_top(
+            self.reserve_molecules,
+            mode=self.config.mode,
+            config_hash=self.config.config_hash,
+            degraded_channels=self.config.degraded_channels,
+            run_id=self.run_id,
+            input_sha256=self.input_sha256,
+            selection_hash=self.reserve_selection_sha256,
         )
 
 
@@ -462,12 +481,12 @@ def _screen_sdf_inner(
             molecule.gated_out = True
             molecule.gate_reason = "screening_review_required"
     eligible = [m for m in scored if not m.gated_out]
-    eligible.sort(key=lambda m: (-m.final_score, m.molecule_id))
+    assign_competition_scores(eligible, config)
     gated = len(scored) - len(eligible)
     log.emit(
         "INFO",
-        f"门控完成：门控后候选={len(eligible)}，门控剔除={gated}，已按 final_score 降序排序",
-        f"Gating complete: eligible_candidates={len(eligible)}, gated_out={gated}, sorted by final_score descending",
+        f"门控完成：门控后候选={len(eligible)}，门控剔除={gated}，已按相对竞赛 selection_score 降序排序",
+        f"Gating complete: eligible_candidates={len(eligible)}, gated_out={gated}, sorted by relative competition selection_score descending",
         progress=55,
     )
 
@@ -524,7 +543,7 @@ def _screen_sdf_inner(
         by_scored = {m.molecule_id: m for m in scored}
         by_scored.update({m.molecule_id: m for m in rescored})
         scored = [by_scored.get(m.molecule_id, m) for m in scored]
-        eligible.sort(key=lambda m: (-m.final_score, m.molecule_id))
+        assign_competition_scores(eligible, config)
         log.emit(
             "INFO",
             (
@@ -565,7 +584,9 @@ def _screen_sdf_inner(
         )
 
     n = top_n or config.top_n
-    top_k_n = max(n, config.top_k_for_critic)
+    reserve_n = config.reserve_n
+    requested_pool_n = n + reserve_n
+    top_k_n = max(requested_pool_n, config.top_k_for_critic)
     rank_robustness = analyze_rank_robustness(eligible, config, top_n=n)
     diversity = config.diversity
     max_per_scaffold = int(diversity.get("max_per_scaffold", 2))
@@ -603,11 +624,13 @@ def _screen_sdf_inner(
 
     log.emit(
         "INFO",
-        f"开始规则 Critic：目标输出 Top N={n}，对多样性候选做金标准校准与风险剔除",
-        f"Start rule Critic: target output Top N={n}, apply gold-set calibration and risk removals",
+        f"开始规则 Critic：目标主榜={n} + reserve={reserve_n}，对多样性候选做金标准校准与风险剔除",
+        f"Start rule Critic: target primary={n} + reserve={reserve_n}, apply gold-set calibration and risk removals",
         progress=90,
     )
-    top, actions = rule_critic(diversified, eligible, config, gold, top_n=n)
+    selected_pool, actions = rule_critic(
+        diversified, eligible, config, gold, top_n=requested_pool_n
+    )
     if actions:
         drop_hist = summarize_critic_actions(actions)
         hist_zh = ", ".join(f"{k}={v}" for k, v in drop_hist.items() if v and k != "keep")
@@ -616,12 +639,12 @@ def _screen_sdf_inner(
             "INFO",
             (
                 f"规则 Critic 完成：执行动作数={len(actions)}，keep={hist_keep}，"
-                f"当前短名单大小={len(top)}"
+                f"当前短名单大小={len(selected_pool)}"
                 + (f"；drop 直方图：{hist_zh}" if hist_zh else "")
             ),
             (
                 f"Rule Critic complete: action_count={len(actions)}, keep={hist_keep}, "
-                f"shortlist_size={len(top)}"
+                f"shortlist_size={len(selected_pool)}"
                 + (f"; drop_histogram={hist_zh}" if hist_zh else "")
             ),
             progress=92,
@@ -633,13 +656,13 @@ def _screen_sdf_inner(
         "Start evidence-bound LLM Critic: adjust shortlist only when enabled and run evidence is available",
         progress=94,
     )
-    top, llm_actions = run_evidence_bound_llm_critic(top, config)
+    selected_pool, llm_actions = run_evidence_bound_llm_critic(selected_pool, config)
     actions.extend(llm_actions)
     if llm_actions:
         log.emit(
             "INFO",
-            f"LLM Critic 完成：执行动作数={len(llm_actions)}，当前短名单大小={len(top)}",
-            f"LLM Critic complete: action_count={len(llm_actions)}, shortlist_size={len(top)}",
+            f"LLM Critic 完成：执行动作数={len(llm_actions)}，当前短名单大小={len(selected_pool)}",
+            f"LLM Critic complete: action_count={len(llm_actions)}, shortlist_size={len(selected_pool)}",
             progress=96,
         )
     else:
@@ -652,8 +675,8 @@ def _screen_sdf_inner(
 
     # 最终交付前再次执行唯一资格接口；Critic/LLM 无权重新引入不合格候选。
     policy = policy_from_config(config.gates)
-    final_top: list[ScoreRecord] = []
-    for mol in top:
+    final_pool: list[ScoreRecord] = []
+    for mol in selected_pool:
         decision = evaluate_candidate_eligibility(
             MoleculeAssessment(
                 molecule_id=mol.molecule_id,
@@ -670,7 +693,7 @@ def _screen_sdf_inner(
         mol.gated_out = not decision.is_eligible
         mol.gate_reason = "" if decision.is_eligible else "; ".join(decision.reasons)
         if decision.is_eligible:
-            final_top.append(mol)
+            final_pool.append(mol)
         else:
             actions.append(
                 CriticAction(
@@ -686,9 +709,21 @@ def _screen_sdf_inner(
                     final_decision="not_selected",
                 )
             )
-    top = final_top
+    final_pool.sort(key=lambda mol: (-mol.selection_score, mol.molecule_id))
+    top = final_pool[:n]
+    reserve = final_pool[n : n + reserve_n]
+    for rank, mol in enumerate(top, start=1):
+        mol.nomination_tier = "primary"
+        mol.primary_rank = rank
+        mol.reserve_rank = None
+        mol.replacement_for = ""
+    for rank, mol in enumerate(reserve, start=1):
+        mol.nomination_tier = "reserve"
+        mol.primary_rank = None
+        mol.reserve_rank = rank
+        mol.replacement_for = f"primary_slot_{((rank - 1) % max(1, n)) + 1}"
 
-    selected_ids = {m.molecule_id for m in top}
+    selected_ids = {m.molecule_id for m in top} | {m.molecule_id for m in reserve}
     drop_reasons = {
         action.molecule_id: action.reason
         for action in actions
@@ -698,7 +733,10 @@ def _screen_sdf_inner(
     for mol in top:
         mol.selection_factors = dict(mol.selection_factors or {})
         mol.selection_factors["eligibility"] = mol.eligibility_status
-        mol.selection_factors["score"] = f"{mol.final_score:.4f}"
+        mol.selection_factors["score"] = (
+            f"competition={competition_selection_score(mol):.4f};"
+            f"legacy={mol.final_score:.4f}"
+        )
         mol.selection_factors.setdefault("combo_adjustment", "selected")
         mol.selection_reason = format_selection_reason(mol.selection_factors)
         selection_audit.append(
@@ -709,6 +747,27 @@ def _screen_sdf_inner(
                 "selection_reason": mol.selection_reason,
                 "final_score": mol.final_score,
                 "eligibility_status": mol.eligibility_status,
+            }
+        )
+    for mol in reserve:
+        mol.selection_factors = dict(mol.selection_factors or {})
+        mol.selection_factors["eligibility"] = mol.eligibility_status
+        mol.selection_factors["score"] = (
+            f"competition={mol.selection_score:.4f};legacy={mol.final_score:.4f}"
+        )
+        mol.selection_factors["combo_adjustment"] = "reserve_sequential_replacement"
+        mol.selection_reason = format_selection_reason(mol.selection_factors)
+        selection_audit.append(
+            {
+                "molecule_id": mol.molecule_id,
+                "outcome": "reserve",
+                "selection_factors": dict(mol.selection_factors),
+                "selection_reason": mol.selection_reason,
+                "selection_score": mol.selection_score,
+                "final_score": mol.final_score,
+                "eligibility_status": mol.eligibility_status,
+                "reserve_rank": mol.reserve_rank,
+                "replacement_for": mol.replacement_for,
             }
         )
     # 落榜审计：短名单（多样性后）未进入最终 Top-N 的候选
@@ -820,6 +879,7 @@ def _screen_sdf_inner(
 
     return PipelineResult(
         top_molecules=top,
+        reserve_molecules=reserve,
         input_count=len(records),
         filtered_out=filtered_out,
         eligible_count=len(eligible),
@@ -838,6 +898,7 @@ def _screen_sdf_inner(
         rank_robustness=rank_robustness,
         input_sha256=input_hash,
         selection_sha256=selection_hash,
+        reserve_selection_sha256=selection_sha256(reserve),
         run_id=run_id,
         mechanism_graphs=mechanism_graphs,
         hepg2_ffa_resources=hepg2_ffa_resources,
@@ -868,6 +929,18 @@ def run_pipeline(
         run_id=result.run_id,
         input_sha256=result.input_sha256,
         selection_hash=result.selection_sha256,
+    )
+    reserve_path = Path(output_path).with_suffix(".reserve.csv")
+    export_nomination_csv(
+        result.reserve_molecules,
+        reserve_path,
+        mode=cfg.mode,
+        config_hash=cfg.config_hash,
+        degraded_channels=cfg.degraded_channels,
+        requested_top_n=cfg.reserve_n,
+        run_id=result.run_id,
+        input_sha256=result.input_sha256,
+        selection_hash=result.reserve_selection_sha256,
     )
     audit_path = Path(output_path).with_suffix(".screening_audit.csv")
     export_screening_audit_csv(result.screening_audit, audit_path)
@@ -921,6 +994,8 @@ def run_pipeline(
         run_id=result.run_id,
         selection_hash=result.selection_sha256,
         top_molecules=result.top_molecules,
+        reserve_molecules=result.reserve_molecules,
+        reserve_selection_hash=result.reserve_selection_sha256,
     )
     result.manifest_path = str(manifest_path)
     return result

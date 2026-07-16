@@ -52,10 +52,10 @@ SHARED_PROTOCOL = """## 统一实验验证协议（HepG2-FFA 双终点；各组�
 
 1. 科学目标: 仅在未明显损伤细胞活力的前提下降低脂质蓄积才计为有效命中；数值阈值、剂量、时长与 FFA 配比按实验室 SOP 确定。
 2. 项目建议起始模型: HepG2 + FFA（油酸/棕榈酸约 2:1）诱导脂质蓄积；该配比需按实验室 SOP 与预实验调整。
-3. 项目建议起始条件: 1 / 5 / 10 uM、约 24 h；按溶解性、暴露和细胞状态调整并设置溶剂对照。
-4. 脂质终点: BODIPY 493/503 或 Nile Red（或等价读出）；相对模型/溶剂对照显著下降（建议 p < 0.05）。
-5. 活力终点: CCK-8 / MTT / ATP 等；项目暂定代理参考为活力 >={viability_pct:.0f}%（非官方阈值，待实验 SOP 或同条件数据替换）。
-6. 项目操作性命中判据: 脂质显著下降 且 活力 >={viability_pct:.0f}%；核心原则是平行双终点并排除细胞损伤假阳性。
+3. 已确认初筛暴露固定为 10 uM；处理时长、FFA 配比等未确认细节按实验室 SOP 执行。
+4. 脂质终点: 具体主读出与命中降幅尚未确认；不得把 BODIPY、Nile Red 或内部代理阈值写成官方标准。
+5. 活力主终点: CCK-8；相对对照 >={viability_pct:.0f}% 为未明显损伤参考；Hoechst 为辅助读出。
+6. 项目操作性判读: 脂质读出与 CCK-8 活力须在同一浓度/时长下平行解读；脂质达标与活力达标同时成立才可作为有效命中候选，具体脂质门槛待 SOP 确认。
 7. 可选确认阶段: 拟合 EC50、CC50，用 SI=CC50/EC50 看治疗窗（仅实验层；不进入 CSV 排序，ADR-M16）。
 8. QC: DMSO 一致、荧光干扰对照、沉淀镜检、板级 Z'。
 9. 风险与假阳性注意: 脂滴下降可能由细胞损伤引起；毒理/GHS 类证据只用于风险提示，不用于证明作用靶点。
@@ -341,8 +341,6 @@ def build_mechanism_markdown(
         f"共 {len(top)} 个候选；排名已冻结；生成模式：准确模板"
         "（按通路分组 + 通路白名单 + 归因拆分）。\n\n",
         lineage_block,
-        graph_block,
-        citation_block,
         "> 通路表: data/reference/nafld_pathways.yaml "
         "(DNL / FAO / PPAR / FXR / AMPK / THR / 摄取外排 / 自噬)\n\n",
         "> 常见机制假说空间包括：从头脂合成（SREBP-1c / ACC / FASN / SCD1）、"
@@ -366,6 +364,9 @@ def build_mechanism_markdown(
     ]
     for i, (_pid, members) in enumerate(groups.items(), start=1):
         chunks.append(_render_group(i, members))
+    # 专家首先看到候选与验证协议；证据图和逐条引用作为后置审计附录，
+    # 避免长串 provenance 字段把主叙事推到 PDF 前几页。
+    chunks.extend([graph_block, citation_block])
     chunks.append(
         f"\n<!-- mechanism_stats llm=0 template={len(top)} "
         f"pathway_groups={len(groups)} degraded=none -->\n"
@@ -395,9 +396,23 @@ def render_mechanism_markdown(
         mechanism_graphs=mechanism_graphs,
     )
     output_path.write_text(text, encoding="utf-8")
-    if write_pdf:
-        from services.mechanism.pdf_export import markdown_to_pdf_bytes
+    from services.mechanism.browser_pdf import BrowserPdfUnavailable, html_to_pdf_bytes
+    from services.mechanism.html_report import build_mechanism_html
 
+    html = build_mechanism_html(
+        top,
+        assumptions=assumptions,
+        run_context=run_context,
+    )
+    output_path.with_suffix(".html").write_text(html, encoding="utf-8")
+    if write_pdf:
         pdf_path = output_path.with_suffix(".pdf")
-        pdf_path.write_bytes(markdown_to_pdf_bytes(text))
+        try:
+            pdf_path.write_bytes(html_to_pdf_bytes(html))
+        except BrowserPdfUnavailable:
+            if mark_degraded is not None:
+                mark_degraded("html_pdf_renderer_unavailable")
+            from services.mechanism.pdf_export import markdown_to_pdf_bytes
+
+            pdf_path.write_bytes(markdown_to_pdf_bytes(text))
     return output_path
