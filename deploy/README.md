@@ -2,6 +2,7 @@
 
 命令默认在**仓库根目录**执行。  
 - **本地**：本目录 `deploy/`（Docker Compose，无 nginx）  
+- **评委镜像**：优先 `ghcr.io/gameserver-gh/molmind:0.1.0`（amd64+arm64）；本地 tar 见 `deploy/images/`  
 - **服务器 / 域名**：`deploy_pro/`（nginx + HTTPS，**不提交 git**，见该目录内 README）
 
 工程状态与镜像体积决策见 [`../docs/reports/molmind_optimization_status_v9.md`](../docs/reports/molmind_optimization_status_v9.md)、[`../docs/reports/molmind_model_size_and_deployment_assessment.md`](../docs/reports/molmind_model_size_and_deployment_assessment.md)。

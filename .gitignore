@@ -42,6 +42,11 @@ output/
 # 服务器部署（nginx + TLS + 生产 Compose，含证书，不入库）
 deploy_pro/
 
+# 离线镜像包（体积 GB 级，不入库；目录占位见 deploy/images/.gitkeep）
+deploy/images/*.tar
+deploy/images/*.tar.gz
+deploy/images/*.tgz
+
 .DS_Store
 .idea/
 .vscode/
