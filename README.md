@@ -182,13 +182,33 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 
 ## 快速开始
 
-部署细节（macOS / Windows / 可选纯 Python）见 [deploy/README.md](deploy/README.md)。
+### 在线试用（无需本地部署）
+
+浏览器直接打开：**[https://molmind.cn/](https://molmind.cn/)**  
+
+上传 `.sdf` 即可筛选；健康检查：<https://molmind.cn/health>。
+
+### 本地部署
+
+完整步骤（国内优先 NAS 镜像仓库 / ghcr / 本地构建 / 纯 Python）见 [deploy/README.md](deploy/README.md)。
+
+国内推荐（拉取成品镜像后启动，勿依赖慢速外网构建）：
+
+```bash
+# Docker Engine 需一次性配置 insecure-registries: ["8.133.197.65:5001"]
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.0
+docker tag 8.133.197.65:5001/molmind:0.1.0 molmind:0.1.0
+mkdir -p output
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+本地访问 <http://127.0.0.1:18765/>（健康检查：`/health`）。请勿用 `file://` 直接打开静态页。
+
+仅开发调试时再现场构建：
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
 ```
-
-浏览器打开 <http://127.0.0.1:18765/>（健康检查：`/health`）。请勿用 `file://` 直接打开静态页。
 
 CLI 一键示例：
 

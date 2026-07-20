@@ -180,13 +180,32 @@ Mechanism prose aligns with wet-lab narrative: HepG2-FFA dual endpoints (lipid â
 
 ## Quick start
 
-Full deploy notes (macOS / Windows / optional pure Python): [deploy/README.md](deploy/README.md).
+### Online demo (no local install)
+
+Open **[https://molmind.cn/](https://molmind.cn/)** in a browser, upload an `.sdf`, and run screening.  
+Health: <https://molmind.cn/health>.
+
+### Local deploy
+
+Full steps (China NAS registry first / ghcr / local build / pure Python): [deploy/README.md](deploy/README.md).
+
+Recommended in China (pull prebuilt image; avoid slow overseas builds):
+
+```bash
+# One-time Docker Engine: insecure-registries: ["8.133.197.65:5001"]
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.0
+docker tag 8.133.197.65:5001/molmind:0.1.0 molmind:0.1.0
+mkdir -p output
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+Local UI: <http://127.0.0.1:18765/> (health: `/health`). Do not open the static page via `file://`.
+
+For local code changes only:
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
 ```
-
-Open <http://127.0.0.1:18765/> (health: `/health`). Do not open the static page via `file://`.
 
 CLI one-liner:
 
