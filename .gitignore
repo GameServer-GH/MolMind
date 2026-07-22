@@ -5,6 +5,9 @@ docs/
 mvp/
 mvp2/
 
+# 本地提交材料
+Submit/
+
 # Python 虚拟环境与构建产物
 .venv/
 venv/
