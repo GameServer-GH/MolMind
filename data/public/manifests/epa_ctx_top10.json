@@ -1,0 +1,109 @@
+{
+  "schema_version": "molmind-epa-ctx-import-manifest-v1",
+  "captured_at": "2026-07-23T02:56:17+00:00",
+  "status": "imported",
+  "source": "US EPA CTX APIs",
+  "source_url": "https://www.epa.gov/comptox-tools/computational-toxicology-and-exposure-apis",
+  "api_base": "https://comptox.epa.gov/ctx-api",
+  "api_key_persisted": false,
+  "candidate_count": 10,
+  "mapped_dtxsid_count": 10,
+  "exact_original_inchikey_match_count": 9,
+  "endpoint_record_counts": {
+    "chemical_detail": 10,
+    "bioactivity_summary": 2,
+    "bioactivity_detail": 488,
+    "toxval": 0,
+    "toxref_summary": 0
+  },
+  "active_assay_metadata_count": 20,
+  "normalized_toxcast_assay_grain_count": 488,
+  "active_assay_metadata_errors": [],
+  "verified_empty_endpoints": {
+    "T84225": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "T37177": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "T23557": [
+      "toxval",
+      "toxref_summary"
+    ],
+    "T64737": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "TN7120": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "TN1037": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "T17044": [
+      "toxval",
+      "toxref_summary"
+    ],
+    "T8188": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "T39740": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ],
+    "T67958": [
+      "bioactivity_summary",
+      "bioactivity_detail",
+      "toxval",
+      "toxref_summary"
+    ]
+  },
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "empty_endpoint_interpretation": "empty endpoint is not low toxicity",
+  "ranking_effect": "risk_signal_only",
+  "raw_path": "data/public/raw/epa_ctx/top10_ctx_2026-07-23.json",
+  "raw_sha256": "71a49bf0508760bb197ef8072e0e3ea42eaf4d06ce830db4d0657ed102313b4e",
+  "processed_paths": {
+    "candidate_mapping": "data/public/processed/epa_ctx/candidate_mapping.jsonl",
+    "chemical_detail": "data/public/processed/epa_ctx/chemical_detail.jsonl",
+    "bioactivity_summary": "data/public/processed/epa_ctx/bioactivity_summary.jsonl",
+    "bioactivity_detail": "data/public/processed/epa_ctx/bioactivity_detail.jsonl",
+    "toxval": "data/public/processed/epa_ctx/toxval.jsonl",
+    "toxref_summary": "data/public/processed/epa_ctx/toxref_summary.jsonl",
+    "active_assay_metadata": "data/public/processed/epa_ctx/active_assay_metadata.jsonl",
+    "candidate_risk_summary": "data/public/processed/epa_ctx/candidate_risk_summary.jsonl",
+    "normalized_toxcast_assay_grain": "data/public/processed/epa_toxcast_tox21/records.jsonl"
+  },
+  "processed_sha256": {
+    "candidate_mapping": "251862b4ce88d9f92db9b4062b437e72516240f634a20bc668bb22d59510f66e",
+    "chemical_detail": "9c3a83067d69b5be1bd6c3c08480a21a841065bda59caf52f715ce029f5a562d",
+    "bioactivity_summary": "db67f586ad46ca8ac27aad3706e709d2bfed11c9631d53ffdeab774953f03f89",
+    "bioactivity_detail": "afa14a2c98aa6beda20f7eeff31cceb36ba793e7c18dd3b49dd353b1623f73b9",
+    "toxval": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toxref_summary": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "active_assay_metadata": "5a5b5433107f859206e05ac05de3ccb8b552beaac396ee3a567c7fbc1f0b3bfc",
+    "candidate_risk_summary": "69026a76a06c9797f070b6053b8ebca8d18e43011a509aaf969d873b3c0e49a0",
+    "normalized_toxcast_assay_grain": "1ef2c724431ba7051f08de2d37bddbfee250946cd3624cbf871aed2b1adb7922"
+  },
+  "errors": []
+}

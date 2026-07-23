@@ -1,4 +1,4 @@
-"""机制 Markdown → PDF（交付用；字符集净化防乱码）。"""
+"""机制 Markdown → PDF（导出用；字符集净化防乱码）。"""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ def _ensure_font() -> None:
             return
         except Exception:
             continue
-    # Last-resort compatibility fallback; delivery images should install Noto CJK.
+    # Last-resort compatibility fallback; exported images should install Noto CJK.
     _FONT = "STSong-Light"
     pdfmetrics.registerFont(UnicodeCIDFont(_FONT))
     _REGISTERED = True
@@ -224,7 +224,7 @@ def markdown_to_pdf_bytes(md: str, *, title: str = "MolMind 机制与验证方�
         story.append(Paragraph(_escape(sanitize_pdf_text(title)), styles["h1"]))
     def invariant_canvas(*args, **kwargs):
         # ReportLab 默认写入当前时间和随机文档 ID；固定元数据后，同一 Markdown
-        # 在不同运行中生成逐字节一致的交付物。
+        # 在不同运行中生成逐字节一致的导出文件。
         kwargs["invariant"] = 1
         return Canvas(*args, **kwargs)
 

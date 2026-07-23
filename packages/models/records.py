@@ -59,7 +59,7 @@ EvidenceQueryStatus = Literal[
     "adapter_error",
     "not_queried",
 ]
-# OriGene 文档术语：与 evidence_role/query_status 并存，用于导出与验收对齐。
+# 与 evidence_role/query_status 并存的导出词汇，便于审计对齐。
 EvidenceType = Literal[
     "identity_annotation",
     "endpoint_evidence",
@@ -243,6 +243,9 @@ class ScoreRecord:
     citations: list[EvidenceCitation] = field(default_factory=list)
     evidence_run_id: str = ""
     input_structure_hash: str = ""
+    epa_audit: dict[str, Any] = field(default_factory=dict)
+    dili_audit: dict[str, Any] = field(default_factory=dict)
+    evidence_source_audit: dict[str, Any] = field(default_factory=dict)
     # 评分代理：在同次运行的 eligible 池内做相对排序后赋值。
     effect_proxy_score: float = 0.0
     novelty_proxy_score: float = 0.0

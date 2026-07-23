@@ -18,6 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from services.evidence_gateway.credentials import resolve_secret
+
 ASSAY_GRAIN_FIELDS = (
     "compound_id",
     "standardized_smiles",
@@ -67,13 +69,13 @@ def _utc_now() -> str:
 
 
 def resolve_api_key(explicit: Optional[str] = None) -> Optional[str]:
-    if explicit and str(explicit).strip():
-        return str(explicit).strip()
-    for env_name in ("CTX_API_KEY", "CCTE_API_KEY", "MOLMIND_CTX_API_KEY"):
-        value = os.environ.get(env_name, "").strip()
-        if value:
-            return value
-    return None
+    if explicit == "":
+        return None
+    return resolve_secret(
+        "epa_ctx",
+        explicit=explicit,
+        env_names=("CTX_API_KEY", "CCTE_API_KEY", "MOLMIND_CTX_API_KEY"),
+    )
 
 
 def default_get_json(
@@ -150,7 +152,15 @@ def normalize_toxcast_row(
     dtxsid = str(row.get("dtxsid") or "").strip()
     aeid = row.get("aeid")
     hitc = _float_or_none(row.get("hitc") if row.get("hitc") is not None else row.get("hitcall"))
+    mc5 = row.get("mc5Param") if isinstance(row.get("mc5Param"), dict) else {}
+    acc = _float_or_none(row.get("acc"))
+    if acc is None:
+        acc = _float_or_none(mc5.get("acc"))
     ac50 = _float_or_none(row.get("ac50"))
+    if ac50 is None:
+        ac50 = _float_or_none(mc5.get("ac50"))
+    potency_value = acc if acc is not None else ac50
+    potency_metric = "ACC" if acc is not None else ("AC50" if ac50 is not None else None)
     endpoint = (
         str(row.get("assayComponentEndpointName") or row.get("assay_name") or "").strip()
         or (f"aeid:{aeid}" if aeid is not None else "toxcast_endpoint")
@@ -171,8 +181,8 @@ def normalize_toxcast_row(
         "dose_unit": None,
         "treatment_time_hours": _float_or_none(row.get("timepointHr")),
         "direction": direction,
-        "value": ac50,
-        "unit": "uM" if ac50 is not None else None,
+        "value": potency_value,
+        "unit": "uM" if potency_value is not None else None,
         "control_id": None,
         "batch_id": row.get("m4id") or row.get("m5id") or row.get("spid"),
         "source_url": f"{api_base.rstrip('/')}/data/search/by-dtxsid/{quote(dtxsid)}"
@@ -185,6 +195,8 @@ def normalize_toxcast_row(
         "hitc": hitc,
         "hitcall": _float_or_none(row.get("hitcall")),
         "ac50": ac50,
+        "acc": acc,
+        "potency_metric": potency_metric,
         "cell_viability_assay": row.get("cellViabilityAssay"),
         "intended_target_family": row.get("intendedTargetFamily"),
         "classification": "active_risk" if active else "inactive_or_inconclusive",
@@ -259,6 +271,7 @@ def import_toxcast_ctx(
     """Import ToxCast assay-grain rows by DTXSID via CTX.
 
     Preference order per DTXSID: local cache → live CTX (needs key) → fixture.
+    Pass ``api_key=""`` to explicitly disable configured live credentials.
     """
     bio_api = str(source.get("api_base") or DEFAULT_BIOACTIVITY_API)
     chem_api = str(source.get("chemical_api_base") or DEFAULT_CHEMICAL_API)
@@ -279,7 +292,7 @@ def import_toxcast_ctx(
             resolve_errors.append(
                 {
                     "error_type": "AuthMissingError",
-                    "error": "InChIKey→DTXSID resolution requires CTX_API_KEY",
+                    "error": "InChIKey→DTXSID resolution requires a configured CTX API key",
                 }
             )
         else:
@@ -346,7 +359,7 @@ def import_toxcast_ctx(
                 mode = "fixture"
             else:
                 raise AuthMissingError(
-                    "CTX_API_KEY unset and no cache/fixture for "
+                    "CTX API key unavailable and no cache/fixture for "
                     f"{dtxsid}; request a free key from ccte_api@epa.gov"
                 )
         except Exception as exc:
@@ -427,8 +440,8 @@ def import_toxcast_ctx(
     if not records:
         if not key and mode_counts.get("fixture", 0) == 0 and mode_counts.get("cache", 0) == 0:
             raise AuthMissingError(
-                "CTX_API_KEY unset; no ToxCast cache/fixture rows available. "
-                "Email ccte_api@epa.gov for a free key, or provide --toxcast-cache."
+                "CTX API key unavailable; no ToxCast cache/fixture rows available. "
+                "Configure configs/evidence_providers.yaml or provide --toxcast-cache."
             )
         raise RuntimeError(
             "toxcast CTX import produced zero records "

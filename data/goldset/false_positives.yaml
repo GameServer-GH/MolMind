@@ -1,4 +1,4 @@
-# 假阳性 / 肝毒参考：应抬升 R_tox，不得进交付 Top 10
+# 假阳性 / 肝毒参考：应抬升 R_tox，不得进入默认 Top 10
 version: 1
 cases:
   - name: Amiodarone

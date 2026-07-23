@@ -1,0 +1,23 @@
+# Clinical hard exclusions for reproducible nomination gating.
+# Entries remove candidates from eligibility before Top10 selection.
+
+schema_version: molmind-clinical-exclusions-v1
+enabled: true
+
+exclusions:
+  - id: zomepirac_withdrawn_anaphylaxis
+    action: hard_exclude
+    reason: >-
+      Zomepirac (Zomax) was withdrawn in 1983 after fatal/near-fatal
+      anaphylactoid reactions (DrugBank DB04828). EPA bioactivity alone did
+      not capture this liability; exclusion is literature-based.
+    references:
+      - https://go.drugbank.com/drugs/DB04828
+    molecule_ids:
+      - T0264
+    cas:
+      - "64092-48-4"   # sodium salt
+      - "33369-31-2"   # free acid
+    inchikeys:
+      - ZXVNMYWKKDOREA-UHFFFAOYSA-N   # parent / standardized
+      - SEEXPXUCHVGZGU-UHFFFAOYSA-M   # sodium salt original

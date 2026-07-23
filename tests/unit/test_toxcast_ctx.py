@@ -72,7 +72,7 @@ def test_import_from_fixtures_without_api_key() -> None:
         limit=20,
         per_dtxsid_limit=5,
         dtxsids=("DTXSID7020182", "DTXSID3020966"),
-        api_key=None,
+        api_key="",
         fixture_dir=FIXTURES,
         allow_fixture_fallback=True,
         cache_dir=None,
@@ -89,7 +89,7 @@ def test_import_auth_missing_without_fixture_or_key(tmp_path: Path) -> None:
         import_toxcast_ctx(
             SOURCE,
             dtxsids=("DTXSID0000000",),
-            api_key=None,
+            api_key="",
             fixture_dir=tmp_path / "empty",
             allow_fixture_fallback=True,
             cache_dir=tmp_path / "cache",

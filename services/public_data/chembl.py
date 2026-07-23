@@ -10,19 +10,22 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from services.evidence_gateway import EvidenceQueryCache
 from services.evidence_facade.facade import (
     CELL_CONTEXT_RE,
     LIPID_ENDPOINT_RE,
     POSITIVE_LIPID_DIRECTION_RE,
     _classify_chembl_activity,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
 
 ASSAY_GRAIN_FIELDS = (
     "compound_id",
@@ -455,7 +458,10 @@ def import_chembl_assay_grain(
     """
     getter = get_json or default_get_json
     api_base = str(source.get("api_base") or "https://www.ebi.ac.uk/chembl/api/data")
-    terms = query_terms or DEFAULT_QUERY_TERMS
+    # ``query_terms=()`` is an intentional offline/search-disabled mode used by
+    # the seed-driven importer.  Do not treat an explicit empty tuple as
+    # "missing" and silently re-enable the flaky free-text assay endpoint.
+    terms = DEFAULT_QUERY_TERMS if query_terms is None else tuple(query_terms)
     seeds = seed_assay_ids if seed_assay_ids is not None else SEED_POSITIVE_ASSAY_IDS
     retrieved_at = _utc_now()
 
@@ -699,6 +705,13 @@ def import_chembl_by_inchikeys(
     getter = get_json or default_get_json
     api_base = str(source.get("api_base") or "https://www.ebi.ac.uk/chembl/api/data")
     retrieved_at = _utc_now()
+    # Injected test getters must remain isolated; production calls reuse the
+    # shared local-first state across SDF imports.
+    query_cache = (
+        EvidenceQueryCache(ROOT / "data/public/cache/evidence_query_state.sqlite")
+        if get_json is None
+        else None
+    )
     wanted = []
     for item in inchikeys:
         key = str(item or "").strip()
@@ -721,9 +734,41 @@ def import_chembl_by_inchikeys(
     verified_empty = 0
 
     for inchikey in wanted:
+        cached_payload: dict[str, Any] | None = None
+        if query_cache is not None:
+            query_cache.upsert_entity(inchikey, original_inchikey=inchikey)
+            decision = query_cache.decide(
+                source_id="chembl",
+                entity_key=inchikey,
+                endpoint="molecule_activity",
+                online=True,
+            )
+            if decision.action == "skip_fresh_verified_empty":
+                verified_empty += 1
+                molecule_stats.append(
+                    {
+                        "inchikey": inchikey,
+                        "status": "verified_empty",
+                        "molecule_chembl_id": None,
+                        "activity_count": 0,
+                        "cache_action": decision.action,
+                    }
+                )
+                continue
+            if decision.action == "local_hit":
+                payload = query_cache.load_payload(
+                    source_id="chembl",
+                    entity_key=inchikey,
+                    endpoint="molecule_activity",
+                )
+                if isinstance(payload, dict):
+                    cached_payload = payload
         try:
-            chembl_id = resolve_chembl_id_by_inchikey(
-                getter, api_base, inchikey, timeout=timeout
+            mode = "cache" if cached_payload is not None else "live"
+            chembl_id = (
+                cached_payload.get("molecule_chembl_id")
+                if cached_payload is not None
+                else resolve_chembl_id_by_inchikey(getter, api_base, inchikey, timeout=timeout)
             )
             if not chembl_id:
                 verified_empty += 1
@@ -733,16 +778,30 @@ def import_chembl_by_inchikeys(
                         "status": "verified_empty",
                         "molecule_chembl_id": None,
                         "activity_count": 0,
+                        "cache_action": "local_hit" if cached_payload is not None else None,
                     }
                 )
+                if query_cache is not None and cached_payload is None:
+                    query_cache.record(
+                        source_id="chembl",
+                        entity_key=inchikey,
+                        endpoint="molecule_activity",
+                        status="verified_empty",
+                        ttl=timedelta(days=14),
+                        source_version="chembl-api",
+                    )
                 continue
-            activities = _fetch_activities_for_molecule(
-                getter,
-                api_base,
-                chembl_id,
-                page_limit=page_limit,
-                max_activities=max_activities_per_molecule,
-                timeout=timeout,
+            activities = (
+                cached_payload.get("activities", [])
+                if cached_payload is not None
+                else _fetch_activities_for_molecule(
+                    getter,
+                    api_base,
+                    chembl_id,
+                    page_limit=page_limit,
+                    max_activities=max_activities_per_molecule,
+                    timeout=timeout,
+                )
             )
             resolved += 1
             raw_pages.append(
@@ -750,8 +809,19 @@ def import_chembl_by_inchikeys(
                     "inchikey": inchikey,
                     "molecule_chembl_id": chembl_id,
                     "activities": activities,
+                    "mode": mode,
                 }
             )
+            if query_cache is not None and cached_payload is None:
+                query_cache.record(
+                    source_id="chembl",
+                    entity_key=inchikey,
+                    endpoint="molecule_activity",
+                    status="hit",
+                    ttl=timedelta(days=90),
+                    payload={"molecule_chembl_id": chembl_id, "activities": activities},
+                    source_version="chembl-api",
+                )
             kept = 0
             for activity in activities:
                 row = normalize_chembl_activity_row(
@@ -770,9 +840,20 @@ def import_chembl_by_inchikeys(
                     "status": "exact_hit",
                     "molecule_chembl_id": chembl_id,
                     "activity_count": kept,
+                    "cache_action": "local_hit" if cached_payload is not None else None,
                 }
             )
         except Exception as exc:
+            if query_cache is not None:
+                query_cache.record(
+                    source_id="chembl",
+                    entity_key=inchikey,
+                    endpoint="molecule_activity",
+                    status="query_failed",
+                    retry_after=timedelta(hours=1),
+                    error=exc,
+                    source_version="chembl-api",
+                )
             molecule_errors.append(
                 {
                     "inchikey": inchikey,
@@ -807,6 +888,9 @@ def import_chembl_by_inchikeys(
         )
     else:
         raw_path = None
+
+    if query_cache is not None:
+        query_cache.close()
 
     for record in records:
         missing = [field for field in ASSAY_GRAIN_FIELDS if field not in record]

@@ -41,7 +41,7 @@ def _record(smiles: str, mid: str) -> MoleculeRecord:
 
 def test_manifest_models_exist() -> None:
     manifest = json.loads((ROOT / "configs" / "model_manifest.json").read_text(encoding="utf-8"))
-    assert manifest.get("models"), "A1 要求交付含本地模型条目"
+    assert manifest.get("models"), "A1 要求发行包含本地模型条目"
     for entry in manifest["models"]:
         path = ROOT / entry["path"]
         assert path.is_file(), f"missing model file: {path}"

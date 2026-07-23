@@ -1,0 +1,87 @@
+# Deterministic post-ranking nomination review.
+# Applied after the algorithmic primary/reserve split.
+#
+# Compatibility for delivered repos:
+# - applies_to_input_sha256 binds ID-scoped footnotes/seat changes to the
+#   reviewed reference SDF. Other SDFs skip this bundle automatically.
+# - Chemistry-level hard gates live in clinical_exclusions.yaml and always apply.
+
+schema_version: molmind-nomination-review-v2
+enabled: true
+require_input_match: true
+applies_to_input_sha256:
+  # Reference SDF used for the stage-2 corrected + manually reviewed shortlist.
+  - 3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456
+apply_in_modes:
+  - auto
+  - offline
+  - online
+
+decisions:
+  - molecule_id: T0264
+    inchikeys:
+      - ZXVNMYWKKDOREA-UHFFFAOYSA-N
+      - SEEXPXUCHVGZGU-UHFFFAOYSA-M
+    cas:
+      - "64092-48-4"
+      - "33369-31-2"
+    action: annotate
+    reason: >-
+      Manual review - withdrawn zomepirac; hard-excluded via
+      clinical_exclusions.yaml so algorithmic and nominated Top10 both omit it.
+
+  - molecule_id: T19959
+    inchikeys:
+      - ABOOPXYCKNFDNJ-UHFFFAOYSA-N
+    cas:
+      - "76578-12-6"
+    action: annotate
+    reason: >-
+      KEEP+NOTE - Quizalofop identity matches CAS 76578-12-6 / InChIKey; EPA
+      verified_empty is not safety; PubChem GHS danger/warning present.
+
+  - molecule_id: T27832
+    inchikeys:
+      - LNXBEIZREVRNTF-UHFFFAOYSA-N
+    cas:
+      - "96609-16-4"
+    action: annotate
+    reason: >-
+      KEEP+NOTE - Lifibrol; CAS mapping audited; lipid clinical history without
+      withdrawal-class liability.
+
+  - molecule_id: T0458
+    inchikeys:
+      - CGIGDMFJXJATDK-UHFFFAOYSA-N
+    cas:
+      - "53-86-1"
+    action: annotate
+    reason: >-
+      KEEP+NOTE - Indomethacin; EPA weak_risk_review only (nhit>0 but
+      cytotoxLowerUm >> 10 uM); class NSAID hepatic/GI risk footnote.
+
+  - molecule_id: T11137
+    inchikeys:
+      - XIQDGAUDNMVMCD-BQYQJAHWSA-N
+    action: annotate
+    reason: "KEEP+NOTE - michael acceptor; prioritize CCK-8 viability at 10 uM."
+
+  - molecule_id: T205876
+    inchikeys:
+      - POSPUCADEWJXCE-UHFFFAOYSA-N
+    action: annotate
+    reason: "KEEP+NOTE - michael acceptor; prioritize CCK-8 viability at 10 uM."
+
+  - molecule_id: T3989
+    inchikeys:
+      - GBWOSXZUTXXXQF-FLIBITNWSA-N
+    action: annotate
+    reason: "KEEP+NOTE - TZD-like michael acceptor; prioritize CCK-8 viability at 10 uM."
+
+  - molecule_id: T21318
+    inchikeys:
+      - BNFRJXLZYUTIII-UHFFFAOYSA-N
+    cas:
+      - "131179-95-8"
+    action: annotate
+    reason: "KEEP+NOTE - Efaproxiral; EPA verified_empty is not a safety label."

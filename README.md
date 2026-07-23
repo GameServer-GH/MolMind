@@ -52,16 +52,23 @@
 
 ## 如何做到
 
-### Quality-Max：一条主路径，自动适配环境
+### Quality-Max：一条主路径 + 两个运行开关
 
-对外默认 `mode=auto`（Quality-Max），不必在 Online / Offline 间二选一：
+对外只有 **Quality-Max**（`mode=auto`），不再区分 Online / Offline 模式入口：
 
 ```text
 冻结的本地证据快照 → 规则 / GoldSet / 可选 ML → Critic → Top 10
 任一通道失败 → 自动降级并写入 degraded_channels[] → 仍输出确定性名单
 ```
 
-默认 `auto` 只读冻结快照，保证同一输入、配置和种子得到同一名单；只有显式 `online` 才启用 live 补证并更新快照，完成后应回到 `auto/offline` 冻结复跑。
+| 开关 | 默认 | 含义 |
+|------|------|------|
+| **使用快照** `use_snapshot` | 开 | 读取 `data/evidence_snapshot/` |
+| **联网补证据** `allow_live` | 关 | ChEMBL/PubChem live 补洞（仅短名单） |
+
+推荐默认：**快照开 + 联网关**（可复现）。需要补证据时先 `bake-evidence` 或临时开联网，烘焙后再关联网复跑。
+
+兼容：`--mode online` / `mode=online` 等价于 `allow_live=true`；`offline` 仅作旧别名，不再单独代表算法路径。
 
 ### 七步 Agent 流水线
 
@@ -139,7 +146,7 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 | `degraded_channels[]` | 如 `evidence_empty`、`lipid_ml`、熔断等，运行降级全程可审计 |
 | 归因列 | 降脂 / 毒性判断依据、`overall_reason` 可回溯到信号与证据 ID |
 
-验收口径：**同 SDF + 同 `config_hash` + 同 snapshot → 同一 Top 10 ID 与分数**。
+复现口径：**同 SDF + 同 `config_hash` + 同 snapshot → 同一 Top 10 ID 与分数**。
 
 ---
 
@@ -158,7 +165,7 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 
 公开数据工作区与导入波次见 [`data/public/README.md`](data/public/README.md)。
 
-### 交付入口（同一套配置）
+### 使用入口（同一套配置）
 
 | 入口 | 用途 |
 |------|------|
@@ -196,8 +203,8 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 
 ```bash
 # Docker Engine 需一次性配置 insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.0
-docker tag 8.133.197.65:5001/molmind:0.1.0 molmind:0.1.0
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.1
+docker tag 8.133.197.65:5001/molmind:0.1.1 molmind:0.1.1
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```

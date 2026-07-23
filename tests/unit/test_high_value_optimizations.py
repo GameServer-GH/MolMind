@@ -207,7 +207,7 @@ def test_mechanism_labels_proxy_and_unresolved_plan() -> None:
         [mol], assumptions=load_config(mode="offline").assumptions
     )
     assert "非官方" in text
-    assert "有效命中（赛题口径）" not in text
+    assert "有效命中（任务口径）" not in text
     assert "L5-UNRESOLVED" in text
     assert "无偏解析" in text
     assert "仅表示通过项目配置" in text

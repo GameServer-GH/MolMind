@@ -31,11 +31,11 @@ assay-grain schemas.
 | **2 · Toxicology** | ToxCast/Tox21 → DILIrank 2.0 → ToxRef/ToxVal | risk signal only |
 | **3 · Multi-omics** | GEO → PRIDE → MetaboLights/Workbench → LINCS/CMap | mechanism support only (`ranking_weight=0` by default) |
 
-### Capture status (2026-07-16)
+### Capture status (2026-07-23)
 
 | Source | `ingestion_status` | Snapshot notes |
 |---|---|---|
-| `chembl_bioactivity` | **imported** | **1128** assay-grain rows → QC **209** (203 positive / 6 adverse); seed HepG2-FFA + **candidate InChIKey expansion** (`--candidate-inchikeys`) |
+| `chembl_bioactivity` | **imported** | **1221** assay-grain rows → QC **209** (203 positive / 6 adverse); seed HepG2-FFA + **candidate InChIKey expansion** (`--candidate-inchikeys`); latest 80-key expansion: 52 exact hits / 28 verified empty / 0 query failures |
 | `pubchem_bioassay` | **imported** | **176** rows → QC **26** (Unspecified dropped); Active stays annotation_only |
 | `bindingdb` | **imported** | Lipid UniProt subset **74** rows → QC **71** (`mechanism_support` only; binding ≠ lipid-lowering); 16 targets round-robin |
 | `epa_toxcast_tox21` | **imported** | CTX Bioactivity by DTXSID (fixtures offline / `CTX_API_KEY` live): **9** rows → QC **7** active hits (`risk_signal` only; inactive ≠ safe). Candidate InChIKey→DTXSID needs API key |
@@ -75,15 +75,29 @@ PYTHONPATH=. python scripts/import_public_data.py \
   --bindingdb-cache data/public/raw/bindingdb/cache \
   --sync-registry
 
-# ToxCast/Tox21 via CTX (DTXSID). Offline uses data/public/fixtures/toxcast_ctx/
-# Live / InChIKey→DTXSID: export CTX_API_KEY=...  (free key from ccte_api@epa.gov)
+# ToxCast/Tox21 via CTX (DTXSID). Offline uses data/public/fixtures/toxcast_ctx/.
+# The live key is currently plaintext in configs/evidence_providers.yaml.
 PYTHONPATH=. python scripts/import_public_data.py \
   --source epa_toxcast_tox21 --limit 40 --sync-registry
-# With candidate InChIKeys (requires CTX_API_KEY):
+# With candidate InChIKeys (uses the project-configured CTX key; env override is optional):
 # PYTHONPATH=. python scripts/import_public_data.py \
 #   --source epa_toxcast_tox21 --limit 40 \
 #   --candidate-inchikeys data/public/manifests/candidate_inchikeys_topm_expand.txt \
 #   --sync-registry
+
+# Candidate-scoped Chemical + ToxCast + ToxVal/ToxRef bundle for frozen Top10.
+PYTHONPATH=. python scripts/import_epa_ctx.py --limit 10
+
+# Full SDF identity mapping (checkpointed; cross-SDF identity cache enabled)
+PYTHONPATH=. python scripts/plan_epa_ctx_bulk.py \
+  --sdf "docs/demo/T001 TargetMol现货产品22966.sdf" \
+  --limit 22966 --workers 6 --resume \
+  --output data/public/processed/epa_ctx/bulk_mapping_all.jsonl
+
+# After mapping completes: full-catalog summary (also checkpointed)
+PYTHONPATH=. python scripts/import_epa_ctx_bulk_summary.py \
+  --mapping data/public/processed/epa_ctx/bulk_mapping_all.jsonl \
+  --workers 6 --resume
 
 # Endpoint QC: drop Unspecified / non-phenotype; write records_endpoint_qc.jsonl
 PYTHONPATH=. python scripts/qc_public_assay_grain.py
@@ -96,6 +110,9 @@ Artifacts (raw/processed gitignored; commit manifests):
 - `processed/<source_id>/records.jsonl` — full assay-grain rows
 - `processed/<source_id>/records_endpoint_qc.jsonl` — QC subset for facade/training triage
 - `raw/<source_id>/` — original responses / cache files
+- `manifests/epa_ctx_top10.json` — Top10 DTXSID mapping, endpoint counts and hashes
+- `processed/epa_ctx/candidate_risk_summary.jsonl` — candidate-level risk-only summary;
+  empty API results remain `audit_missing`, never a low-toxicity label
 
 EvidenceFacade (`evidence.public_assay_grain.enabled`) loads QC tables by exact
 InChIKey. PubChem `Active` stays `annotation_only` (no `conf_e` lift). Only

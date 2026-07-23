@@ -14,6 +14,8 @@ import httpx
 from packages.models import EvidenceHit
 from services.evidence_facade.bundle import EvidenceBundle, infer_evidence_type
 from services.pipeline.config_loader import SNAPSHOT_DIR, AppConfig
+from services.evidence_facade.epa_index import EPAContextIndex
+from services.evidence_facade.epa_risk import epa_cytotox_metrics, epa_cytotox_risk_tier
 
 LIPID_MECHANISM_TARGET_RE = re.compile(
     r"HMGCR|HMG.?CoA|PPAR[A-Z]?|SREBF|SREBP|ACAC[AB]?|FASN|SCD1?|CPT1|"
@@ -255,6 +257,36 @@ def _normalize_snapshot_row(row: dict[str, Any]) -> dict[str, Any]:
         normalized["evidence_role"] = "annotation_only"
         normalized["score"] = 0.0
         normalized["confidence"] = 0.0
+    elif adapter == "pubchem_tox_v1" and normalized.get("query_type") == "tox":
+        # Migrate pre-fix snapshots that scored DILI Negative as liver risk.
+        matched_nodes = payload.get("matched_nodes") or []
+        dili_negative = any(
+            isinstance(node, dict)
+            and "dilist classification" in str(node.get("path") or "").lower()
+            and re.search(r"\bdili\s+negative\b", str(node.get("value") or ""), re.I)
+            for node in matched_nodes
+        )
+        flags = [str(flag) for flag in (payload.get("flags") or [])]
+        if dili_negative:
+            flags = [flag for flag in flags if flag not in {"liver", "dili_positive"}]
+            payload = {
+                **payload,
+                "flags": flags,
+                "dili_classification": "negative",
+                "legacy_dili_negative_migrated": True,
+            }
+            normalized["payload"] = payload
+            if not flags:
+                normalized["query_type"] = "annotation"
+                normalized["endpoint"] = "database_annotation"
+                normalized["direction"] = "unknown"
+                normalized["evidence_role"] = "annotation_only"
+                normalized["score"] = 0.0
+                normalized["confidence"] = 0.0
+                normalized["query_status"] = "annotation_only"
+                normalized["evidence_id"] = str(
+                    normalized.get("evidence_id") or ""
+                ).replace(":ghs", ":dili_negative_annotation")
     normalized.setdefault("schema_version", "evidence-v1-legacy")
     return normalized
 
@@ -295,6 +327,15 @@ class EvidenceFacade:
         self._dili_index = None
         self._nafld_index = None
         self._public_assay_index = None
+        self._dilirank_gate_index = None
+        self._epa_index = EPAContextIndex.from_config(
+            (cfg.evidence.get("epa_ctx") or {})
+        )
+        dili_gate_cfg = cfg.evidence.get("dilirank_exact_gate") or {}
+        if bool(dili_gate_cfg.get("enabled", True)):
+            from services.evidence_facade.dilirank_gate import load_dilirank_index_from_config
+
+            self._dilirank_gate_index = load_dilirank_index_from_config(dili_gate_cfg)
         lt = cfg.evidence.get("local_tables") or {}
         # 主路径默认关闭；显式 enabled=true 时才加载（阶段 7 可选）
         if bool(lt.get("enabled", False)):
@@ -713,9 +754,24 @@ class EvidenceFacade:
         flags: list[str] = []
         matched_nodes: list[dict[str, str]] = []
         joined = " ".join(item[2] for item in normalized)
-        if "hepatotox" in joined or ("liver" in joined and "tox" in joined):
+        dili_negative = any(
+            "dilist classification" in path.lower()
+            and re.search(r"\bdili\s+negative\b", low)
+            for path, _value, low in normalized
+        )
+        dili_positive = any(
+            "dilist classification" in path.lower()
+            and re.search(r"\bdili\s+(?:positive|severity|severe|moderate)\b", low)
+            for path, _value, low in normalized
+        )
+        if not dili_negative and (
+            "hepatotox" in joined or ("liver" in joined and "tox" in joined)
+        ):
             hazard_score += 0.35
             flags.append("liver")
+        if dili_positive:
+            hazard_score += 0.35
+            flags.append("dili_positive")
         if re.search(r"\bdanger\b", joined):
             hazard_score += 0.2
             flags.append("ghs_danger")
@@ -729,6 +785,8 @@ class EvidenceFacade:
             hazard_score += 0.15
             flags.append("acute_toxicity")
         for path, value, low in normalized:
+            if dili_negative and "dilist classification" in path.lower() and "negative" in low:
+                continue
             if any(
                 marker in low
                 for marker in ("danger", "warning", "hepatotox", "liver", "carcinogen", "acute toxicity")
@@ -743,7 +801,12 @@ class EvidenceFacade:
                     score=0.0,
                     confidence=0.0,
                     evidence_id=f"pubchem:{cid}:no_structured_hazard",
-                    payload={"cid": cid, "flags": [], "nodes_examined": len(structured_strings)},
+                    payload={
+                        "cid": cid,
+                        "flags": flags,
+                        "dili_classification": "negative" if dili_negative else "",
+                        "nodes_examined": len(structured_strings),
+                    },
                     endpoint="database_annotation",
                     direction="unknown",
                     evidence_role="annotation_only",
@@ -787,7 +850,7 @@ class EvidenceFacade:
 
     def _try_live(self, *, inchikey: str, cas: str | None, smiles: str) -> list[EvidenceHit]:
         _ = (cas, smiles)
-        if self.cfg.mode == "offline":
+        if not self.cfg.allow_live_evidence:
             return []
         if self._circuit_open:
             self.cfg.mark_degraded("evidence_live_circuit_open")
@@ -800,8 +863,6 @@ class EvidenceFacade:
                     provenance_status="query_failed",
                 )
             ]
-        if not self.cfg.allow_live_evidence:
-            return []
         adapters = self._effective_adapters()
         hits: list[EvidenceHit] = []
         try:
@@ -865,9 +926,10 @@ class EvidenceFacade:
         use_snapshot = bool(self.cfg.evidence.get("use_snapshot", True))
         if not use_snapshot:
             prefer_snapshot = False
+        epa_stage = int((self.cfg.evidence.get("epa_ctx") or {}).get("integration_stage", 0))
         cache_key = (
             f"{inchikey}|{cas}|{int(allow_live)}|{self.cfg.mode}|"
-            f"{int(prefer_snapshot)}|{int(use_snapshot)}"
+            f"{int(prefer_snapshot)}|{int(use_snapshot)}|epa_stage={epa_stage}"
         )
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -955,6 +1017,9 @@ class EvidenceFacade:
 
         self._merge_local_tables(bundle, inchikey=inchikey, smiles=smiles)
         self._merge_public_assay_grain(bundle, inchikey=inchikey)
+        self._merge_epa_ctx(bundle, inchikey=inchikey, cas=cas, smiles=smiles)
+        self._merge_dilirank_gate(bundle, inchikey=inchikey, cas=cas)
+        bundle.evidence_source_audit = self._build_evidence_source_audit(bundle)
 
         for hit in bundle.all_hits():
             _finalize_hit(hit)
@@ -973,6 +1038,339 @@ class EvidenceFacade:
         self._cache[cache_key] = bundle
         return bundle
 
+    def _merge_dilirank_gate(
+        self,
+        bundle: EvidenceBundle,
+        *,
+        inchikey: str,
+        cas: str | None,
+    ) -> None:
+        """Exact-identity DILIrank gate: Most may hard-exclude; never safety lift."""
+        gate_cfg = self.cfg.evidence.get("dilirank_exact_gate") or {}
+        enabled = bool(gate_cfg.get("enabled", True))
+        from services.evidence_facade.dilirank_gate import audit_from_match
+
+        if not enabled or self._dilirank_gate_index is None:
+            bundle.dili_audit = audit_from_match(
+                None, enabled=False, hard_exclude_most=False
+            )
+            return
+        extra: list[str] = []
+        epa = bundle.epa_audit or {}
+        for key in ("original_inchikey", "standardized_inchikey"):
+            value = str(epa.get(key) or "").strip()
+            if value:
+                extra.append(value)
+        match = self._dilirank_gate_index.lookup(
+            inchikey=inchikey,
+            cas=cas,
+            extra_inchikeys=extra,
+        )
+        bundle.dili_audit = audit_from_match(
+            match,
+            enabled=True,
+            hard_exclude_most=bool(gate_cfg.get("hard_exclude_most", True)),
+        )
+        if match is not None:
+            bundle.annotation.append(
+                EvidenceHit(
+                    adapter_id="dilirank_exact_gate_v1",
+                    query_type="annotation",
+                    score=0.0,
+                    confidence=0.0,
+                    evidence_id=(
+                        f"dilirank_exact:{match.ltkb_id or match.inchikey}:"
+                        f"{match.concern}"
+                    ),
+                    payload=dict(bundle.dili_audit),
+                    endpoint="dilirank_concern",
+                    direction="risk" if match.concern == "most" else "unknown",
+                    evidence_role="annotation_only",
+                    provenance_status="retrieved",
+                    source_url=(
+                        "https://www.fda.gov/science-research/"
+                        "liver-toxicity-knowledge-base-ltkb/"
+                        "drug-induced-liver-injury-rank-dilirank-20-dataset"
+                    ),
+                    retrieved_at=_utc_now(),
+                    adapter_version="dilirank_exact_gate_v1",
+                    source_version="fda_dilirank_2",
+                    query_params={"inchikey": inchikey, "cas": cas},
+                    query_status="annotation_only",
+                    evidence_type="identity_annotation",
+                )
+            )
+
+    def _build_evidence_source_audit(self, bundle: EvidenceBundle) -> dict[str, object]:
+        """Summarize ChEMBL / PubChem / BindingDB query outcomes for PDF/CSV."""
+
+        def summarize(adapter_substrings: tuple[str, ...]) -> dict[str, object]:
+            hits = [
+                hit
+                for hit in bundle.all_hits()
+                if any(token in str(hit.adapter_id or "").lower() for token in adapter_substrings)
+            ]
+            if not hits:
+                return {
+                    "status": "not_queried",
+                    "hit_count": 0,
+                    "ranking_effect": "none",
+                }
+            statuses = [str(hit.query_status or "") for hit in hits]
+            roles = [str(hit.evidence_role or "") for hit in hits]
+            scored = sum(1 for hit in hits if float(hit.score or 0.0) > 0)
+            if any(status == "exact_hit" for status in statuses):
+                status = "exact_hit"
+            elif any(status == "verified_empty" for status in statuses):
+                status = "verified_empty"
+            elif any(status == "identity_review_required" for status in statuses):
+                status = "identity_review_required"
+            elif any(status == "annotation_only" for status in statuses):
+                status = "annotation_only"
+            else:
+                status = statuses[0] or "not_queried"
+            return {
+                "status": status,
+                "hit_count": len(hits),
+                "scored_hit_count": scored,
+                "roles": sorted({role for role in roles if role}),
+                "ranking_effect": "score" if scored else "annotation_or_audit_only",
+            }
+
+        return {
+            "chembl": summarize(("chembl",)),
+            "pubchem": summarize(("pubchem",)),
+            "bindingdb": summarize(("bindingdb",)),
+            "policy": {
+                "chembl_lipid_live_or_snapshot": "primary_lipid_evidence",
+                "pubchem_tox_live_or_snapshot": "primary_tox_identity",
+                "bindingdb_assay_grain": "mechanism_support_score_0",
+                "pubchem_bioassay_grain": "annotation_until_candidate_empty_coverage",
+                "dilirank": "exact_gate_only",
+            },
+        }
+
+    def _merge_epa_ctx(
+        self,
+        bundle: EvidenceBundle,
+        *,
+        inchikey: str,
+        cas: str | None,
+        smiles: str | None = None,
+    ) -> None:
+        """Attach EPA CTX evidence according to the configured integration stage.
+
+        Stage 1 is annotation-only and cannot change any score.  Stage 2 may add
+        a bounded toxicity risk only when nhit>0 and cytotoxLowerUm is at or
+        below the fixed screening concentration.  activeMc/activeSc alone stay
+        bioactivity annotations.  CAS-only identity uncertainty is exported in
+        ``epa_audit`` / CSV but never cancels candidate eligibility.
+        """
+        epa_cfg = self.cfg.evidence.get("epa_ctx") or {}
+        stage = int(epa_cfg.get("integration_stage", 0))
+        if stage <= 0 or not bool(epa_cfg.get("enabled", True)):
+            bundle.epa_audit = {"stage": 0, "status": "disabled"}
+            return
+        screening_um = float(epa_cfg.get("cytotox_screening_um", 10.0))
+        entry = self._epa_index.lookup(
+            inchikey=inchikey,
+            cas=cas,
+            smiles=smiles,
+            share_standardized_smiles_risk=bool(
+                epa_cfg.get("share_risk_across_standardized_smiles", True)
+            ),
+            screening_um=screening_um,
+        )
+        if entry is None:
+            bundle.epa_audit = {
+                "stage": stage,
+                "status": "audit_missing",
+                "query_status": "not_queried",
+                "mapping_status": "audit_missing",
+                "missing_semantics": "audit_missing",
+                "ranking_effect": "none" if stage == 1 else "cytotox_risk_only",
+            }
+            return
+
+        mapping_status = str(entry.get("mapping_status") or "audit_missing")
+        matched_identity_type = str(entry.get("_matched_identity_type") or "")
+        matched_identity_basis = str(entry.get("_matched_identity_basis") or "")
+        inherited_from = str(entry.get("risk_inherited_from_dtxsid") or "")
+        exact_identity = (
+            mapping_status == "exact_identifier_match"
+            and matched_identity_basis in {"original_inchikey", "standardized_inchikey"}
+        ) or (
+            bool(inherited_from)
+            and str(entry.get("risk_inheritance_basis") or "") == "standardized_smiles"
+        )
+        assay_rows = list(entry.get("assay_rows") or [])
+        active_threshold = float(epa_cfg.get("active_hit_threshold", 0.90))
+        qc_active_count = 0
+        for row in assay_rows:
+            if bool(row.get("active_hit")) or row.get("classification") == "active_risk":
+                qc_active_count += 1
+                continue
+            try:
+                if float(row.get("hitc")) >= active_threshold:
+                    qc_active_count += 1
+            except (TypeError, ValueError):
+                continue
+        metrics = epa_cytotox_metrics(entry)
+        active_count = max(int(metrics["active_hit_count"]), qc_active_count)
+        entry = {**entry, "active_hit_count": active_count}
+        record_count = int(entry.get("bioactivity_record_count") or 0)
+        risk_tier = epa_cytotox_risk_tier(entry, screening_um=screening_um)
+        bioactivity_signal = active_count > 0 or risk_tier != "none"
+        summary_status = str(entry.get("summary_status") or "not_queried")
+        identity_uncertain = (
+            not exact_identity
+            and mapping_status != "audit_missing"
+            and not inherited_from
+        )
+        if identity_uncertain:
+            query_status = "identity_review_required"
+        elif risk_tier == "strong_risk":
+            query_status = "exact_hit"
+        elif summary_status == "verified_empty":
+            query_status = "verified_empty"
+        elif exact_identity or bioactivity_signal:
+            query_status = "exact_hit" if exact_identity else "annotation_only"
+        else:
+            query_status = "not_queried"
+
+        if risk_tier == "strong_risk":
+            audit_status = "cytotox_strong_risk"
+        elif risk_tier == "weak_risk_review":
+            audit_status = "cytotox_weak_review"
+        elif bioactivity_signal:
+            audit_status = "bioactivity_annotation"
+        elif summary_status == "verified_empty":
+            audit_status = "verified_empty"
+        else:
+            audit_status = "mapped"
+
+        audit = {
+            "stage": stage,
+            "status": audit_status,
+            "query_status": query_status,
+            "mapping_status": mapping_status,
+            "mapping_basis": entry.get("mapping_basis") or "",
+            "mapping_value": entry.get("mapping_value") or "",
+            "matched_identity_type": matched_identity_type,
+            "matched_identity_basis": matched_identity_basis,
+            "matched_key": entry.get("_matched_key") or "",
+            "original_inchikey": entry.get("original_inchikey") or "",
+            "standardized_inchikey": entry.get("standardized_inchikey") or "",
+            "standardized_smiles": entry.get("standardized_smiles") or smiles or "",
+            "cas": entry.get("cas") or entry.get("casrn") or "",
+            "dtxsid": entry.get("dtxsid") or "",
+            "preferred_name": entry.get("preferred_name") or "",
+            "summary_status": summary_status,
+            "bioactivity_record_count": record_count,
+            "active_hit_count": active_count,
+            "nhit": metrics["nhit"],
+            "cytotox_lower_um": metrics["cytotox_lower_um"],
+            "cytotox_median_um": metrics["cytotox_median_um"],
+            "cytotox_screening_um": screening_um,
+            "cytotox_risk_tier": risk_tier,
+            "active_aeids": list(entry.get("active_aeids") or []),
+            "toxval_record_count": int(entry.get("toxval_record_count") or 0),
+            "toxref_summary_record_count": int(entry.get("toxref_summary_record_count") or 0),
+            "interpretation": entry.get("interpretation")
+            or (
+                "cytotox_strong_risk"
+                if risk_tier == "strong_risk"
+                else (
+                    "cytotox_weak_review"
+                    if risk_tier == "weak_risk_review"
+                    else (
+                        "bioactivity_annotation"
+                        if bioactivity_signal
+                        else "audit_missing_or_no_active_hit"
+                    )
+                )
+            ),
+            "missing_semantics": "audit_missing",
+            "ranking_effect": "none" if stage == 1 else "cytotox_risk_only",
+            "risk_applied": False,
+            "risk_inherited_from_dtxsid": inherited_from,
+            "risk_inheritance_basis": entry.get("risk_inheritance_basis") or "",
+            "risk_inheritance_preferred_name": entry.get("risk_inheritance_preferred_name")
+            or "",
+            "retrieved_at": entry.get("retrieved_at") or "",
+        }
+        bundle.epa_audit = audit
+
+        payload = {
+            **audit,
+            "assay_rows": assay_rows[
+                : int(epa_cfg.get("max_assay_rows_per_candidate", 20))
+            ],
+            "source_paths": list(entry.get("source_paths") or []),
+        }
+        scorable_identity = exact_identity or bool(inherited_from)
+        if stage == 2 and scorable_identity and risk_tier == "strong_risk":
+            max_score = float(epa_cfg.get("max_risk_score", 0.40))
+            confidence = float(epa_cfg.get("risk_confidence", 0.50))
+            score = max(0.0, min(1.0, max_score))
+            risk_dtxsid = inherited_from or entry.get("dtxsid")
+            bundle.tox.append(
+                EvidenceHit(
+                    adapter_id="epa_ctx_tox_v1",
+                    query_type="tox",
+                    score=score,
+                    confidence=max(0.0, min(1.0, confidence)),
+                    evidence_id=f"epa_ctx:{risk_dtxsid}:cytotox_strong",
+                    payload=payload,
+                    endpoint="toxcast_cytotox_nhit",
+                    direction="risk",
+                    evidence_role="risk_signal",
+                    provenance_status="retrieved",
+                    source_url="https://comptox.epa.gov/ctx-api/bioactivity",
+                    retrieved_at=str(entry.get("retrieved_at") or ""),
+                    adapter_version="epa_ctx_tox_v2",
+                    source_version="epa_ctx_tox_v2",
+                    query_params={"dtxsid": risk_dtxsid},
+                    query_status="exact_hit",
+                    evidence_type="endpoint_evidence",
+                )
+            )
+            bundle.epa_audit["risk_applied"] = True
+            return
+
+        # CAS / non-exact EPA identity stays in CSV/PDF audit via epa_audit.
+        # Do not put identity_review_required on hits — that cancels eligibility.
+        # PubChem multi-CID ambiguity still uses query_audit for true gating.
+        bundle.annotation.append(
+            EvidenceHit(
+                adapter_id="epa_ctx_v1",
+                query_type="annotation",
+                score=0.0,
+                confidence=0.0,
+                evidence_id=(
+                    f"epa_ctx:{entry.get('dtxsid')}:identity_audit"
+                    if identity_uncertain
+                    else f"epa_ctx:{entry.get('dtxsid')}:audit"
+                ),
+                payload=payload,
+                endpoint="chemical_identity",
+                direction=(
+                    "risk"
+                    if risk_tier in {"strong_risk", "weak_risk_review"}
+                    else "unknown"
+                ),
+                evidence_role="annotation_only",
+                provenance_status="retrieved",
+                source_url="https://comptox.epa.gov/ctx-api/chemical",
+                retrieved_at=str(entry.get("retrieved_at") or ""),
+                adapter_version="epa_ctx_v1",
+                source_version="epa_ctx_v1",
+                query_params={"dtxsid": entry.get("dtxsid")},
+                query_status="annotation_only",
+                evidence_type="identity_annotation",
+            )
+        )
+
     def _merge_public_assay_grain(self, bundle: EvidenceBundle, *, inchikey: str) -> None:
         """Merge QC'd public assay-grain hits by exact InChIKey.
 
@@ -986,9 +1384,29 @@ class EvidenceFacade:
             return
         from services.public_data.assay_index import hits_for_inchikey
 
-        allow_score = bool(pag.get("allow_chembl_phenotype_scores", True))
+        allow_chembl = bool(pag.get("allow_chembl_phenotype_scores", True))
+        allow_pubchem = bool(pag.get("allow_pubchem_bioassay_scores", False))
+        allow_bindingdb = bool(pag.get("allow_bindingdb_scores", False))
         for hit in hits_for_inchikey(self._public_assay_index, inchikey):
-            if not allow_score and hit.evidence_role == "task_evidence":
+            # EPA is controlled by the staged CTX integration below.  Do not
+            # let the generic QC index bypass stage 1 and silently add risk
+            # points (or duplicate stage 2 hits).
+            if hit.adapter_id == "public_epa_toxcast_tox21_v1":
+                continue
+            adapter_l = str(hit.adapter_id or "").lower()
+            force_annotation = False
+            if "pubchem" in adapter_l and not allow_pubchem:
+                force_annotation = True
+            if "bindingdb" in adapter_l and not allow_bindingdb:
+                # BindingDB stays pathway/mechanism with score 0.
+                hit.score = 0.0
+                hit.confidence = 0.0
+                if hit.query_type not in {"pathway", "annotation"}:
+                    hit.query_type = "pathway"
+                    hit.evidence_role = "mechanism_support"
+            if "chembl" in adapter_l and not allow_chembl and hit.evidence_role == "task_evidence":
+                force_annotation = True
+            if force_annotation:
                 hit.score = 0.0
                 hit.confidence = 0.0
                 hit.evidence_role = "annotation_only"

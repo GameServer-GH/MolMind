@@ -1,41 +1,41 @@
-version: competition-assumptions-v2
+version: screening-assumptions-v2
 assumptions:
   - id: screening_concentration
     official_status: confirmed_2026_07_16
     value: 10
     unit: micromolar
-    role: official_primary_screen_condition
-    replacement_condition: organizer_revision
+    role: primary_screen_condition
+    replacement_condition: policy_revision
   - id: viability_endpoint
     official_status: confirmed_2026_07_16
     value: CCK-8
     unit: assay
-    role: official_primary_viability_endpoint
-    replacement_condition: organizer_revision
+    role: primary_viability_endpoint
+    replacement_condition: policy_revision
   - id: viability_proxy
     official_status: confirmed_2026_07_16
     value: 0.80
     unit: fraction_of_vehicle_control
-    role: official_no_obvious_damage_reference
-    replacement_condition: organizer_revision
+    role: no_obvious_damage_reference
+    replacement_condition: policy_revision
   - id: viability_secondary_endpoint
     official_status: confirmed_2026_07_16
     value: Hoechst
     unit: assay
     role: auxiliary_viability_endpoint
-    replacement_condition: organizer_revision
+    replacement_condition: policy_revision
   - id: parallel_endpoint_required
     official_status: confirmed_2026_07_16
     value: true
     unit: boolean
     role: lipid_and_viability_parallel_interpretation
-    replacement_condition: organizer_revision
+    replacement_condition: policy_revision
   - id: lipid_hit_threshold
     official_status: unresolved
     value: null
     unit: unspecified
     role: continuous_proxy_ranking_only_until_confirmed
-    replacement_condition: organizer_lipid_endpoint_and_threshold
+    replacement_condition: lipid_endpoint_and_threshold_update
   - id: toxicity_nomination_proxy
     official_status: unspecified
     value: 0.45
@@ -46,14 +46,14 @@ assumptions:
     official_status: unspecified
     value: morgan_tanimoto_distance_to_frozen_relevant_reference
     role: transparent_structural_proxy
-    replacement_condition: organizer_novelty_definition_or_frozen_official_reference
+    replacement_condition: novelty_definition_or_frozen_reference_update
   - id: unresolved_mechanism
     official_status: unspecified
     value: allowed_with_evidence_level_and_unbiased_validation
     role: anti_hallucination_policy
     replacement_condition: direct_candidate_level_mechanistic_evidence
-  - id: delivery_platform
+  - id: runtime_platform
     official_status: unspecified
     value: linux/amd64
     role: primary_container_platform
-    replacement_condition: organizer_runtime_specification
+    replacement_condition: runtime_specification_update

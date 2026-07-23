@@ -50,6 +50,25 @@ def load_public_assay_index(paths: Optional[List[Path]] = None) -> PublicAssayIn
     return index
 
 
+def _source_may_score(source: str, evidence_role: str) -> bool:
+    """Sparse QC tables must not bias ranking except ChEMBL phenotype / ToxCast risk.
+
+    PubChem BioAssay Active and BindingDB affinities stay annotation / mechanism
+    only until candidate-level hit|verified_empty coverage exists.
+    """
+    src = (source or "").lower()
+    if "bindingdb" in src:
+        return False
+    if "pubchem" in src:
+        return False
+    if "chembl" in src and evidence_role == "task_evidence":
+        return True
+    if ("toxcast" in src or "tox21" in src or "epa" in src) and evidence_role == "risk_signal":
+        # EPA scoring is owned by staged CTX integration; assay-grain path zeros these.
+        return False
+    return False
+
+
 def row_to_evidence_hit(row: Dict[str, Any]) -> EvidenceHit:
     source = str(row.get("qc_source") or row.get("source_id") or "public_assay")
     adapter_id = f"public_{source}_v1"
@@ -63,26 +82,33 @@ def row_to_evidence_hit(row: Dict[str, Any]) -> EvidenceHit:
     elif evidence_role == "mechanism_support":
         query_type = "pathway"
 
-    # Only ChEMBL phenotype task_evidence / ToxCast risk_signal may carry
-    # non-zero lipid/tox scores. BindingDB mechanism_support stays score=0.
+    # Only ChEMBL phenotype task_evidence may carry non-zero lipid/tox scores here.
+    # BindingDB / PubChem BioAssay stay score=0 to avoid sparse-coverage bias.
     score = 0.0
     confidence = 0.0
     query_status = "annotation_only"
-    if evidence_role == "task_evidence" and direction == "supports":
+    may_score = _source_may_score(source, evidence_role)
+    if may_score and evidence_role == "task_evidence" and direction == "supports":
         score = 0.45
         confidence = 0.55
         query_status = "exact_hit"
-    elif evidence_role == "task_evidence" and direction == "risk":
+    elif may_score and evidence_role == "task_evidence" and direction == "risk":
         score = 0.55
         confidence = 0.60
         query_status = "exact_hit"
-    elif evidence_role == "risk_signal" and direction == "risk":
-        # Modest tox prior; never safety clearance. Keep below DILI-like weight.
-        score = 0.40
-        confidence = 0.50
-        query_status = "exact_hit"
     elif evidence_role == "mechanism_support":
         query_status = "exact_hit"
+        query_type = "pathway"
+        evidence_role = "mechanism_support"
+    elif evidence_role == "risk_signal":
+        # Keep visible as annotation; never safety clearance / score lift here.
+        query_status = "annotation_only"
+        query_type = "annotation"
+        evidence_role = "annotation_only"
+    elif "pubchem" in source.lower() and evidence_role == "task_evidence":
+        query_status = "annotation_only"
+        query_type = "annotation"
+        evidence_role = "annotation_only"
 
     compound = str(row.get("compound_id") or "")
     assay = str(row.get("assay_id") or "")

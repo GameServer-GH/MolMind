@@ -1,4 +1,4 @@
-# MolMind 交付镜像；主验收平台 linux/amd64，可用 buildx 同构 arm64。
+# MolMind 运行镜像；默认目标平台 linux/amd64，可用 buildx 同构 arm64。
 ARG BASE_IMAGE=continuumio/miniconda3:24.1.2-0
 FROM ${BASE_IMAGE}
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "configs"
 DATA_DIR = ROOT / "data"
 SNAPSHOT_DIR = DATA_DIR / "evidence_snapshot"
-ALGORITHM_CONTRACT_VERSION = "competition-eligibility-v10"
+ALGORITHM_CONTRACT_VERSION = "competition-eligibility-v12"
 
 REQUIRED_YAML = (
     "rank_weights.yaml",
@@ -23,6 +23,10 @@ REQUIRED_YAML = (
     "lipid_steps.yaml",
     "tox_steps.yaml",
     "assumptions.yaml",
+)
+OPTIONAL_NOMINATION_YAML = (
+    "clinical_exclusions.yaml",
+    "nomination_review.yaml",
 )
 
 
@@ -75,6 +79,14 @@ class AppConfig:
         return dict(self.raw.get("critic", {}))
 
     @property
+    def clinical_exclusions(self) -> dict[str, Any]:
+        return dict(self.raw.get("clinical_exclusions", {}))
+
+    @property
+    def nomination_review(self) -> dict[str, Any]:
+        return dict(self.raw.get("nomination_review", {}))
+
+    @property
     def quality_gates(self) -> dict[str, Any]:
         return dict(self.raw.get("quality_gates", {}))
 
@@ -114,8 +126,12 @@ class AppConfig:
 
     @property
     def allow_live_evidence(self) -> bool:
-        # 交付默认必须可复现：auto 只读冻结快照；显式 online 才访问可变外部服务。
-        return self.mode == "online"
+        """联网补证据开关；默认关。默认可复现路径只读冻结快照。"""
+        return bool(self.raw.get("evidence", {}).get("allow_live", False))
+
+    @property
+    def use_snapshot(self) -> bool:
+        return bool(self.raw.get("evidence", {}).get("use_snapshot", True))
 
     @property
     def llm(self) -> dict[str, Any]:
@@ -129,7 +145,7 @@ class AppConfig:
 
     @property
     def llm_critic_enabled(self) -> bool:
-        """证据约束 Critic 仅读本 Run 证据；交付默认关，且不应改榜。"""
+        """证据约束 Critic 仅读本 Run 证据；默认关闭，且不应改榜。"""
         llm = self.raw.get("llm", {})
         return bool(llm.get("enabled")) and bool(llm.get("critic_enabled"))
 
@@ -241,6 +257,19 @@ def _validate_config(
         if scoring.get("primary") not in {"product", "equal_mean"}:
             raise ValueError("competition_scoring.primary 须为 product|equal_mean")
 
+    epa = (rank.get("evidence") or {}).get("epa_ctx") or {}
+    epa_stage = int(epa.get("integration_stage", 0))
+    if epa_stage not in {0, 1, 2}:
+        raise ValueError("evidence.epa_ctx.integration_stage 须为 0|1|2")
+    for name in ("active_hit_threshold", "max_risk_score", "risk_confidence"):
+        value = float(epa.get(name, 0.0))
+        if value < 0 or value > 1:
+            raise ValueError(f"evidence.epa_ctx.{name} 必须位于 [0, 1]")
+    if epa_stage == 2 and not bool(epa.get("require_exact_identity_for_stage2", True)):
+        raise ValueError(
+            "EPA 阶段二必须要求精确身份；如需放宽请先完成结构审计并修改实现契约"
+        )
+
     steps = filter_steps.get("steps") or []
     alert_step = next((s for s in steps if s.get("id") == "structural_alerts"), {})
     allowed = {"hard_exclusion", "soft_penalty", "review_required", "information_only"}
@@ -275,9 +304,17 @@ def _validate_config(
         "novelty_proxy",
         "unresolved_mechanism",
         "delivery_platform",
+        "runtime_platform",
     ):
-        if required not in by_id:
+        if required not in by_id and required == "delivery_platform":
+            # Backward-compatible alias; prefer runtime_platform.
+            continue
+        if required == "runtime_platform" and required not in by_id and "delivery_platform" in by_id:
+            continue
+        if required not in by_id and required != "delivery_platform":
             raise ValueError(f"assumptions.yaml 缺少安全默认: {required}")
+    if "runtime_platform" not in by_id and "delivery_platform" not in by_id:
+        raise ValueError("assumptions.yaml 缺少安全默认: runtime_platform")
     if abs(float(by_id["viability_proxy"]["value"]) - float(gates["viability_proxy"])) > 1e-9:
         raise ValueError("viability_proxy 在 assumptions.yaml 与 rank_weights.yaml 不一致")
     if abs(float(by_id["screening_concentration"]["value"]) - 10.0) > 1e-9:
@@ -301,12 +338,63 @@ def _validate_config(
         raise ValueError("diversity.max_per_similarity_cluster 必须 >= 1")
 
 
+def _parse_bool_env(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return None
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} 须为 true|false（收到 {raw!r}）")
+
+
+def resolve_runtime_switches(
+    *,
+    mode: str | None = None,
+    allow_live: bool | None = None,
+    use_snapshot: bool | None = None,
+    mode_default: str = "auto",
+) -> tuple[str, bool, bool]:
+    """Normalize Quality-Max runtime switches.
+
+    Canonical mode is always ``auto`` (Quality-Max). Legacy ``online`` /
+    ``offline`` remain accepted as aliases that only seed ``allow_live`` when
+    the explicit live switch is omitted.
+    """
+    requested = (mode or os.environ.get("MOLMIND_MODE") or mode_default or "auto").lower().strip()
+    if requested in {"quality-max", "quality_max", "qmax"}:
+        requested = "auto"
+    if requested not in {"auto", "online", "offline"}:
+        raise ValueError(
+            f"未知 mode: {requested}（允许 auto|online|offline；"
+            "online/offline 仅为兼容别名，正式路径为 Quality-Max + 快照/联网开关）"
+        )
+
+    env_live = _parse_bool_env("MOLMIND_ALLOW_LIVE")
+    if allow_live is None:
+        allow_live = env_live
+    if allow_live is None:
+        allow_live = requested == "online"
+
+    env_snap = _parse_bool_env("MOLMIND_USE_SNAPSHOT")
+    if use_snapshot is None:
+        use_snapshot = env_snap
+    if use_snapshot is None:
+        use_snapshot = True
+
+    return "auto", bool(allow_live), bool(use_snapshot)
+
+
 def load_config(
     *,
     mode: str | None = None,
     config_dir: Path | None = None,
     seed: int | None = None,
     use_snapshot: bool | None = None,
+    allow_live: bool | None = None,
+    epa_stage: int | None = None,
 ) -> AppConfig:
     cfg_dir = Path(config_dir) if config_dir is not None else CONFIG_DIR
     if not cfg_dir.is_dir():
@@ -321,23 +409,37 @@ def load_config(
     lipid_steps = _read_yaml(cfg_dir / "lipid_steps.yaml")
     tox_steps = _read_yaml(cfg_dir / "tox_steps.yaml")
     assumptions = _read_yaml(cfg_dir / "assumptions.yaml")
+    clinical_exclusions_path = cfg_dir / "clinical_exclusions.yaml"
+    nomination_review_path = cfg_dir / "nomination_review.yaml"
+    clinical_exclusions = (
+        _read_yaml(clinical_exclusions_path) if clinical_exclusions_path.is_file() else {}
+    )
+    nomination_review = (
+        _read_yaml(nomination_review_path) if nomination_review_path.is_file() else {}
+    )
     manifest_path = cfg_dir / "model_manifest.json"
     model_manifest = _read_json(manifest_path) if manifest_path.is_file() else {"models": []}
     _validate_config(rank, filter_steps, model_manifest, assumptions)
 
-    resolved_mode = (mode or os.environ.get("MOLMIND_MODE") or rank.get("mode_default", "auto")).lower()
-    if resolved_mode not in {"auto", "online", "offline"}:
-        raise ValueError(f"未知 mode: {resolved_mode}（允许 auto|online|offline）")
-
-    resolved_seed = int(seed if seed is not None else rank.get("seed", 42))
-    # Quality-Max 是冻结主路径，必须读取同一份证据快照。此前 API 在
-    # config_hash 计算后再修改 use_snapshot，导致同一 hash 可对应两套排名。
-    # 现在运行开关在 hash 前解析；auto 强制开启，online/offline 仍允许显式关闭。
-    effective_use_snapshot = True if resolved_mode == "auto" else (
-        True if use_snapshot is None else bool(use_snapshot)
+    resolved_mode, effective_allow_live, effective_use_snapshot = resolve_runtime_switches(
+        mode=mode,
+        allow_live=allow_live,
+        use_snapshot=use_snapshot,
+        mode_default=str(rank.get("mode_default", "auto")),
     )
+    resolved_seed = int(seed if seed is not None else rank.get("seed", 42))
     evidence = dict(rank.get("evidence") or {})
+    epa = dict(evidence.get("epa_ctx") or {})
+    if epa_stage is None:
+        env_stage = os.environ.get("MOLMIND_EPA_STAGE")
+        epa_stage = int(env_stage) if env_stage not in (None, "") else None
+    if epa_stage is not None:
+        if int(epa_stage) not in {0, 1, 2}:
+            raise ValueError("epa_stage 须为 0|1|2")
+        epa["integration_stage"] = int(epa_stage)
+        evidence["epa_ctx"] = epa
     evidence["use_snapshot"] = effective_use_snapshot
+    evidence["allow_live"] = effective_allow_live
     if effective_use_snapshot:
         evidence["prefer_snapshot"] = True
     else:
@@ -347,6 +449,8 @@ def load_config(
         "seed": resolved_seed,
         "mode_default": resolved_mode,
         "evidence": evidence,
+        "clinical_exclusions": clinical_exclusions,
+        "nomination_review": nomination_review,
     }
 
     snapshot_digest = ""
@@ -367,6 +471,7 @@ def load_config(
         ROOT / "services" / "critic" / "critic.py",
         ROOT / "services" / "eligibility" / "policy.py",
         ROOT / "services" / "novelty" / "scorer.py",
+        ROOT / "services" / "nomination" / "review.py",
         ROOT / "packages" / "chem_core" / "core.py",
     ]
 
@@ -377,7 +482,11 @@ def load_config(
         "tox_steps": tox_steps,
         "model_manifest": model_manifest,
         "assumptions": assumptions,
+        "clinical_exclusions": clinical_exclusions,
+        "nomination_review": nomination_review,
         "mode": resolved_mode,
+        "allow_live": effective_allow_live,
+        "use_snapshot": effective_use_snapshot,
         "snapshot_digest": snapshot_digest,
         "model_artifact_digest": _files_digest(model_paths),
         "reference_digest": _files_digest(reference_paths),

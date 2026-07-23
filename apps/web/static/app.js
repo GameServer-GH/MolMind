@@ -6,22 +6,18 @@
   const HISTORY_LIMIT = 30;
   const UI_BUILD_MARK = "mm.yluo.ui";
 
-  const MODE_META = {
-    auto: {
-      label: "Quality-Max",
-      hint: "优先本地证据快照，缺失时自动补洞并降级。Default path: snapshot first, live fill-in, auto-degrade on failure.",
-    },
-    online: {
-      label: "在线模式",
-      hint: "对短名单强制尝试外网证据补洞（仍优先读已有快照）。Force live evidence for shortlist; still prefers existing snapshots.",
-    },
-    offline: {
-      label: "离线模式",
-      hint: "禁止外网请求，仅使用本地 snapshot 与规则打分。No network; snapshot + local rules only.",
-    },
-  };
+  const useSnapshotInput = document.getElementById("useSnapshot");
+  const allowLiveInput = document.getElementById("allowLive");
+  const nominationReviewInput = document.getElementById("nominationReview");
+  const runtimeHint = document.getElementById("runtimeHint");
+  const liveHint = document.getElementById("liveHint");
+  const snapshotHint = document.getElementById("snapshotHint");
+  const reviewHint = document.getElementById("reviewHint");
+  const snapshotSwitch = document.getElementById("snapshotSwitch");
+  const liveSwitch = document.getElementById("liveSwitch");
+  const reviewSwitch = document.getElementById("reviewSwitch");
 
-  const dropzone = document.getElementById("dropzone");
+  let selectedFile = null;
   const fileInput = document.getElementById("fileInput");
   const fileNameEl = document.getElementById("fileName");
   const runBtn = document.getElementById("runBtn");
@@ -36,7 +32,6 @@
   const mechPdfToast = document.getElementById("mechPdfToast");
   const mechPdfToastName = document.getElementById("mechPdfToastName");
   let mechPdfToastTimer = null;
-  const snapshotSwitch = document.getElementById("snapshotSwitch");
   const snapshotLockToast = document.getElementById("snapshotLockToast");
   let snapshotLockToastTimer = null;
   const topNInput = document.getElementById("topN");
@@ -64,15 +59,14 @@
   const historyClearModalBackdrop = document.getElementById("historyClearModalBackdrop");
   const historyClearCancel = document.getElementById("historyClearCancel");
   const historyClearConfirm = document.getElementById("historyClearConfirm");
-  const modeHint = document.getElementById("modeHint");
-  const snapshotHint = document.getElementById("snapshotHint");
-  const useSnapshotInput = document.getElementById("useSnapshot");
+  const reviewModal = document.getElementById("reviewModal");
+  const reviewModalBackdrop = document.getElementById("reviewModalBackdrop");
+  const reviewModalHint = document.getElementById("reviewModalHint");
+  const reviewProposalList = document.getElementById("reviewProposalList");
+  const reviewApplyBtn = document.getElementById("reviewApplyBtn");
   const navModeBadge = document.getElementById("navModeBadge");
   const runningModeBadge = document.getElementById("runningModeBadge");
-  const modeButtons = Array.from(document.querySelectorAll(".mode-seg [data-mode]"));
 
-  let selectedFile = null;
-  let selectedMode = "auto";
   let lastCsv = null;
   let lastLogs = [];
   let lastDownloadName = "nomination_top10.csv";
@@ -80,6 +74,8 @@
   let lastPdfName = "mechanism_hypothesis.pdf";
   let lastMechanismJobId = null;
   let lastHistoryId = null;
+  let lastResultPayload = null;
+  let pendingReviewMeta = null;
   let mechanismPollTimer = null;
   let abortController = null;
   let userStopped = false;
@@ -235,11 +231,65 @@
     return !!(useSnapshotInput && useSnapshotInput.checked);
   }
 
+  function allowLiveEnabled() {
+    return !!(allowLiveInput && allowLiveInput.checked);
+  }
+
+  function nominationReviewEnabled() {
+    // Default ON when DOM missing (older cached HTML).
+    if (!nominationReviewInput) return true;
+    return !!nominationReviewInput.checked;
+  }
+
   function updateSnapshotHint() {
     if (!snapshotHint) return;
     snapshotHint.textContent = useSnapshotEnabled()
-      ? "开启：优先读取本地 evidence snapshot，可复现且更快。Enable: prefer local evidence snapshot for speed and reproducibility."
-      : "关闭：不读取本地快照证据，仅依赖 live / 规则路径。Disable: skip snapshot; live / rules only.";
+      ? "开启：优先读取本地 evidence snapshot，可复现且更快。"
+      : "关闭：不读取本地快照（仅规则/本地表/联网路径，可复现路径不建议）。";
+  }
+
+  function updateLiveHint() {
+    if (!liveHint) return;
+    liveHint.textContent = allowLiveEnabled()
+      ? "开启：短名单尝试 ChEMBL/PubChem live 补洞；交卷前请烘焙快照并关闭此开关复跑。"
+      : "关闭（默认）：不访问外网证据 API，仅用本地快照/规则路径（可复现）。";
+  }
+
+  function updateReviewHint() {
+    if (!reviewHint) return;
+    reviewHint.textContent = nominationReviewEnabled()
+      ? "开启：算法榜后先出 LLM/规则草案，再弹窗人工确认，确认后导出最终结果。"
+      : "关闭：跳过 LLM 草案与人工复核弹窗，筛选结束后直接出结果。";
+  }
+
+  function runtimeBadgeText() {
+    const parts = ["Quality-Max", snapshotLabel(useSnapshotEnabled())];
+    if (allowLiveEnabled()) parts.push("联网开");
+    parts.push(nominationReviewEnabled() ? "复核开" : "复核关");
+    return parts.join(" · ");
+  }
+
+  function updateRuntimeUI() {
+    updateSnapshotHint();
+    updateLiveHint();
+    updateReviewHint();
+    if (runtimeHint) {
+      const bits = [];
+      bits.push(
+        allowLiveEnabled()
+          ? "已开启联网补证据：结果可能随外网波动；正式交卷前请烘焙快照并关闭联网复跑。"
+          : "默认路径：读取本地证据快照、不联网，保证可复现运行。"
+      );
+      bits.push(
+        nominationReviewEnabled()
+          ? "LLM+人工复核已开启：结果前需确认弹窗。"
+          : "LLM+人工复核已关闭：直接出结果。"
+      );
+      runtimeHint.textContent = bits.join(" ");
+    }
+    const badge = runtimeBadgeText();
+    navModeBadge.textContent = badge;
+    runningModeBadge.textContent = badge;
   }
 
   function setError(msg) {
@@ -262,8 +312,12 @@
     return new Date().toLocaleTimeString("zh-CN", { hour12: false });
   }
 
-  function modeLabel(mode) {
-    return (MODE_META[mode] && MODE_META[mode].label) || mode;
+  function modeLabel() {
+    return "Quality-Max";
+  }
+
+  function snapshotLabel(enabled) {
+    return enabled ? "使用快照" : "未使用快照";
   }
 
   function clampTopN(raw) {
@@ -272,37 +326,6 @@
     return Math.min(TOP_N_MAX, Math.max(TOP_N_MIN, n));
   }
 
-  function snapshotLabel(enabled) {
-    return enabled ? "使用快照" : "未使用快照";
-  }
-
-  function updateModeUI() {
-    modeButtons.forEach((btn) => {
-      const on = btn.dataset.mode === selectedMode;
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-    });
-    const meta = MODE_META[selectedMode];
-    modeHint.textContent = meta ? meta.hint : "";
-    if (useSnapshotInput) {
-      if (selectedMode === "auto") {
-        useSnapshotInput.checked = true;
-        useSnapshotInput.disabled = true;
-      } else {
-        useSnapshotInput.disabled = false;
-      }
-    }
-    if (snapshotSwitch) {
-      const locked = selectedMode === "auto";
-      snapshotSwitch.classList.toggle("is-locked", locked);
-      snapshotSwitch.title = locked
-        ? "Quality-Max 必须使用快照"
-        : "使用证据快照";
-    }
-    const snapTag = snapshotLabel(useSnapshotEnabled());
-    navModeBadge.textContent = `${modeLabel(selectedMode)} · ${snapTag}`;
-    runningModeBadge.textContent = `${modeLabel(selectedMode)} · ${snapTag}`;
-    updateSnapshotHint();
-  }
 
   function appendLogTo(container, level, message, lang) {
     const levelClass =
@@ -615,13 +638,15 @@
             <div class="text-xs text-on-surface-variant mt-1">${escapeHtml(item.time || "")}</div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
+            <span class="glass-status-tag ${item.allowLive ? "status-pill-stopped" : "status-pill-success"}">${escapeHtml(item.allowLive ? "联网开" : "联网关")}</span>
+            <span class="glass-status-tag ${item.nominationReview === false ? "status-pill-stopped" : "status-pill-success"}">${escapeHtml(item.nominationReview === false ? "复核关" : "复核开")}</span>
             <span class="glass-status-tag ${item.useSnapshot === false ? "status-pill-stopped" : "status-pill-success"}">${escapeHtml(snapshotLabel(item.useSnapshot !== false))}</span>
             <span class="glass-status-tag ${statusClass}">${statusText}</span>
           </div>
         </div>
         <div class="text-xs text-on-surface-variant flex flex-wrap gap-x-3 gap-y-1 items-center">
           <span>Top ${escapeHtml(String(item.topN ?? "—"))}</span>
-          <span>${escapeHtml(modeLabel(item.mode || "auto"))}</span>
+          <span>${escapeHtml(modeLabel())}</span>
         </div>
         <div class="flex gap-2 flex-wrap"></div>
       `;
@@ -734,6 +759,312 @@
     historyOverlay.setAttribute("aria-hidden", "true");
   }
 
+  function severityClass(sev) {
+    if (sev === "high") return "text-red-700 bg-red-50 border-red-200";
+    if (sev === "medium") return "text-amber-800 bg-amber-50 border-amber-200";
+    return "text-on-surface-variant bg-white/70 border-white/80";
+  }
+
+  function actionLabel(action) {
+    if (action === "drop_from_primary") return "建议移出主榜";
+    if (action === "annotate") return "建议脚注";
+    if (action === "keep") return "建议保留";
+    return action || "—";
+  }
+
+  function closeReviewModal() {
+    if (!reviewModal) return;
+    reviewModal.classList.add("hidden");
+    reviewModal.classList.remove("flex");
+    reviewModal.setAttribute("aria-hidden", "true");
+  }
+
+  function decisionBadge(decision) {
+    const d = String(decision || "").toUpperCase();
+    if (d === "DROP") return "建议移出主榜";
+    if (d.includes("NOTE")) return "KEEP+NOTE";
+    if (d === "KEEP") return "KEEP";
+    return actionLabel(decision);
+  }
+
+  function actionableReviewProposals(review) {
+    const proposals = Array.isArray(review.proposals) ? review.proposals : [];
+    const seats = Array.isArray(review.seat_decisions) ? review.seat_decisions : [];
+    if (seats.length > 0) {
+      // 席位表已展示 KEEP；勾选区保留 DROP / KEEP+NOTE（annotate）与高优先级项。
+      return proposals.filter(
+        (p) =>
+          p.suggested_action === "drop_from_primary" ||
+          p.suggested_action === "annotate" ||
+          String(p.severity || "") === "high"
+      );
+    }
+    return proposals;
+  }
+
+  function openReviewModal(data) {
+    if (!reviewModal || !reviewProposalList) return false;
+    const review = (data && data.interactive_review) || {};
+    const enabled =
+      Boolean(review.enabled) ||
+      Boolean(data && data.summary && data.summary.nomination_review);
+    const seats = Array.isArray(review.seat_decisions) ? review.seat_decisions : [];
+    const proposals = Array.isArray(review.proposals) ? review.proposals : [];
+    const actionable = actionableReviewProposals(review);
+    const hasReviewContent =
+      seats.length > 0 ||
+      proposals.length > 0 ||
+      Boolean(review.conclusion) ||
+      Boolean(review.intro);
+    // 复核开启且有草案内容即弹窗；即使无可勾选动作也需人工确认后导出。
+    if (!enabled || !hasReviewContent) {
+      closeReviewModal();
+      return false;
+    }
+    if (reviewModalHint) {
+      const engine = review.draft_engine || "rules";
+      const llm = review.llm_used ? "LLM 逐席草案" : "规则草案（无 LLM）";
+      reviewModalHint.textContent = `${llm} · ${engine}。勾选要执行的项后点确认，生成最终 CSV 与机制假说 PDF。`;
+    }
+    reviewProposalList.innerHTML = "";
+
+    if (review.conclusion || review.intro || seats.length) {
+      const narrative = document.createElement("div");
+      narrative.className =
+        "rounded-2xl border border-primary/20 bg-white/70 p-4 flex flex-col gap-2 shrink-0";
+      const counts = review.summary_counts || {};
+      const countLine =
+        counts.keep != null
+          ? `<div class="text-xs text-on-surface-variant">汇总：KEEP ${escapeHtml(String(counts.keep))} · KEEP+NOTE ${escapeHtml(String(counts.keep_note ?? 0))} · DROP ${escapeHtml(String(counts.drop ?? 0))}</div>`
+          : "";
+      const extraNotes = Array.isArray(counts.extra_notes)
+        ? counts.extra_notes
+            .slice(0, 3)
+            .map(
+              (n) =>
+                `<li class="text-xs text-on-surface-variant leading-snug">${escapeHtml(String(n))}</li>`
+            )
+            .join("")
+        : "";
+      let seatsHtml = "";
+      if (seats.length) {
+        seatsHtml = `
+          <div class="overflow-x-auto rounded-xl border border-white/80">
+            <table class="w-full text-left text-xs min-w-[480px]">
+              <thead class="bg-white/90 text-on-surface-variant sticky top-0">
+                <tr>
+                  <th class="p-2 font-medium w-10">#</th>
+                  <th class="p-2 font-medium">ID</th>
+                  <th class="p-2 font-medium">识别</th>
+                  <th class="p-2 font-medium">决定</th>
+                  <th class="p-2 font-medium">要点</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${seats
+                  .map((s) => {
+                    const dec = String(s.decision || "");
+                    const rationale = String(s.rationale || "");
+                    const rowCls =
+                      dec.toUpperCase() === "DROP"
+                        ? "bg-red-50/70"
+                        : String(dec).includes("NOTE")
+                          ? "bg-amber-50/40"
+                          : "";
+                    return `<tr class="border-t border-white/70 ${rowCls}">
+                      <td class="p-2 font-mono tabular-nums align-top">${escapeHtml(String(s.rank ?? ""))}</td>
+                      <td class="p-2 font-mono font-semibold text-primary align-top whitespace-nowrap">${escapeHtml(String(s.molecule_id || ""))}</td>
+                      <td class="p-2 align-top max-w-[7rem]">${escapeHtml(String(s.identity_label || "—"))}</td>
+                      <td class="p-2 whitespace-nowrap font-semibold align-top">${escapeHtml(decisionBadge(dec))}</td>
+                      <td class="p-2 leading-snug text-on-surface-variant align-top" title="${escapeHtml(rationale)}"><span class="line-clamp-2">${escapeHtml(rationale)}</span></td>
+                    </tr>`;
+                  })
+                  .join("")}
+              </tbody>
+            </table>
+          </div>`;
+      }
+      narrative.innerHTML = `
+        ${review.conclusion ? `<p class="text-sm font-semibold text-on-background leading-snug">复核结论：${escapeHtml(String(review.conclusion))}</p>` : ""}
+        ${review.intro ? `<p class="text-xs text-on-surface-variant leading-snug line-clamp-2" title="${escapeHtml(String(review.intro))}">${escapeHtml(String(review.intro))}</p>` : ""}
+        ${countLine}
+        ${seatsHtml}
+        ${extraNotes ? `<ul class="list-disc pl-5 flex flex-col gap-0.5">${extraNotes}</ul>` : ""}
+      `;
+      reviewProposalList.appendChild(narrative);
+    }
+
+    const compactMode = seats.length > 0;
+    const actionTitle = document.createElement("div");
+    actionTitle.className =
+      "text-xs font-semibold tracking-wide text-on-surface-variant uppercase mt-1 shrink-0";
+    actionTitle.textContent = compactMode
+      ? "勾选要执行的动作（DROP / KEEP+NOTE 脚注）"
+      : "勾选要应用的复核动作";
+    reviewProposalList.appendChild(actionTitle);
+
+    if (!actionable.length) {
+      const empty = document.createElement("div");
+      empty.className =
+        "rounded-2xl border border-white/80 bg-white/60 px-3 py-2 text-sm text-on-surface-variant shrink-0";
+      empty.textContent =
+        "当前草案无可勾选动作；确认后按算法榜导出并启动机制假说 PDF。";
+      reviewProposalList.appendChild(empty);
+    }
+
+    for (const p of actionable) {
+      const id = String(p.proposal_id || "");
+      const checked = p.default_selected ? "checked" : "";
+      const repl = p.replacement_molecule_id
+        ? ` · 补位 <span class="font-mono">${escapeHtml(String(p.replacement_molecule_id))}</span>`
+        : "";
+      const card = document.createElement("label");
+      card.className =
+        "flex gap-3 items-center rounded-2xl border px-3 py-2 cursor-pointer hover:bg-white/50 transition-colors shrink-0 " +
+        severityClass(p.severity);
+      card.innerHTML = `
+        <input type="checkbox" class="review-proposal-cb shrink-0" data-proposal-id="${escapeHtml(id)}" ${checked} />
+        <div class="min-w-0 flex-1 flex flex-wrap items-center gap-2 text-sm">
+          <span class="font-mono font-semibold">${escapeHtml(String(p.molecule_id || "—"))}</span>
+          <span class="text-xs rounded-full px-2 py-0.5 bg-white/70 border border-white/80">${escapeHtml(actionLabel(p.suggested_action))}</span>
+          <span class="text-xs text-on-surface-variant truncate">${escapeHtml(String(p.issue_type || ""))}${repl}</span>
+        </div>
+      `;
+      reviewProposalList.appendChild(card);
+    }
+
+    reviewModal.classList.remove("hidden");
+    reviewModal.classList.add("flex");
+    reviewModal.setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  function selectedReviewProposalIds() {
+    if (!reviewProposalList) return [];
+    return Array.from(reviewProposalList.querySelectorAll(".review-proposal-cb:checked"))
+      .map((el) => el.getAttribute("data-proposal-id") || "")
+      .filter(Boolean);
+  }
+
+  async function applyInteractiveReview(selectedIds) {
+    if (!lastResultPayload || !lastResultPayload.summary) return;
+    const runId = lastResultPayload.summary.run_id;
+    if (!runId) {
+      setError("缺少 run_id，无法应用复核");
+      return;
+    }
+    const meta = pendingReviewMeta || {};
+    if (reviewApplyBtn) reviewApplyBtn.disabled = true;
+    setProgress(96, "正在确认复核并启动机制 PDF…");
+    try {
+      const resp = await fetch(window.MOLMIND_APPLY_REVIEW || "/api/screen/apply-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: runId,
+          selected_proposal_ids: selectedIds,
+        }),
+      });
+      if (!resp.ok) {
+        let detail = "应用复核失败";
+        try {
+          const errBody = await resp.json();
+          detail = errBody.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      const next = await resp.json();
+      next.logs = next.logs && next.logs.length ? next.logs : lastResultPayload.logs || [];
+      if (!next.hepg2_ffa_resources || !Object.keys(next.hepg2_ffa_resources).length) {
+        next.hepg2_ffa_resources = lastResultPayload.hepg2_ffa_resources || {};
+      }
+      lastResultPayload = next;
+      lastCsv = next.csv;
+      lastLogs = next.logs || lastLogs;
+      renderSummary(next);
+      renderTable(next);
+      downloadBtn.disabled = false;
+      downloadLogBtn.disabled = false;
+      setProgress(100, "筛选完成（机制 PDF 后台生成中）");
+      showResults();
+
+      const filename = meta.filename || (next.summary && next.summary.source) || "nomination.sdf";
+      const top = meta.topN != null ? meta.topN : next.summary && next.summary.requested_top_n;
+      lastDownloadName =
+        meta.downloadName ||
+        String(filename).replace(/\.sdf$/i, "") + `_nomination_top${top || 10}.csv`;
+      lastPdfName =
+        meta.pdfName ||
+        String(filename).replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
+
+      const jobId =
+        next.mechanism_job_id ||
+        (next.summary && next.summary.mechanism_job_id) ||
+        "";
+      const historyId = `${(meta.startedAt || new Date()).getTime()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      lastHistoryId = historyId;
+      pushHistory({
+        id: historyId,
+        status: "success",
+        filename,
+        useSnapshot: meta.useSnapshot,
+        allowLive: meta.allowLive,
+        nominationReview: meta.nominationReview !== false,
+        topN: top,
+        uiBuild: UI_BUILD_MARK,
+        time: (meta.startedAt || new Date()).toLocaleString("zh-CN", { hour12: false }),
+        csv: lastCsv,
+        logs: lastLogs,
+        downloadName: lastDownloadName,
+        mechanismJobId: jobId || null,
+        mechanismPdfBase64: null,
+        mechanismPdfName: lastPdfName,
+        reviewed: true,
+        appliedProposalIds: selectedIds,
+      });
+
+      appendLog(
+        "INFO",
+        selectedIds.length
+          ? `人工复核已确认并应用 ${selectedIds.length} 项提案；已启动最终机制 PDF`
+          : "人工复核已确认：保留算法榜；已启动最终机制 PDF",
+        selectedIds.length
+          ? `Interactive review confirmed with ${selectedIds.length} proposal(s); mechanism PDF started`
+          : "Interactive review confirmed with algorithmic board; mechanism PDF started"
+      );
+      closeReviewModal();
+      pendingReviewMeta = null;
+      setRunBtnRunning(false);
+      abortController = null;
+
+      if (jobId) {
+        pollMechanismJob(jobId);
+      } else {
+        setPdfButtonState("error");
+      }
+    } catch (err) {
+      setError(err && err.message ? err.message : String(err));
+      setProgress(92, "复核失败，可重试");
+    } finally {
+      if (reviewApplyBtn) reviewApplyBtn.disabled = false;
+    }
+  }
+
+  if (reviewApplyBtn) {
+    reviewApplyBtn.addEventListener("click", () => {
+      applyInteractiveReview(selectedReviewProposalIds());
+    });
+  }
+  if (reviewModalBackdrop) {
+    reviewModalBackdrop.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
   function renderSummary(data) {
     const s = data.summary;
     const d = s.diagnostics || {};
@@ -766,7 +1097,9 @@
     }
 
     document.getElementById("statHash").textContent = s.config_hash || "—";
-    summaryBadge.textContent = `${modeLabel(s.mode)} · ${snapshotLabel(s.use_snapshot !== false)} · 输出 ${s.output_count} / Top ${s.requested_top_n}`;
+    const liveTag = s.allow_live ? "联网开" : "联网关";
+    const reviewTag = s.nomination_review ? "复核开" : "复核关";
+    summaryBadge.textContent = `${modeLabel()} · ${snapshotLabel(s.use_snapshot !== false)} · ${liveTag} · ${reviewTag} · 输出 ${s.output_count} / Top ${s.requested_top_n}`;
 
     if (s.note) {
       noteBanner.textContent = s.note;
@@ -832,7 +1165,9 @@
       resultBody.appendChild(tr);
     }
 
-    toolbarMeta.textContent = `来源：${data.summary.source} · ${modeLabel(data.summary.mode)} · ${snapshotLabel(data.summary.use_snapshot !== false)} · Top ${data.summary.requested_top_n}`;
+    const liveTag = data.summary.allow_live ? "联网开" : "联网关";
+    const reviewTag = data.summary.nomination_review ? "复核开" : "复核关";
+    toolbarMeta.textContent = `来源：${data.summary.source} · ${modeLabel()} · ${snapshotLabel(data.summary.use_snapshot !== false)} · ${liveTag} · ${reviewTag} · Top ${data.summary.requested_top_n}`;
   }
 
   async function readNdjsonStream(resp, onEvent) {
@@ -882,24 +1217,14 @@
     if (file) setFile(file);
   });
 
-  modeButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedMode = btn.dataset.mode;
-      updateModeUI();
-    });
-  });
-
   if (useSnapshotInput) {
-    useSnapshotInput.addEventListener("change", updateModeUI);
+    useSnapshotInput.addEventListener("change", updateRuntimeUI);
   }
-
-  if (snapshotSwitch) {
-    snapshotSwitch.addEventListener("click", (e) => {
-      if (selectedMode !== "auto") return;
-      e.preventDefault();
-      if (useSnapshotInput) useSnapshotInput.checked = true;
-      showSnapshotLockToast();
-    });
+  if (allowLiveInput) {
+    allowLiveInput.addEventListener("change", updateRuntimeUI);
+  }
+  if (nominationReviewInput) {
+    nominationReviewInput.addEventListener("change", updateRuntimeUI);
   }
 
   topNInput.addEventListener("change", () => {
@@ -933,6 +1258,8 @@
     lastCsv = null;
     lastPdfBase64 = null;
     lastMechanismJobId = null;
+    lastResultPayload = null;
+    pendingReviewMeta = null;
     stopMechanismPoll();
     setPdfButtonState("idle");
     hideMechPdfToast();
@@ -943,6 +1270,7 @@
     downloadLogBtn.disabled = true;
     setError("");
     setRunBtnRunning(false);
+    closeReviewModal();
     showUploadOnly();
   });
 
@@ -956,8 +1284,9 @@
 
     const top = clampTopN(topNInput.value);
     topNInput.value = String(top);
-    const mode = selectedMode;
     const useSnapshot = useSnapshotEnabled();
+    const allowLive = allowLiveEnabled();
+    const nominationReview = nominationReviewEnabled();
     const filename = selectedFile.name;
     const startedAt = new Date();
 
@@ -975,13 +1304,15 @@
     downloadBtn.disabled = true;
     downloadLogBtn.disabled = true;
     setRunBtnRunning(true);
-    updateModeUI();
+    updateRuntimeUI();
     showRunning();
     setProgress(0, "正在解析、多维打分与 Critic…");
+    const liveTag = allowLive ? "联网开" : "联网关";
+    const reviewTag = nominationReview ? "复核开" : "复核关";
     appendLog(
       "INFO",
-      `开始筛选 · ${filename} · Top ${top} · ${modeLabel(mode)} · ${snapshotLabel(useSnapshot)}`,
-      `Start screen · ${filename} · Top ${top} · ${modeLabel(mode)} · ${useSnapshot ? "use snapshot" : "no snapshot"}`
+      `开始筛选 · ${filename} · Top ${top} · ${modeLabel()} · ${snapshotLabel(useSnapshot)} · ${liveTag} · ${reviewTag}`,
+      `Start screen · ${filename} · Top ${top} · ${modeLabel()} · ${useSnapshot ? "use snapshot" : "no snapshot"} · allow_live=${allowLive} · nomination_review=${nominationReview}`
     );
 
     abortController = new AbortController();
@@ -989,14 +1320,19 @@
     form.append("file", selectedFile);
 
     let resultPayload = null;
+    let reviewPendingPayload = null;
     let streamError = null;
+    let awaitingReview = false;
 
     try {
-      const resp = await fetch(window.MOLMIND_SCREEN_STREAM(top, mode, useSnapshot), {
+      const resp = await fetch(
+        window.MOLMIND_SCREEN_STREAM(top, useSnapshot, allowLive, nominationReview),
+        {
         method: "POST",
         body: form,
         signal: abortController.signal,
-      });
+      }
+      );
 
       if (!resp.ok) {
         let detail = "筛选失败";
@@ -1012,6 +1348,13 @@
       await readNdjsonStream(resp, (evt) => {
         if (evt.type === "log") {
           ingestServerLog(evt);
+        } else if (evt.type === "review_pending") {
+          reviewPendingPayload = evt;
+          if (Array.isArray(evt.logs) && evt.logs.length && lastLogs.length === 0) {
+            for (const e of evt.logs) {
+              ingestServerLog(e);
+            }
+          }
         } else if (evt.type === "result") {
           resultPayload = evt;
           if (Array.isArray(evt.logs) && evt.logs.length && lastLogs.length === 0) {
@@ -1025,52 +1368,100 @@
       });
 
       if (streamError) throw new Error(streamError);
-      if (!resultPayload) throw new Error("未收到筛选结果");
 
-      lastCsv = resultPayload.csv;
-      lastLogs = resultPayload.logs || lastLogs;
-      lastDownloadName = filename.replace(/\.sdf$/i, "") + `_nomination_top${top}.csv`;
-      lastPdfBase64 = null;
-      lastPdfName =
-        filename.replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
-
-      setProgress(100, "筛选完成（机制 PDF 后台生成中）");
-      renderSummary(resultPayload);
-      renderTable(resultPayload);
-      downloadBtn.disabled = false;
-      downloadLogBtn.disabled = false;
-      showResults();
-
-      const jobId = resultPayload.mechanism_job_id || (resultPayload.summary && resultPayload.summary.mechanism_job_id);
-      const historyId = `${startedAt.getTime()}_${Math.random().toString(36).slice(2, 8)}`;
-      lastHistoryId = historyId;
-      lastPdfName =
-        filename.replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
-      pushHistory({
-        id: historyId,
-        status: "success",
-        filename,
-        mode,
-        useSnapshot,
-        topN: top,
-        uiBuild: UI_BUILD_MARK,
-        time: startedAt.toLocaleString("zh-CN", { hour12: false }),
-        csv: lastCsv,
-        logs: lastLogs,
-        downloadName: lastDownloadName,
-        mechanismJobId: jobId || null,
-        mechanismPdfBase64: null,
-        mechanismPdfName: lastPdfName,
-      });
-
-      if (jobId) {
-        pollMechanismJob(jobId);
-      } else if (resultPayload.mechanism_pdf_base64) {
-        applyMechanismReady(resultPayload);
+      if (reviewPendingPayload) {
+        awaitingReview = true;
+        lastResultPayload = reviewPendingPayload;
+        lastCsv = reviewPendingPayload.csv || null;
+        lastLogs = reviewPendingPayload.logs || lastLogs;
+        lastDownloadName = filename.replace(/\.sdf$/i, "") + `_nomination_top${top}.csv`;
+        lastPdfBase64 = null;
+        lastPdfName = filename.replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
+        lastHistoryId = null;
+        pendingReviewMeta = {
+          filename,
+          topN: top,
+          useSnapshot,
+          allowLive,
+          nominationReview,
+          startedAt,
+          downloadName: lastDownloadName,
+          pdfName: lastPdfName,
+        };
+        renderSummary(reviewPendingPayload);
+        renderTable(reviewPendingPayload);
+        downloadBtn.disabled = true;
+        downloadLogBtn.disabled = false;
+        showResults();
+        const opened = openReviewModal(reviewPendingPayload);
+        if (opened) {
+          setProgress(92, "算法榜就绪，等待人工复核…");
+          appendLog(
+            "INFO",
+            "算法主榜已就绪，请在弹窗中确认复核后再导出最终结果",
+            "Algorithmic shortlist ready; confirm interactive review to finalize deliverables"
+          );
+        } else {
+          appendLog(
+            "INFO",
+            "无可应用复核提案，自动确认算法榜并导出最终结果",
+            "No actionable review proposals; auto-confirm algorithmic board and finalize"
+          );
+          await applyInteractiveReview([]);
+          awaitingReview = false;
+        }
       } else {
-        setPdfButtonState("error");
+        if (!resultPayload) throw new Error("未收到筛选结果");
+
+        lastCsv = resultPayload.csv;
+        lastLogs = resultPayload.logs || lastLogs;
+        lastResultPayload = resultPayload;
+        lastDownloadName = filename.replace(/\.sdf$/i, "") + `_nomination_top${top}.csv`;
+        lastPdfBase64 = null;
+        lastPdfName =
+          filename.replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
+
+        setProgress(100, "筛选完成（机制 PDF 后台生成中）");
+        renderSummary(resultPayload);
+        renderTable(resultPayload);
+        downloadBtn.disabled = false;
+        downloadLogBtn.disabled = false;
+        showResults();
+
+        const jobId = resultPayload.mechanism_job_id || (resultPayload.summary && resultPayload.summary.mechanism_job_id);
+        const historyId = `${startedAt.getTime()}_${Math.random().toString(36).slice(2, 8)}`;
+        lastHistoryId = historyId;
+        lastPdfName =
+          filename.replace(/\.sdf$/i, "") + "_mechanism_hypothesis.pdf";
+        pushHistory({
+          id: historyId,
+          status: "success",
+          filename,
+          useSnapshot,
+          allowLive,
+          nominationReview,
+          topN: top,
+          uiBuild: UI_BUILD_MARK,
+          time: startedAt.toLocaleString("zh-CN", { hour12: false }),
+          csv: lastCsv,
+          logs: lastLogs,
+          downloadName: lastDownloadName,
+          mechanismJobId: jobId || null,
+          mechanismPdfBase64: null,
+          mechanismPdfName: lastPdfName,
+        });
+
+        if (jobId) {
+          pollMechanismJob(jobId);
+        } else if (resultPayload.mechanism_pdf_base64) {
+          applyMechanismReady(resultPayload);
+        } else {
+          setPdfButtonState("error");
+        }
       }
     } catch (err) {
+      awaitingReview = false;
+      pendingReviewMeta = null;
       if (userStopped || (err && err.name === "AbortError")) {
         appendLog("WARN", "用户停止筛选", "Screening stopped by user");
         setProgress(0, "已停止");
@@ -1078,8 +1469,9 @@
           id: `${startedAt.getTime()}_${Math.random().toString(36).slice(2, 8)}`,
           status: "stopped",
           filename,
-          mode,
           useSnapshot,
+          allowLive,
+          nominationReview,
           topN: top,
           time: startedAt.toLocaleString("zh-CN", { hour12: false }),
           csv: null,
@@ -1095,8 +1487,9 @@
           id: `${startedAt.getTime()}_${Math.random().toString(36).slice(2, 8)}`,
           status: "error",
           filename,
-          mode,
           useSnapshot,
+          allowLive,
+          nominationReview,
           topN: top,
           time: startedAt.toLocaleString("zh-CN", { hour12: false }),
           csv: null,
@@ -1106,8 +1499,10 @@
         showUploadOnly();
       }
     } finally {
-      abortController = null;
-      setRunBtnRunning(false);
+      if (!awaitingReview) {
+        abortController = null;
+        setRunBtnRunning(false);
+      }
     }
   });
 
@@ -1135,6 +1530,6 @@
   }
 
   setPdfButtonState("idle");
-  updateModeUI();
+  updateRuntimeUI();
   showUploadOnly();
 })();

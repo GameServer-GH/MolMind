@@ -13,7 +13,7 @@ from pathlib import Path
 from packages.models import CriticAction, ScoreRecord, ScreeningAuditRecord
 from services.evidence_facade.mechanism_graph import MechanismGraph, serialize_mechanism_graphs
 
-# export lineage: LJR — column order is part of delivery contract
+# export lineage: LJR — column order is part of the export contract
 CSV_COLUMNS = [
     "排名",
     "化合物标识符",
@@ -88,6 +88,27 @@ CSV_COLUMNS = [
     "purchase_status",
     "solubility_status",
     "identity_status",
+    "epa_stage",
+    "epa_status",
+    "epa_query_status",
+    "epa_mapping_status",
+    "epa_mapping_basis",
+    "epa_dtxsid",
+    "epa_active_hit_count",
+    "epa_nhit",
+    "epa_cytotox_lower_um",
+    "epa_cytotox_risk_tier",
+    "epa_bioactivity_record_count",
+    "epa_risk_applied",
+    "epa_risk_inherited_from_dtxsid",
+    "dili_status",
+    "dili_action",
+    "dili_concern",
+    "dili_match_basis",
+    "dili_compound_name",
+    "chembl_query_status",
+    "pubchem_query_status",
+    "bindingdb_query_status",
 ]
 
 SCREENING_AUDIT_COLUMNS = [
@@ -127,10 +148,10 @@ def rows_from_top(
     selection_hash: str = "",
 ) -> list[dict[str, str | int | float]]:
     if any(m.eligibility_status != "eligible" or m.gated_out for m in molecules):
-        raise ValueError("交付物只能包含 eligibility_status=eligible 的候选")
+        raise ValueError("导出结果只能包含 eligibility_status=eligible 的候选")
     ids = [m.molecule_id for m in molecules]
     if len(ids) != len(set(ids)):
-        raise ValueError("交付物候选标识符必须唯一")
+        raise ValueError("导出结果候选标识符必须唯一")
     degraded = "|".join(degraded_channels) if degraded_channels else ""
     rows: list[dict[str, str | int | float]] = []
     for rank, mol in enumerate(molecules, start=1):
@@ -210,6 +231,35 @@ def rows_from_top(
                 "purchase_status": mol.purchase_status,
                 "solubility_status": mol.solubility_status,
                 "identity_status": mol.identity_status,
+                "epa_stage": mol.epa_audit.get("stage", 0),
+                "epa_status": mol.epa_audit.get("status", "disabled"),
+                "epa_query_status": mol.epa_audit.get("query_status", "not_queried"),
+                "epa_mapping_status": mol.epa_audit.get("mapping_status", "audit_missing"),
+                "epa_mapping_basis": mol.epa_audit.get("mapping_basis", ""),
+                "epa_dtxsid": mol.epa_audit.get("dtxsid", ""),
+                "epa_active_hit_count": mol.epa_audit.get("active_hit_count", 0),
+                "epa_nhit": mol.epa_audit.get("nhit", ""),
+                "epa_cytotox_lower_um": mol.epa_audit.get("cytotox_lower_um", ""),
+                "epa_cytotox_risk_tier": mol.epa_audit.get("cytotox_risk_tier", ""),
+                "epa_bioactivity_record_count": mol.epa_audit.get("bioactivity_record_count", 0),
+                "epa_risk_applied": bool(mol.epa_audit.get("risk_applied", False)),
+                "epa_risk_inherited_from_dtxsid": mol.epa_audit.get(
+                    "risk_inherited_from_dtxsid", ""
+                ),
+                "dili_status": (mol.dili_audit or {}).get("status", "disabled"),
+                "dili_action": (mol.dili_audit or {}).get("action", "none"),
+                "dili_concern": (mol.dili_audit or {}).get("concern", ""),
+                "dili_match_basis": (mol.dili_audit or {}).get("match_basis", ""),
+                "dili_compound_name": (mol.dili_audit or {}).get("compound_name", ""),
+                "chembl_query_status": ((mol.evidence_source_audit or {}).get("chembl") or {}).get(
+                    "status", "not_queried"
+                ),
+                "pubchem_query_status": ((mol.evidence_source_audit or {}).get("pubchem") or {}).get(
+                    "status", "not_queried"
+                ),
+                "bindingdb_query_status": (
+                    (mol.evidence_source_audit or {}).get("bindingdb") or {}
+                ).get("status", "not_queried"),
             }
         )
     return rows
@@ -373,6 +423,9 @@ def export_candidate_scores_jsonl(
                 "selection_factors": molecule.selection_factors,
                 "selection_reason": molecule.selection_reason,
                 "input_structure_hash": molecule.input_structure_hash,
+                "epa_audit": molecule.epa_audit,
+                "dili_audit": molecule.dili_audit,
+                "evidence_source_audit": molecule.evidence_source_audit,
                 "attribution_ids": sorted(
                     {a.evidence_id for a in molecule.attributions if a.evidence_id}
                 ),
@@ -403,6 +456,9 @@ def export_evidence_ledger_jsonl(
                     "direction": "unknown",
                     "claim_ceiling": molecule.claim_ceiling,
                     "audit_missing": list(molecule.audit_missing),
+                    "epa_audit": molecule.epa_audit,
+                    "dili_audit": molecule.dili_audit,
+                    "evidence_source_audit": molecule.evidence_source_audit,
                 }, ensure_ascii=False, sort_keys=True) + "\n")
                 continue
             for hit in hits:
@@ -430,6 +486,9 @@ def export_evidence_ledger_jsonl(
                     "license": hit.license,
                     "claim_ceiling": molecule.claim_ceiling,
                     "audit_missing": list(molecule.audit_missing),
+                    "epa_audit": molecule.epa_audit,
+                    "dili_audit": molecule.dili_audit,
+                    "evidence_source_audit": molecule.evidence_source_audit,
                 }, ensure_ascii=False, sort_keys=True) + "\n")
     return out
 

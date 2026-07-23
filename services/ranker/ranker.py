@@ -38,9 +38,9 @@ def assign_competition_scores(
 ) -> list[ScoreRecord]:
     """Assign deterministic run-relative effect × novelty scoring proxies.
 
-    The organizer confirmed relative ranking and effect × novelty portfolio scoring,
-    but not the normalization formula. We therefore freeze a transparent ordinal
-    percentile proxy and export both product and equal-mean sensitivity views.
+    Ranking emphasizes relative effect × novelty (product primary, equal-mean
+    sensitivity). The absolute normalization formula is not claimed; we freeze a
+    transparent ordinal percentile proxy and export both views.
     """
     if not candidates:
         return candidates
@@ -188,6 +188,25 @@ def score_molecule(
             confidence_pass=eligibility.confidence_pass,
             evidence_coverage_pass=eligibility.evidence_coverage_pass,
         )
+    dili_audit = dict(evidence.dili_audit or {})
+    if str(dili_audit.get("action") or "") == "hard_exclude":
+        reasons = tuple(eligibility.reasons or ())
+        if "dilirank_most_exact" not in reasons:
+            reasons = reasons + ("dilirank_most_exact",)
+        eligibility = EligibilityDecision(
+            status="ineligible",
+            reasons=reasons,
+            lipid_pass=eligibility.lipid_pass,
+            toxicity_pass=False,
+            hard_toxicity_pass=False,
+            confidence_pass=eligibility.confidence_pass,
+            evidence_coverage_pass=eligibility.evidence_coverage_pass,
+        )
+        dili_note = (
+            f"dilirank_exact_gate:{dili_audit.get('compound_name') or dili_audit.get('ltkb_id')} "
+            f"concern={dili_audit.get('concern')} basis={dili_audit.get('match_basis')}"
+        )
+        tox_rationale = f"{tox_rationale}; {dili_note}" if tox_rationale else dili_note
     gated_out = not eligibility.is_eligible
     gate_reason = "; ".join(eligibility.reasons) if gated_out else ""
 
@@ -235,6 +254,10 @@ def score_molecule(
         ),
         "combo_adjustment": "",
     }
+    if dili_audit.get("status") and dili_audit.get("status") != "disabled":
+        selection_factors["dilirank_exact"] = (
+            f"{dili_audit.get('status')}:{dili_audit.get('action')}"
+        )
 
     return ScoreRecord(
         molecule_id=record.molecule_id,
@@ -281,6 +304,9 @@ def score_molecule(
         citations=citations_from_hits(evidence.all_hits()),
         evidence_run_id=evidence.run_id,
         input_structure_hash=evidence.input_structure_hash,
+        epa_audit=dict(evidence.epa_audit),
+        dili_audit=dict(evidence.dili_audit or {}),
+        evidence_source_audit=dict(evidence.evidence_source_audit or {}),
         screening_concentration_um=10.0,
         viability_endpoint="CCK-8",
         viability_threshold_reference=">0.80_relative_to_control",

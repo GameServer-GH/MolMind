@@ -52,16 +52,23 @@ Current snapshot (see [`data/public/README.md`](data/public/README.md)): PubChem
 
 ## How it works
 
-### Quality-Max: one primary path, environment-adaptive
+### Quality-Max: one primary path + two runtime switches
 
-Default is `mode=auto` (Quality-Max)—no forced Online/Offline choice for end users:
+Only **Quality-Max** (`mode=auto`) is exposed—no separate Online/Offline mode entry points:
 
 ```text
 frozen local evidence snapshot → rules / GoldSet / optional ML → Critic → Top 10
 any channel failure → auto-degrade, record degraded_channels[] → still emit a deterministic shortlist
 ```
 
-Default `auto` reads only the frozen snapshot so the same input, configuration and seed reproduce the same shortlist. Live evidence is enabled only by explicit `online` mode; freeze the updated snapshot and rerun in `auto/offline` for delivery.
+| Switch | Default | Meaning |
+|--------|---------|---------|
+| **Use snapshot** `use_snapshot` | on | Read `data/evidence_snapshot/` |
+| **Live evidence** `allow_live` | off | ChEMBL/PubChem live fill for shortlists only |
+
+Delivery default: **snapshot on + live off**. To backfill evidence, run `bake-evidence` or temporarily enable live, bake, then rerun with live off.
+
+Compatibility: `--mode online` / `mode=online` maps to `allow_live=true`; `offline` is a legacy alias only.
 
 ### Seven-stage agent pipeline
 
@@ -193,8 +200,8 @@ Recommended in China (pull prebuilt image; avoid slow overseas builds):
 
 ```bash
 # One-time Docker Engine: insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.0
-docker tag 8.133.197.65:5001/molmind:0.1.0 molmind:0.1.0
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.1
+docker tag 8.133.197.65:5001/molmind:0.1.1 molmind:0.1.1
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,6 +38,11 @@ from services.ingest import (
     quiet_rdkit,
     save_feature_cache,
     sha256_file,
+)
+from services.nomination import (
+    apply_clinical_exclusion_to_score,
+    apply_nomination_review,
+    load_clinical_exclusions,
 )
 from services.pipeline.config_loader import ROOT, AppConfig, load_config
 from services.pipeline.diagnostics import compute_diagnostics
@@ -81,7 +87,10 @@ class PipelineResult:
     config: AppConfig
     diagnostics: RunDiagnostics
     reserve_molecules: list[ScoreRecord] = field(default_factory=list)
+    algorithmic_top_molecules: list[ScoreRecord] = field(default_factory=list)
+    algorithmic_reserve_molecules: list[ScoreRecord] = field(default_factory=list)
     critic_actions: list[CriticAction] = field(default_factory=list)
+    nomination_review_actions: list[dict[str, object]] = field(default_factory=list)
     source_filename: str = ""
     note: str | None = None
     raw_count: int = 0
@@ -94,6 +103,7 @@ class PipelineResult:
     manifest_path: str = ""
     input_sha256: str = ""
     selection_sha256: str = ""
+    algorithmic_selection_sha256: str = ""
     reserve_selection_sha256: str = ""
     run_id: str = ""
     mechanism_graphs: list[MechanismGraph] = field(default_factory=list)
@@ -146,9 +156,11 @@ def _score_all(
     facade: EvidenceFacade,
     *,
     allow_live: bool,
-) -> tuple[list[ScoreRecord], int]:
+) -> tuple[list[ScoreRecord], int, list[CriticAction]]:
     scored: list[ScoreRecord] = []
     evidence_hits = 0
+    exclusion_actions: list[CriticAction] = []
+    exclusions = load_clinical_exclusions(config.clinical_exclusions)
     for record in records:
         evidence = facade.query(
             inchikey=record.inchikey,
@@ -158,8 +170,12 @@ def _score_all(
         )
         if evidence.lipid or evidence.tox:
             evidence_hits += 1
-        scored.append(score_molecule(record, config, gold, evidence))
-    return scored, evidence_hits
+        scored_mol = score_molecule(record, config, gold, evidence)
+        action = apply_clinical_exclusion_to_score(scored_mol, record, exclusions)
+        if action is not None:
+            exclusion_actions.append(action)
+        scored.append(scored_mol)
+    return scored, evidence_hits, exclusion_actions
 
 
 def screen_sdf(
@@ -203,22 +219,23 @@ def _screen_sdf_inner(
     source_filename: str,
     log: RunLogCollector,
 ) -> PipelineResult:
-    mode_label = {"auto": "Quality-Max", "online": "Online", "offline": "Offline"}.get(
-        config.mode, config.mode
-    )
+    mode_label = "Quality-Max"
+    input_hash = sha256_file(input_path)
     use_snapshot = bool(config.evidence.get("use_snapshot", True))
+    allow_live = bool(config.allow_live_evidence)
     snap_zh = "开启" if use_snapshot else "关闭"
     snap_en = "enabled" if use_snapshot else "disabled"
+    live_zh = "开启" if allow_live else "关闭"
+    live_en = "on" if allow_live else "off"
     log.emit(
         "INFO",
         (
-            f"启动筛选：运行模式={mode_label}（{config.mode}），"
-            f"使用快照={snap_zh}，config_hash={config.config_hash}，"
-            f"输入文件={source_filename or input_path.name}"
+            f"启动筛选：{mode_label}，使用快照={snap_zh}，联网补证据={live_zh}，"
+            f"config_hash={config.config_hash}，输入文件={source_filename or input_path.name}"
         ),
         (
-            f"Screen started: mode={mode_label} ({config.mode}), "
-            f"use_snapshot={snap_en}, config_hash={config.config_hash}, "
+            f"Screen started: {mode_label}, use_snapshot={snap_en}, "
+            f"allow_live={live_en}, config_hash={config.config_hash}, "
             f"input_file={source_filename or input_path.name}"
         ),
         progress=5,
@@ -469,7 +486,7 @@ def _screen_sdf_inner(
         f"Start local evidence scoring: {snap_path_en}, fuse rule scores and optional ML heads",
         progress=42,
     )
-    scored, _ = _score_all(passed, config, gold, facade, allow_live=False)
+    scored, _, clinical_actions = _score_all(passed, config, gold, facade, allow_live=False)
     review_ids = {
         item.molecule_id
         for item in screening_audit
@@ -485,12 +502,12 @@ def _screen_sdf_inner(
     gated = len(scored) - len(eligible)
     log.emit(
         "INFO",
-        f"门控完成：门控后候选={len(eligible)}，门控剔除={gated}，已按相对竞赛 selection_score 降序排序",
+        f"门控完成：门控后候选={len(eligible)}，门控剔除={gated}，已按相对组合 selection_score 降序排序",
         f"Gating complete: eligible_candidates={len(eligible)}, gated_out={gated}, sorted by relative competition selection_score descending",
         progress=55,
     )
 
-    # OriGene 风格 Top-M：身份冲突检查 → 证据补洞 → 统一 eligibility 重跑。
+    # 短名单 Top-M：身份冲突检查 → 证据补洞 → 统一 eligibility 重跑。
     # 窗口沿用 deep_query_top_m（默认 40），不硬改 50/100 以免冲击 freeze/SLA。
     deep_m = int(config.evidence.get("deep_query_top_m", 40))
     evidence_hits = 0
@@ -503,19 +520,26 @@ def _screen_sdf_inner(
         timeout_sec = float(config.evidence.get("http_timeout_sec", 4.0))
         adapters = config.evidence.get("adapters") or ["chembl_lipid_v1", "pubchem_tox_v1"]
         adapter_names = ", ".join(str(a) for a in adapters)
+        epa_cfg = config.evidence.get("epa_ctx") or {}
+        epa_stage = int(epa_cfg.get("integration_stage", 0))
+        epa_effect = "none" if epa_stage <= 1 else "risk_signal_only"
         log.emit(
             "INFO",
             (
-                f"开始 Top-M 证据编排（OriGene 风格）：窗口={shortlist_n} "
+                f"开始 Top-M 证据编排（短名单）：窗口={shortlist_n} "
                 f"（deep_query_top_m={deep_m}）；步骤=身份冲突检查→"
                 f"{'live' if allow_live else 'snapshot'}补洞→统一资格重跑；"
-                f"模式={config.mode}；适配器={adapter_names}；HTTP超时={timeout_sec}s"
+                f"模式={config.mode}；适配器={adapter_names}；"
+                f"EPA阶段={epa_stage}（ranking_effect={epa_effect}）；"
+                f"HTTP超时={timeout_sec}s"
             ),
             (
                 f"Start Top-M evidence orchestration: window={shortlist_n} "
                 f"(deep_query_top_m={deep_m}); steps=identity_check→"
                 f"{'live' if allow_live else 'snapshot'}_fill→re-eligibility; "
-                f"mode={config.mode}; adapters={adapter_names}; http_timeout={timeout_sec}s"
+                f"mode={config.mode}; adapters={adapter_names}; "
+                f"epa_stage={epa_stage} (ranking_effect={epa_effect}); "
+                f"http_timeout={timeout_sec}s"
             ),
             progress=62,
         )
@@ -538,22 +562,73 @@ def _screen_sdf_inner(
             if evidence.lipid or evidence.tox:
                 evidence_hits += 1
             # Step 3: unified eligibility via score_molecule
-            rescored.append(score_molecule(record, config, gold, evidence))
+            rescored_mol = score_molecule(record, config, gold, evidence)
+            clinical_hit = apply_clinical_exclusion_to_score(
+                rescored_mol,
+                record,
+                load_clinical_exclusions(config.clinical_exclusions),
+            )
+            if clinical_hit is not None:
+                clinical_actions.append(clinical_hit)
+            rescored.append(rescored_mol)
         eligible = [m for m in rescored if not m.gated_out]
         by_scored = {m.molecule_id: m for m in scored}
         by_scored.update({m.molecule_id: m for m in rescored})
         scored = [by_scored.get(m.molecule_id, m) for m in scored]
         assign_competition_scores(eligible, config)
+        epa_audit_hits = sum(
+            1
+            for molecule in eligible
+            if str(molecule.epa_audit.get("status") or "")
+            not in {"", "disabled", "audit_missing"}
+        )
+        epa_risk_applied = sum(
+            bool(molecule.epa_audit.get("risk_applied")) for molecule in eligible
+        )
+        dili_hard = sum(
+            1
+            for molecule in rescored
+            if str((molecule.dili_audit or {}).get("action") or "") == "hard_exclude"
+        )
+        dili_notes = sum(
+            1
+            for molecule in eligible
+            if str((molecule.dili_audit or {}).get("action") or "") == "annotate_only"
+        )
+        chembl_queried = sum(
+            1
+            for molecule in eligible[:shortlist_n]
+            if str(
+                ((molecule.evidence_source_audit or {}).get("chembl") or {}).get("status")
+                or "not_queried"
+            )
+            != "not_queried"
+        )
+        pubchem_queried = sum(
+            1
+            for molecule in eligible[:shortlist_n]
+            if str(
+                ((molecule.evidence_source_audit or {}).get("pubchem") or {}).get("status")
+                or "not_queried"
+            )
+            != "not_queried"
+        )
         log.emit(
             "INFO",
             (
                 f"Top-M 编排完成：证据命中={evidence_hits}，"
-                f"身份待审={identity_review_count}，门控后候选={len(eligible)}，"
+                f"身份待审={identity_review_count}，EPA审计命中={epa_audit_hits}，"
+                f"EPA风险计分={epa_risk_applied}，DILI硬排除={dili_hard}，"
+                f"DILI注记={dili_notes}，短名单ChEMBL已查={chembl_queried}，"
+                f"短名单PubChem已查={pubchem_queried}，门控后候选={len(eligible)}，"
                 f"live={'on' if allow_live else 'off'}"
             ),
             (
                 f"Top-M orchestration complete: evidence_hits={evidence_hits}, "
-                f"identity_review={identity_review_count}, eligible={len(eligible)}, "
+                f"identity_review={identity_review_count}, epa_audit_hits={epa_audit_hits}, "
+                f"epa_risk_applied={epa_risk_applied}, dili_hard_exclude={dili_hard}, "
+                f"dili_annotate={dili_notes}, shortlist_chembl_queried={chembl_queried}, "
+                f"shortlist_pubchem_queried={pubchem_queried}, eligible={len(eligible)}, "
                 f"live={'on' if allow_live else 'off'}"
             ),
             progress=72,
@@ -631,6 +706,8 @@ def _screen_sdf_inner(
     selected_pool, actions = rule_critic(
         diversified, eligible, config, gold, top_n=requested_pool_n
     )
+    if clinical_actions:
+        actions = list(clinical_actions) + list(actions)
     if actions:
         drop_hist = summarize_critic_actions(actions)
         hist_zh = ", ".join(f"{k}={v}" for k, v in drop_hist.items() if v and k != "keep")
@@ -673,7 +750,7 @@ def _screen_sdf_inner(
             progress=96,
         )
 
-    # 最终交付前再次执行唯一资格接口；Critic/LLM 无权重新引入不合格候选。
+    # 导出前再次执行唯一资格接口；Critic/LLM 无权重新引入不合格候选。
     policy = policy_from_config(config.gates)
     final_pool: list[ScoreRecord] = []
     for mol in selected_pool:
@@ -710,18 +787,79 @@ def _screen_sdf_inner(
                 )
             )
     final_pool.sort(key=lambda mol: (-mol.selection_score, mol.molecule_id))
-    top = final_pool[:n]
-    reserve = final_pool[n : n + reserve_n]
-    for rank, mol in enumerate(top, start=1):
+    algorithmic_top = final_pool[:n]
+    algorithmic_reserve = final_pool[n : n + reserve_n]
+    leftover_pool = final_pool[n + reserve_n :]
+    for rank, mol in enumerate(algorithmic_top, start=1):
         mol.nomination_tier = "primary"
         mol.primary_rank = rank
         mol.reserve_rank = None
         mol.replacement_for = ""
-    for rank, mol in enumerate(reserve, start=1):
+    for rank, mol in enumerate(algorithmic_reserve, start=1):
         mol.nomination_tier = "reserve"
         mol.primary_rank = None
         mol.reserve_rank = rank
         mol.replacement_for = f"primary_slot_{((rank - 1) % max(1, n)) + 1}"
+
+    review_result = apply_nomination_review(
+        algorithmic_top=algorithmic_top,
+        algorithmic_reserve=algorithmic_reserve,
+        leftover_pool=leftover_pool,
+        review_config=config.nomination_review,
+        mode=config.mode,
+        top_n=n,
+        reserve_n=reserve_n,
+        input_sha256=input_hash,
+    )
+    top = review_result.nominated_top
+    reserve = review_result.nominated_reserve
+    nomination_review_actions = [
+        {
+            "molecule_id": item.molecule_id,
+            "action": item.action,
+            "reason": item.reason,
+            "replaced_by": item.replaced_by,
+            "applied": item.applied,
+            "scope": item.scope,
+            "input_matched": review_result.input_matched,
+            "review_applied": review_result.review_applied,
+        }
+        for item in review_result.actions
+    ]
+    if not review_result.review_applied:
+        log.emit(
+            "INFO",
+            (
+                "提名复核未绑定当前 SDF：仅临床排除生效；"
+                f"input_sha256={input_hash[:16]}…"
+            ),
+            (
+                "Nomination review unbound for this SDF; clinical exclusions still apply; "
+                f"input_sha256={input_hash[:16]}..."
+            ),
+            progress=97,
+        )
+    if any(item.action == "drop_from_primary" and item.applied for item in review_result.actions):
+        log.emit(
+            "INFO",
+            (
+                "提名复核已改席："
+                + ", ".join(
+                    f"{item.molecule_id}→{item.replaced_by or 'unfilled'}"
+                    for item in review_result.actions
+                    if item.action == "drop_from_primary" and item.applied
+                )
+            ),
+            (
+                "Nomination review changed seats: "
+                + ", ".join(
+                    f"{item.molecule_id}->{item.replaced_by or 'unfilled'}"
+                    for item in review_result.actions
+                    if item.action == "drop_from_primary" and item.applied
+                )
+            ),
+            progress=97,
+        )
 
     selected_ids = {m.molecule_id for m in top} | {m.molecule_id for m in reserve}
     drop_reasons = {
@@ -853,16 +991,17 @@ def _screen_sdf_inner(
         "SUCCESS" if q_pass is not False else "WARN",
         (
             f"筛选完成：输出 Top={len(top)}，请求 Top={n}，质量门禁={quality_zh}，"
-            f"模式={mode_label}（{config.mode}），使用快照={snap_zh}，config_hash={config.config_hash}"
+            f"{mode_label}，使用快照={snap_zh}，联网补证据={live_zh}，config_hash={config.config_hash}"
         ),
         (
             f"Screen complete: output_top={len(top)}, requested_top={n}, quality_gate={quality_en}, "
-            f"mode={mode_label} ({config.mode}), use_snapshot={snap_en}, config_hash={config.config_hash}"
+            f"{mode_label}, use_snapshot={snap_en}, allow_live={live_en}, "
+            f"config_hash={config.config_hash}"
         ),
         progress=100,
     )
 
-    input_hash = sha256_file(input_path)
+    algorithmic_selection_hash = selection_sha256(algorithmic_top)
     selection_hash = selection_sha256(top)
     run_id = deterministic_run_id(
         input_sha256=input_hash,
@@ -880,6 +1019,8 @@ def _screen_sdf_inner(
     return PipelineResult(
         top_molecules=top,
         reserve_molecules=reserve,
+        algorithmic_top_molecules=list(algorithmic_top),
+        algorithmic_reserve_molecules=list(algorithmic_reserve),
         input_count=len(records),
         filtered_out=filtered_out,
         eligible_count=len(eligible),
@@ -887,6 +1028,7 @@ def _screen_sdf_inner(
         config=config,
         diagnostics=diag,
         critic_actions=actions,
+        nomination_review_actions=nomination_review_actions,
         source_filename=source_filename or input_path.name,
         note=note,
         raw_count=parsed.raw_count,
@@ -898,6 +1040,7 @@ def _screen_sdf_inner(
         rank_robustness=rank_robustness,
         input_sha256=input_hash,
         selection_sha256=selection_hash,
+        algorithmic_selection_sha256=algorithmic_selection_hash,
         reserve_selection_sha256=selection_sha256(reserve),
         run_id=run_id,
         mechanism_graphs=mechanism_graphs,
@@ -911,13 +1054,21 @@ def run_pipeline(
     input_path: Path,
     output_path: Path,
     *,
-    mode: str = "offline",
+    mode: str | None = None,
     top_n: int | None = None,
+    epa_stage: int | None = None,
+    use_snapshot: bool | None = None,
+    allow_live: bool | None = None,
     write_mechanism: bool = True,
 ) -> PipelineResult:
     started_at = datetime.now(timezone.utc)
     started_clock = time.monotonic()
-    cfg = load_config(mode=mode)
+    cfg = load_config(
+        mode=mode,
+        epa_stage=epa_stage,
+        use_snapshot=use_snapshot,
+        allow_live=allow_live,
+    )
     result = screen_sdf(input_path, cfg=cfg, top_n=top_n, source_filename=input_path.name)
     export_nomination_csv(
         result.top_molecules,
@@ -929,6 +1080,26 @@ def run_pipeline(
         run_id=result.run_id,
         input_sha256=result.input_sha256,
         selection_hash=result.selection_sha256,
+    )
+    algorithmic_path = Path(output_path).with_suffix(".algorithmic.csv")
+    export_nomination_csv(
+        result.algorithmic_top_molecules or result.top_molecules,
+        algorithmic_path,
+        mode=cfg.mode,
+        config_hash=cfg.config_hash,
+        degraded_channels=cfg.degraded_channels,
+        requested_top_n=result.requested_top_n,
+        run_id=result.run_id,
+        input_sha256=result.input_sha256,
+        selection_hash=result.algorithmic_selection_sha256 or result.selection_sha256,
+    )
+    review_path = Path(output_path).with_suffix(".nomination_review.jsonl")
+    review_path.write_text(
+        "".join(
+            json.dumps(row, ensure_ascii=False) + "\n"
+            for row in result.nomination_review_actions
+        ),
+        encoding="utf-8",
     )
     reserve_path = Path(output_path).with_suffix(".reserve.csv")
     export_nomination_csv(
@@ -993,9 +1164,12 @@ def run_pipeline(
         runtime_seconds=time.monotonic() - started_clock,
         run_id=result.run_id,
         selection_hash=result.selection_sha256,
+        algorithmic_selection_hash=result.algorithmic_selection_sha256,
         top_molecules=result.top_molecules,
+        algorithmic_top_molecules=result.algorithmic_top_molecules,
         reserve_molecules=result.reserve_molecules,
         reserve_selection_hash=result.reserve_selection_sha256,
+        nomination_review_actions=result.nomination_review_actions,
     )
     result.manifest_path = str(manifest_path)
     return result

@@ -396,7 +396,7 @@ def run_one(
             error_type=type(exc).__name__,
             error=str(exc),
             warnings=[
-                "CTX API key required for live ToxCast; set CTX_API_KEY or use fixtures/cache",
+                "CTX API key required for live ToxCast; configure evidence_providers.yaml or use fixtures/cache",
                 "record as audit_missing; never treat as low toxicity",
             ],
         )
@@ -461,7 +461,7 @@ def main() -> int:
         type=Path,
         help=(
             "optional InChIKey list (one per line) for ChEMBL candidate expansion "
-            "and ToxCast InChIKey→DTXSID resolution (ToxCast needs CTX_API_KEY)"
+            "and ToxCast InChIKey→DTXSID resolution (ToxCast needs a configured CTX key)"
         ),
     )
     parser.add_argument(

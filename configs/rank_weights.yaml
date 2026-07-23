@@ -5,14 +5,14 @@
 #   nafldkb_v1 / dili_table_v1 默认不进主排名（enabled: false, ranking_weight: 0）
 #   避免弱 S_lipid + 高 conf_e 刷榜
 #
-# mode_default: auto = 冻结快照 Quality-Max；只有显式 online 才 live 补洞
+# mode_default: Quality-Max（唯一主路径）；联网补证据由 evidence.allow_live 控制
 mode_default: auto
 seed: 42
 top_n: 10
 top_k_for_critic: 30
 reserve_n: 20
 
-# 组委会确认：更重相对排序；单候选关注效果×新颖性，Top10 等权求和。
+# 更重相对排序；单候选关注效果×新颖性，Top10 等权求和。
 # 具体归一化仍未确认，故冻结为透明 percentile 代理并同时导出等权平均敏感性视图。
 competition_scoring:
   enabled: true
@@ -40,7 +40,7 @@ gates:
   tox_uncertainty_penalty: 0.10
   # 仅有最低等级本地代理覆盖时，用保守上界做自动提名门控；非官方阈值。
   low_confidence_tox_margin: 0.05
-  viability_proxy: 0.80  # 组委会已确认的未明显损伤参考；无湿实验值时不参与 SI（ADR-M16）
+  viability_proxy: 0.80  # 未明显损伤参考阈值；无湿实验值时不参与 SI（ADR-M16）
 
 lipid_fuse:
   rule: 0.35
@@ -59,6 +59,8 @@ tox_fuse:
 
 evidence:
   enabled: true
+  use_snapshot: true
+  allow_live: false
   # 生效 adapters 列表（仅列出参与主排名的通道）
   adapters:
     - chembl_lipid_v1
@@ -80,6 +82,30 @@ evidence:
     dili_table_v1:
       enabled: false
       ranking_weight: 0
+  # EPA CTX/ToxCast staged integration:
+  # 0=disabled, 1=report/audit only, 2=limited toxicity risk scoring.
+  # Stage 2: exact identity or shared standardized SMILES may score only when
+  # nhit>0 and cytotoxLowerUm ≤ cytotox_screening_um. activeMc/activeSc alone
+  # stay bioactivity annotations. CAS-only identity uncertainty is CSV/PDF
+  # audit only and does not cancel eligibility.
+  epa_ctx:
+    enabled: true
+    integration_stage: 2
+    mapping_paths:
+      - data/public/processed/epa_ctx/candidate_mapping.jsonl
+      - data/public/processed/epa_ctx/bulk_mapping_all_enriched.jsonl
+    risk_summary_paths:
+      - data/public/processed/epa_ctx/candidate_risk_summary.jsonl
+      - data/public/processed/epa_ctx/bulk_bioactivity_summary.jsonl
+    assay_qc_paths:
+      - data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl
+    require_exact_identity_for_stage2: true
+    share_risk_across_standardized_smiles: true
+    cytotox_screening_um: 10.0
+    active_hit_threshold: 0.90
+    max_risk_score: 0.40
+    risk_confidence: 0.50
+    max_assay_rows_per_candidate: 20
   tox_analog_sim_threshold: 0.75
   tox_analog_boost_alpha: 0.25
   deep_query_top_m: 60          # auto/online 仅对短名单 live 查证（保 SLA）；覆盖 Critic 漂移席位
@@ -88,7 +114,7 @@ evidence:
   circuit_fail_threshold: 5
   chembl_max_activities: 500
   prefer_snapshot: true         # 有本地快照则优先用，不再打外网
-  auto_cache_snapshot: true     # 仅显式 online：查到的结果自动写入 snapshot
+  auto_cache_snapshot: true     # 仅 allow_live=true：查到的结果自动写入 snapshot
   local_tables:
     enabled: false              # 主路径冻结：NAFLDkb/DILIrank 默认不进主排名
     dili_csv: data/reference/dilirank.csv
@@ -97,15 +123,30 @@ evidence:
     nafld_sim_threshold: 0.78
     neighbor: true
   # Wave-1 public assay-grain QC tables (InChIKey exact match).
-  # PubChem Active → annotation_only；仅 ChEMBL phenotype 可进 lipid/tox 分。
+  # Sparse tables must not bias Top ranking: PubChem Active / BindingDB stay
+  # annotation or mechanism_support (score=0). Only ChEMBL phenotype may score.
+  # ToxCast assay-grain is skipped here; EPA staged CTX owns risk scoring.
   public_assay_grain:
     enabled: true
     allow_chembl_phenotype_scores: true
+    allow_pubchem_bioassay_scores: false
+    allow_bindingdb_scores: false
     qc_paths:
       - data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl
       - data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl
       - data/public/processed/bindingdb/records_endpoint_qc.jsonl
       - data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl
+  # DILIrank exact-identity gate (never raises safety / ranking_weight).
+  # Most-DILI exact → hard_exclude; Less/Ambiguous/No → PDF/CSV annotate only.
+  dilirank_exact_gate:
+    enabled: true
+    hard_exclude_most: true
+    identity_paths:
+      - data/reference/dilirank_identity_mapped.jsonl
+      - data/reference/dilirank.csv
+  # Shortlist evidence loop: deep_query covers primary+reserve drift seats.
+  # ChEMBL/PubChem live adapters remain the fair hit|verified_empty path.
+  require_shortlist_query_statuses: true
 
 diversity:
   method: similarity_mmr
@@ -141,9 +182,10 @@ ml:
 
 llm:
   # 机制 PDF 默认用「准确模板」（mechanism_pdf: false），避免 LLM 自由发挥导致不实阈值/证据误用。
-  # Critic 改榜默认关闭。DeepSeek Key 仍嵌入，供将来可选润色；开启 mechanism_pdf 也不会改排名。
+  # Critic 改榜默认关闭。Web「LLM+人工复核」见 nomination_review。DeepSeek Key 仍嵌入；开启 mechanism_pdf 也不会改排名。
   enabled: true
   mechanism_pdf: false
+  nomination_review: true
   critic_enabled: false
   critic_affects_ranking: false
   temperature: 0

@@ -4,26 +4,17 @@
   "import_wave": "wave_1_activity",
   "source_url": "https://www.ebi.ac.uk/training/online/courses/chembl-quick-tour/accessing-chembl-data/",
   "license_policy": "verify_source_version_and_cc_by_sa_3",
-  "captured_at": "2026-07-15T11:23:03.163155+00:00",
+  "captured_at": "2026-07-23T03:11:53.492754+00:00",
   "status": "imported",
   "missing_semantics": "audit_missing",
   "negative_search_is_negative_label": false,
-  "row_count": 1128,
-  "raw_path": "data/public/raw/chembl_bioactivity/chembl_by_inchikey_1784114583.json",
+  "row_count": 1221,
+  "raw_path": "data/public/raw/chembl_bioactivity/chembl_by_inchikey_1784776313.json",
   "processed_path": "data/public/processed/chembl_bioactivity/records.jsonl",
-  "raw_sha256": "0c893c594ee257625ae4e61291598850d547b35d72e706c1d33e55f13be5982e",
-  "processed_sha256": "439e9dd0ce459681d0a35dc17a280e103cee161d179e73fc200bbacdf1b42cee",
+  "raw_sha256": "916eea1f73f328cc1a5cb1fd023e5cd2de72a6c4ccf27daca579f3621154cd13",
+  "processed_sha256": "89feca250c0dfe9948836c99e70d08f5c109694afe1e3af4e1c152a27d80669b",
   "query": {
-    "query_terms": [
-      "oleic",
-      "palmitic",
-      "triglyceride accumulation",
-      "lipid accumulation",
-      "lipid droplet",
-      "neutral lipid",
-      "Oil Red",
-      "steatosis"
-    ],
+    "query_terms": [],
     "seed_assay_ids": [
       "CHEMBL2156870",
       "CHEMBL3107293",
@@ -79,15 +70,16 @@
       "CHEMBL5389126",
       "CHEMBL5546883"
     ],
-    "assay_count": 40,
-    "positive_cellular_assay_count": 40,
+    "assay_count": 32,
+    "positive_cellular_assay_count": 32,
     "hepg2_positive_activity_count": 89,
     "hepg2_ffa_positive_activity_count": 67,
-    "activity_count": 1128,
+    "activity_count": 1221,
     "classification_counts": {
-      "annotation": 20,
+      "annotation": 918,
       "positive_phenotype": 203,
-      "adverse_phenotype": 6
+      "adverse_phenotype": 6,
+      "mechanism": 1
     },
     "scan_per_term": 0,
     "chembl_release": "ChEMBL_37",
@@ -114,6 +106,7 @@
         "WVULKSPCQVQLCU-BUXLTGKBSA-N",
         "QSNOWCXXECLALL-UHFFFAOYSA-N",
         "LIFOFTJHFFTNRV-UHFFFAOYSA-N",
+        "KCEFVYIWOQSJCH-LMOVPXPDSA-N",
         "ZXVNMYWKKDOREA-UHFFFAOYSA-N",
         "OFAZPSYXUKIJIK-JGRZZSDMSA-N",
         "OVSKIKFHRZPJSS-UHFFFAOYSA-N",
@@ -122,9 +115,13 @@
         "SHUYNJFEXPRUGR-RTCCEZQESA-N",
         "SRBPKVWITYPHQR-KRWDZBQOSA-N",
         "JCZLABDVDPYLRZ-UHFFFAOYSA-N",
+        "JCZLABDVDPYLRZ-AWEZNQCLSA-N",
         "CXGTZJYQWSUFET-UHFFFAOYSA-N",
+        "CXGTZJYQWSUFET-IBGZPJMESA-N",
         "RHCPKKNRWFXMAT-QHMGNDAISA-N",
+        "RHCPKKNRWFXMAT-RRWYKFPJSA-N",
         "ISCQYPPCSYRZOT-HRJVKACCSA-N",
+        "ISCQYPPCSYRZOT-BKTGTZMESA-N",
         "PGIOBGCIEGZHJH-UHFFFAOYSA-O",
         "BHQCQFFYRZLCQQ-PGHAKIONSA-N",
         "BHQCQFFYRZLCQQ-UTLSPDKDSA-N",
@@ -164,6 +161,8 @@
         "REHLODZXMGOGQP-UHFFFAOYSA-N",
         "HHUZGDMRRLQZIQ-XFNJLMRDSA-N",
         "CDHNVTRRQNLWKA-WOJBJXKFSA-N",
+        "CDHNVTRRQNLWKA-KVQDXKSSSA-N",
+        "CDHNVTRRQNLWKA-SWFZNMEYSA-N",
         "BNFRJXLZYUTIII-UHFFFAOYSA-N",
         "KXGVEGMKQFWNSR-MFSKYVBHSA-N",
         "KXGVEGMKQFWNSR-UHFFFAOYSA-N",
@@ -183,13 +182,13 @@
         "LNXBEIZREVRNTF-UHFFFAOYSA-N",
         "KXGVEGMKQFWNSR-FCSCGBJGSA-N"
       ],
-      "resolved": 48,
-      "verified_empty": 25,
+      "resolved": 52,
+      "verified_empty": 28,
       "classification_counts": {
-        "annotation": 918,
+        "annotation": 986,
         "positive_phenotype": 203,
         "adverse_phenotype": 6,
-        "mechanism": 1
+        "mechanism": 26
       },
       "molecule_errors": []
     }

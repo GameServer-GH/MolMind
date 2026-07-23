@@ -1,6 +1,6 @@
 """services.pipeline — 编排与配置导出。"""
 
-from services.pipeline.config_loader import AppConfig, ConfigLoadError, load_config
+from services.pipeline.config_loader import AppConfig, ConfigLoadError, load_config, resolve_runtime_switches
 from services.pipeline.export import (
     CSV_COLUMNS,
     SCREENING_AUDIT_COLUMNS,
@@ -33,6 +33,7 @@ __all__ = [
     "export_screening_audit_csv",
     "export_rank_robustness_json",
     "load_config",
+    "resolve_runtime_switches",
     "run_pipeline",
     "screen_sdf",
     "to_csv_text",

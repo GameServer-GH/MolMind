@@ -38,7 +38,7 @@ jobs:
           python scripts/check_rank_config_gate.py
       - name: Run complete test suite
         run: pytest
-      - name: Reproduce sample delivery
+      - name: Reproduce sample export
         run: |
           python -m apps.cli.main --input data/sample.sdf --output output/ci_nomination.csv --mode offline
           test -s output/ci_nomination.csv
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: molmind-sample-delivery
+          name: molmind-sample-export
           path: output/ci_nomination*
           if-no-files-found: error
 
@@ -63,5 +63,5 @@ jobs:
         run: docker run --rm molmind:ci pytest
       - name: Run frozen algorithm gate in container
         run: docker run --rm molmind:ci python scripts/check_algorithm_freeze.py
-      - name: Run offline delivery in container
+      - name: Run offline export in container
         run: docker run --rm molmind:ci python -m apps.cli.main --input data/sample.sdf --output /tmp/nomination.csv --mode offline

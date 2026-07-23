@@ -47,8 +47,8 @@ sources:
     license_policy: verify_source_version_and_cc_by_sa_3
     ingestion_status: imported
     qc_status: endpoint_qc_complete
-    qc_pass_rows: 117
-    positive_phenotype_rows: 111
+    qc_pass_rows: 209
+    positive_phenotype_rows: 203
     ranking_effect: candidate_task_evidence_only
     missing_semantics: audit_missing
   - source_id: pubchem_bioassay
@@ -89,14 +89,21 @@ sources:
     source_url: https://www.epa.gov/comptox-tools/exploring-toxcast-data
     api_base: https://comptox.epa.gov/ctx-api/bioactivity
     chemical_api_base: https://comptox.epa.gov/ctx-api/chemical
+    hazard_api_base: https://comptox.epa.gov/ctx-api/hazard
+    api_auth: x-api-key_from_plaintext_project_provider_config
     download_url: https://epa.figshare.com/articles/dataset/ToxCast_Database_invitroDB_/6062623
     license_policy: preserve_version_and_endpoint_provenance
     # Prefer CTX DTXSID lookups over Figshare invitrodb SQL (GB-scale / HTTP 403).
-    # Live CTX requires CTX_API_KEY (free via ccte_api@epa.gov); fixtures cover offline.
-    ingestion_status: imported
+    # Live CTX key is currently plaintext in configs/evidence_providers.yaml; fixtures cover offline.
+    ingestion_status: imported_candidate_scoped_ctx
     qc_status: endpoint_qc_complete
     qc_pass_rows: 7
     dtxsid_seed_count: 6
+    top10_ctx_manifest: data/public/manifests/epa_ctx_top10.json
+    top10_dtxsid_mapped: 10
+    top10_exact_original_inchikey_matches: 9
+    top10_bioactivity_rows: 488
+    top10_active_assay_metadata_rows: 20
     ranking_effect: risk_signal_only
     missing_semantics: audit_missing
   - source_id: fda_dilirank_2

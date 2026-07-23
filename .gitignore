@@ -45,6 +45,9 @@ output/
 !.env.example
 *.pem
 *.key
+.secrets/
+data/public/cache/**
+!data/public/cache/.gitkeep
 
 # 服务器部署（nginx + TLS + 生产 Compose，含证书，不入库）
 deploy_pro/
@@ -73,3 +76,22 @@ data/public/processed/**
 data/public/models/**
 !data/public/models/.gitkeep
 # Manifests are small audit artifacts and should remain reviewable/committable.
+
+# Frozen offline scoring tables required for judge/local/Docker parity.
+# Keep raw/** and cache/** ignored; only allowlist the runtime paths below.
+!data/public/processed/epa_ctx/
+!data/public/processed/epa_ctx/candidate_mapping.jsonl
+!data/public/processed/epa_ctx/candidate_risk_summary.jsonl
+!data/public/processed/epa_ctx/bulk_mapping_all_enriched.jsonl
+!data/public/processed/epa_ctx/bulk_mapping_all_enriched.manifest.json
+!data/public/processed/epa_ctx/bulk_bioactivity_summary.jsonl
+!data/public/processed/epa_ctx/bulk_bioactivity_summary.manifest.json
+!data/public/processed/epa_toxcast_tox21/
+!data/public/processed/epa_toxcast_tox21/records.jsonl
+!data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl
+!data/public/processed/chembl_bioactivity/
+!data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl
+!data/public/processed/pubchem_bioassay/
+!data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl
+!data/public/processed/bindingdb/
+!data/public/processed/bindingdb/records_endpoint_qc.jsonl

@@ -1,4 +1,4 @@
-"""阶段 8：Docker/断网/交付清单文件存在性。"""
+"""阶段 8：Docker/断网/发行清单文件存在性。"""
 
 from pathlib import Path
 

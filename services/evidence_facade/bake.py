@@ -326,9 +326,14 @@ def bake_evidence_for_records(
     skip_cached: bool = True,
     source_input_sha256: str = "",
 ) -> BakeStats:
-    original_mode = cfg.mode
-    previous_network = _apply_bake_network_policy(cfg, candidate_count=len(records))
-    cfg.mode = "online"
+    evidence = cfg.raw.setdefault("evidence", {})
+    previous_network = {
+        "allow_live": evidence.get("allow_live"),
+        "http_timeout_sec": evidence.get("http_timeout_sec"),
+        "circuit_fail_threshold": evidence.get("circuit_fail_threshold"),
+    }
+    previous_network.update(_apply_bake_network_policy(cfg, candidate_count=len(records)))
+    evidence["allow_live"] = True
     facade = EvidenceFacade(cfg)
     facade._circuit_open = False
     facade._live_failures = 0
@@ -418,14 +423,12 @@ def bake_evidence_for_records(
             snapshot_sha256=snapshot_sha256,
         )
     finally:
-        cfg.mode = original_mode
         evidence = cfg.raw.setdefault("evidence", {})
         for key, value in previous_network.items():
             if value is None:
                 evidence.pop(str(key), None)
             else:
                 evidence[str(key)] = value
-
 
 
 def bake_from_sdf(
@@ -435,7 +438,7 @@ def bake_from_sdf(
     output_path: Path | None = None,
     skip_cached: bool = True,
 ) -> BakeStats:
-    cfg = load_config(mode="online")
+    cfg = load_config(allow_live=True)
     m = top_m or int(cfg.evidence.get("deep_query_top_m", 40))
     m = max(m, int(cfg.evidence.get("bake_top_m", m)))
     records = select_bake_candidates(input_path, cfg, top_m=m)
@@ -454,7 +457,7 @@ def bake_frozen_top10(
     skip_cached: bool = True,
     entities_path: Path | None = None,
 ) -> BakeStats:
-    cfg = load_config(mode="online")
+    cfg = load_config(allow_live=True)
     root = Path(__file__).resolve().parents[2]
     resolved_entities_path = entities_path or (
         root / "data" / "evidence_snapshot" / "v2" / "top10_entities.json"
@@ -477,7 +480,7 @@ def bake_submission_evidence(
     skip_cached: bool = True,
 ) -> BakeStats:
     """一次覆盖冻结 Top 10 和日常 auto 短名单窗口。"""
-    cfg = load_config(mode="online")
+    cfg = load_config(allow_live=True)
     m = top_m or int(cfg.evidence.get("bake_top_m", 80))
     frozen = load_frozen_top10_records()
     selected = select_bake_candidates(input_path, cfg, top_m=m)

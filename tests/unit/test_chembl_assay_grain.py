@@ -180,6 +180,50 @@ def test_import_chembl_assay_grain_writes_records_and_raw(tmp_path: Path) -> Non
     assert any("activity.json" in url for url in calls)
 
 
+def test_explicit_empty_query_terms_keep_seed_only_mode(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str, params: dict | None, timeout: int):
+        calls.append(url)
+        if url.endswith("/status.json"):
+            return {"chembl_db_version": "37", "status": "UP"}
+        if "/assay.json" in url:
+            raise AssertionError("free-text assay search must stay disabled")
+        if "/activity.json" in url:
+            return {
+                "activities": [
+                    {
+                        "activity_id": 101,
+                        "molecule_chembl_id": "CHEMBL101",
+                        "canonical_smiles": "CCO",
+                        "assay_chembl_id": "CHEMBL2156870",
+                        "standard_type": "Imax",
+                        "standard_value": 54.2,
+                        "standard_units": "%",
+                        "assay_description": (
+                            "Inhibition of oleic acid-induced triglyceride "
+                            "over-accumulation in human HepG2 cells"
+                        ),
+                    }
+                ],
+                "page_meta": {"total_count": 1},
+            }
+        raise AssertionError(f"unexpected url {url}")
+
+    result = import_chembl_assay_grain(
+        SOURCE,
+        limit=1,
+        query_terms=(),
+        seed_assay_ids=("CHEMBL2156870",),
+        get_json=fake_get,
+        raw_dir=tmp_path / "raw",
+    )
+
+    assert result["query_terms"] == []
+    assert result["activity_count"] == 1
+    assert not any("/assay.json" in url for url in calls)
+
+
 def test_script_run_one_chembl_with_mock(monkeypatch, tmp_path: Path) -> None:
     from scripts import import_public_data as importer
 

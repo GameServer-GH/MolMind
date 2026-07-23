@@ -49,6 +49,22 @@
         inset 0 -1px 0 rgba(230, 232, 235, 0.6);
     }
 
+    /* review modal: vendor Tailwind lacks max-h-[85vh] / min-h-0 */
+    #reviewModal .review-modal-panel {
+      max-height: min(85vh, calc(100dvh - 2rem));
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #reviewProposalList {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .glass-btn {
       background: linear-gradient(
         180deg,
@@ -312,6 +328,13 @@
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.35); border-radius: 4px; }
     ::-webkit-scrollbar-thumb { background: rgba(110, 120, 129, 0.35); border-radius: 4px; }
+
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
   </style>
 </head>
 <body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden">
@@ -361,24 +384,49 @@
       </div>
       <input id="fileInput" type="file" accept=".sdf" />
 
-      <div class="relative z-10 flex flex-col gap-3">
-        <span class="text-label-md text-on-surface-variant">运行模式</span>
-        <div class="mode-seg" role="group" aria-label="运行模式">
-          <button type="button" data-mode="auto" aria-pressed="true">Quality-Max</button>
-          <button type="button" data-mode="online" aria-pressed="false">在线模式</button>
-          <button type="button" data-mode="offline" aria-pressed="false">离线模式</button>
+      <div class="relative z-10 flex flex-col gap-4">
+        <div>
+          <span class="text-label-md text-on-surface-variant">Quality-Max 运行开关</span>
+          <p id="runtimeHint" class="text-xs text-on-surface-variant/80 leading-relaxed max-w-2xl mt-2">
+            默认读取本地证据快照、不联网补证据，保证可复现结果。
+          </p>
         </div>
-        <p id="modeHint" class="text-xs text-on-surface-variant/80 leading-relaxed max-w-2xl"></p>
-        <div class="flex items-start gap-3 pt-1">
-          <label id="snapshotSwitch" class="snapshot-switch" title="使用证据快照">
-            <input id="useSnapshot" type="checkbox" checked />
-            <span class="track"></span>
-          </label>
-          <div class="min-w-0">
-            <div class="text-sm font-semibold text-on-background">使用快照</div>
-            <p id="snapshotHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
-              开启：优先读取本地 evidence snapshot，可复现且更快。关闭：不读取快照证据，仅 live / 规则路径。
-            </p>
+        <div class="flex flex-col sm:flex-row flex-wrap gap-6">
+          <div class="flex items-start gap-3">
+            <label id="snapshotSwitch" class="snapshot-switch" title="使用证据快照">
+              <input id="useSnapshot" type="checkbox" checked />
+              <span class="track"></span>
+            </label>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-on-background">使用快照</div>
+              <p id="snapshotHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
+                开启：优先读取本地 evidence snapshot，可复现且更快。
+              </p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <label id="liveSwitch" class="snapshot-switch" title="联网补证据">
+              <input id="allowLive" type="checkbox" />
+              <span class="track"></span>
+            </label>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-on-background">联网补证据</div>
+              <p id="liveHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
+                关闭（默认）：不访问外网证据 API。开启：短名单尝试 ChEMBL/PubChem live 补洞，交卷前请关联网复跑。
+              </p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <label id="reviewSwitch" class="snapshot-switch" title="LLM+人工复核">
+              <input id="nominationReview" type="checkbox" checked />
+              <span class="track"></span>
+            </label>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-on-background">LLM+人工复核</div>
+              <p id="reviewHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
+                开启：算法榜后先 LLM/规则草案，再弹窗人工确认。关闭：跳过复核，直接出结果。
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -631,14 +679,44 @@
     </div>
   </div>
 
+  <!-- 提名短名单人工复核弹窗（仅 Web：nomination_review=true） -->
+  <div id="reviewModal" class="fixed inset-0 z-[90] hidden items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="reviewModalTitle" aria-modal="true">
+    <div id="reviewModalBackdrop" class="absolute inset-0 bg-black/35 backdrop-blur-[2px]"></div>
+    <div class="review-modal-panel relative z-10 w-full max-w-4xl flex flex-col glass-panel-strong rounded-3xl border border-white/70 shadow-xl overflow-hidden">
+      <div class="p-4 border-white/50 shrink-0">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-primary text-3xl shrink-0">fact_check</span>
+          <div>
+            <h3 id="reviewModalTitle" class="text-lg font-semibold text-on-background">短名单人工复核</h3>
+            <p id="reviewModalHint" class="text-sm text-on-surface-variant mt-1.5 leading-relaxed">
+              算法榜已就绪。勾选要执行的项后点确认，将生成最终 CSV 与机制假说 PDF。
+            </p>
+          </div>
+        </div>
+      </div>
+      <div id="reviewProposalList" class="px-6 py-4 flex flex-col gap-3"></div>
+      <div class="px-6 py-4 border-t border-white/50 flex flex-col-reverse sm:flex-row gap-3 justify-end shrink-0">
+        <button id="reviewApplyBtn" type="button" class="glass-btn glass-btn-primary px-5 py-3 rounded-full text-sm inline-flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">check</span>
+          确认
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.MOLMIND_TOP_N_MIN = 1;
     window.MOLMIND_TOP_N_MAX = 50;
-    window.MOLMIND_SCREEN_STREAM = (top, mode, useSnapshot) =>
-      `/api/screen/stream?top=${top}&mode=${encodeURIComponent(mode)}&use_snapshot=${useSnapshot ? "true" : "false"}`;
+    window.MOLMIND_SCREEN_STREAM = (top, useSnapshot, allowLive, nominationReview) => {
+      const review = Boolean(nominationReview);
+      const snap = useSnapshot ? "true" : "false";
+      const live = allowLive ? "true" : "false";
+      return `/api/screen/stream?top=${top}&use_snapshot=${snap}&allow_live=${live}&nomination_review=${review ? "true" : "false"}`;
+    };
+    window.MOLMIND_APPLY_REVIEW = "/api/screen/apply-review";
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=mm-live-default-off-1"></script>
 </body>
 </html>

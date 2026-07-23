@@ -1,0 +1,16 @@
+{
+  "schema_version": "molmind-epa-ctx-bulk-summary-manifest-v1",
+  "captured_at": "2026-07-23T12:04:11+00:00",
+  "status": "imported",
+  "mapping_path": "data/public/processed/epa_ctx/bulk_mapping_all_enriched.jsonl",
+  "mapping_sha256": "38009366f393b2fed311909c9a086c922aa55458aeb755a611d053895a82da95",
+  "mapped_dtxsid_count": 17342,
+  "summary_returned_count": 3284,
+  "summary_verified_empty_count": 14266,
+  "network_error_count": 0,
+  "processed_path": "data/public/processed/epa_ctx/bulk_bioactivity_summary.jsonl",
+  "processed_sha256": "99f7745adcde1f079f02c7d57f918c8787e57a66a6cb02b0f6f0fdf6f87d70d3",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false,
+  "next_stage_policy": "download full detail only for active/risk-relevant summaries or Top-M"
+}

@@ -270,6 +270,27 @@ def score_tox(
         parts.append(f"analog_boost={boost:.3f}")
     if alert_hits:
         parts.append(f"警示: {', '.join(alert_hits)}")
+    epa_hits = [hit for hit in other_tox if hit.adapter_id == "epa_ctx_tox_v1"]
+    if epa_hits:
+        active_count = sum(
+            int((hit.payload or {}).get("active_hit_count") or 0) for hit in epa_hits
+        )
+        nhit = max(
+            (float((hit.payload or {}).get("nhit") or 0) for hit in epa_hits),
+            default=0.0,
+        )
+        lower = next(
+            (
+                (hit.payload or {}).get("cytotox_lower_um")
+                for hit in epa_hits
+                if (hit.payload or {}).get("cytotox_lower_um") is not None
+            ),
+            None,
+        )
+        parts.append(
+            f"epa_ctx_cytotox_strong nhit={nhit:g} lower_um={lower}; "
+            f"active_assays={active_count}"
+        )
     if phys_notes:
         parts.append("physchem: " + ", ".join(phys_notes))
 

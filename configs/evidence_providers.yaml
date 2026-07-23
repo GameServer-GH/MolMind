@@ -1,0 +1,57 @@
+schema_version: molmind-evidence-providers-v1
+credential_policy:
+  plaintext_in_repository: explicitly_accepted_by_project_owner
+  resolution_order: [explicit_runtime, environment, project_provider_config]
+  docker_and_ci: environment_or_mounted_secret
+cache:
+  state_db: data/public/cache/evidence_query_state.sqlite
+  payload_objects: data/public/cache/objects
+  immutable_payloads: true
+  statuses: [hit, verified_empty, query_failed, auth_missing, not_queried]
+  ttl_days:
+    hit: 90
+    verified_empty: 14
+    query_failed: 0
+  retry_minutes:
+    query_failed: 60
+    auth_missing: 10
+ingestion:
+  online_enrichment_is_explicit: true
+  canonical_ranking_uses_network: false
+  freeze_evidence_snapshot_before_ranking: true
+  unresolvable_identity_status: audit_missing
+providers:
+  epa_ctx:
+    enabled: true
+    api_base: https://comptox.epa.gov/ctx-api
+    api_key: 95080f05-1ebb-48d0-bb6b-d75ae6de9338
+    credential_storage: plaintext_project_config
+    environment_fallback: CTX_API_KEY
+    identity_order: [original_inchikey, standardized_inchikey, cas]
+    concurrency: 6
+    roles: [chemical_identity, toxicity_risk, hazard]
+  chembl:
+    enabled: true
+    api_base: https://www.ebi.ac.uk/chembl/api/data
+    credential: none
+    identity_order: [original_inchikey, standardized_inchikey]
+    concurrency: 4
+    roles: [candidate_activity, mechanism_support]
+  pubchem:
+    enabled: true
+    api_base: https://pubchem.ncbi.nlm.nih.gov/rest/pug
+    credential: none
+    identity_order: [original_inchikey, standardized_inchikey, cas]
+    concurrency: 4
+    roles: [chemical_identity, candidate_activity, cytotoxicity]
+  bindingdb:
+    enabled: true
+    api_base: https://www.bindingdb.org/rest
+    credential: none
+    mapping_mode: target_then_ligand_identity
+    concurrency: 2
+    roles: [mechanism_support]
+  geo_pride_metabolomics:
+    enabled: true
+    mapping_mode: study_accession_not_candidate_identity
+    roles: [mechanism_support, assay_qc]

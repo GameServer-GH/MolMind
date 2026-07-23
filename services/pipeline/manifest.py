@@ -1,4 +1,4 @@
-"""可核验运行清单：输入、政策、环境、模型、证据与交付物摘要。"""
+"""可核验运行清单：输入、政策、环境、模型、证据与导出摘要。"""
 
 from __future__ import annotations
 
@@ -46,10 +46,15 @@ def write_run_manifest(
     top_molecules: list[ScoreRecord],
     reserve_molecules: list[ScoreRecord] | None = None,
     reserve_selection_hash: str = "",
+    algorithmic_selection_hash: str = "",
+    algorithmic_top_molecules: list[ScoreRecord] | None = None,
+    nomination_review_actions: list[dict[str, object]] | None = None,
 ) -> Path:
     artifacts: dict[str, str] = {}
     candidates = [
         output_path,
+        output_path.with_suffix(".algorithmic.csv"),
+        output_path.with_suffix(".nomination_review.jsonl"),
         output_path.with_suffix(".mechanism.md"),
         output_path.with_suffix(".mechanism.html"),
         output_path.with_suffix(".mechanism.pdf"),
@@ -72,14 +77,65 @@ def write_run_manifest(
 
     snapshot_dir = Path(os.environ.get("EVIDENCE_SNAPSHOT_DIR", SNAPSHOT_DIR))
     snapshot_files = list(snapshot_dir.glob("*.jsonl")) if snapshot_dir.is_dir() else []
+    epa_cfg = cfg.evidence.get("epa_ctx") or {}
+    epa_stage = int(epa_cfg.get("integration_stage", 0))
+    clinical_cfg = cfg.clinical_exclusions
+    review_cfg = cfg.nomination_review
+    algorithmic_top = list(algorithmic_top_molecules or top_molecules)
+    algorithmic_hash = algorithmic_selection_hash or selection_hash
     manifest = {
-        "schema_version": "molmind-run-manifest-v2",
+        "schema_version": "molmind-run-manifest-v3",
         "run_id": run_id,
         "selection_sha256": selection_hash,
+        "algorithmic_selection_sha256": algorithmic_hash,
         "reserve_selection_sha256": reserve_selection_hash
         or selection_sha256(list(reserve_molecules or [])),
-        "ordered_reserve_candidates": canonical_selection(list(reserve_molecules or [])),
         "ordered_candidates": canonical_selection(top_molecules),
+        "ordered_algorithmic_candidates": canonical_selection(algorithmic_top),
+        "ordered_reserve_candidates": canonical_selection(list(reserve_molecules or [])),
+        "nomination_review": {
+            "enabled": bool(review_cfg.get("enabled", True)),
+            "require_input_match": bool(
+                review_cfg.get(
+                    "require_input_match",
+                    bool(review_cfg.get("applies_to_input_sha256")),
+                )
+            ),
+            "applies_to_input_sha256": list(
+                review_cfg.get("applies_to_input_sha256") or []
+                if isinstance(review_cfg.get("applies_to_input_sha256"), list)
+                else (
+                    [review_cfg.get("applies_to_input_sha256")]
+                    if review_cfg.get("applies_to_input_sha256")
+                    else []
+                )
+            ),
+            "input_matched": all(
+                row.get("input_matched", True) for row in (nomination_review_actions or [])
+            )
+            if nomination_review_actions
+            else True,
+            "review_applied": any(
+                row.get("review_applied", row.get("applied"))
+                for row in (nomination_review_actions or [])
+            )
+            if nomination_review_actions
+            else False,
+            "actions": list(nomination_review_actions or []),
+            "seat_changes": sum(
+                1
+                for row in (nomination_review_actions or [])
+                if row.get("action") == "drop_from_primary" and row.get("applied")
+            ),
+        },
+        "clinical_exclusions": {
+            "enabled": bool(clinical_cfg.get("enabled", True)),
+            "exclusion_ids": [
+                str(row.get("id") or "")
+                for row in (clinical_cfg.get("exclusions") or [])
+                if isinstance(row, dict)
+            ],
+        },
         "input": {
             "path": input_path.name,
             "sha256": sha256_file(input_path),
@@ -88,6 +144,13 @@ def write_run_manifest(
         "algorithm_contract_version": ALGORITHM_CONTRACT_VERSION,
         "assumption_policy_version": cfg.assumptions.get("version", "unversioned"),
         "snapshot_sha256": _hash_files(snapshot_files),
+        "epa_ctx": {
+            "integration_stage": epa_stage,
+            "ranking_effect": "none" if epa_stage <= 1 else "cytotox_risk_only",
+            "mapping_paths": list(epa_cfg.get("mapping_paths") or []),
+            "risk_summary_paths": list(epa_cfg.get("risk_summary_paths") or []),
+            "assay_qc_paths": list(epa_cfg.get("assay_qc_paths") or []),
+        },
         "model_artifacts": model_artifacts,
         "python_version": platform.python_version(),
         "rdkit_version": rdBase.rdkitVersion,
@@ -107,6 +170,8 @@ def write_run_manifest(
             str(output_path),
             "--mode",
             cfg.mode,
+            "--epa-stage",
+            str(epa_stage),
         ],
         "random_seed": cfg.seed,
         "started_at": started_at.astimezone(timezone.utc).replace(microsecond=0).isoformat(),

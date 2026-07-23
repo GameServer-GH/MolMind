@@ -15,9 +15,9 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE_DIR = ROOT / "data" / "llm_cache"
 
-# DeepSeek 交付默认：密钥经 XOR+Base64 混淆嵌入，部署方无需再配环境变量。
+# DeepSeek 发行默认：密钥经 XOR+Base64 混淆嵌入，部署方无需再配环境变量。
 # 优先级：环境变量 > 嵌入密钥。设 MOLMIND_LLM_USE_EMBEDDED=0 可禁用嵌入（测试用）。
-# 注意：源码内混淆可被逆向；公开仓库仍有泄露风险，赛后建议轮换 Key。
+# 注意：源码内混淆可被逆向；公开仓库仍有泄露风险，公开仓库建议轮换 Key。
 _EMBEDDED_KEY_PAD = b"MolMind::DeepSeek::Mechanism::2026"
 _EMBEDDED_KEY_BLOB = "PgRBfFxcAV4DIFRTQTVXUVoPX3UEUQ0CCwgQWghYVAADBXk="
 
@@ -57,15 +57,36 @@ class LLMSettings:
         return self.enabled and bool(self.api_key) and bool(self.model)
 
 
-def resolve_llm_settings(llm_cfg: dict[str, Any] | None) -> LLMSettings:
+def resolve_llm_settings(
+    llm_cfg: dict[str, Any] | None,
+    *,
+    purpose: str = "mechanism",
+) -> LLMSettings:
+    """Resolve LLM settings.
+
+    ``purpose``:
+    - ``mechanism``: requires ``llm.enabled`` and ``mechanism_pdf`` (or env override)
+    - ``nomination_review``: requires ``llm.enabled`` and ``nomination_review``
+      (default True when enabled; env ``MOLMIND_LLM_NOMINATION_REVIEW`` overrides)
+    """
     cfg = dict(llm_cfg or {})
-    enabled = bool(cfg.get("enabled", False)) and bool(cfg.get("mechanism_pdf", True))
-    # 环境变量可强制开关（不改 YAML 即可试跑）
-    env_flag = os.environ.get("MOLMIND_LLM_MECHANISM", "").strip().lower()
-    if env_flag in {"1", "true", "yes", "on"}:
-        enabled = True
-    elif env_flag in {"0", "false", "no", "off"}:
-        enabled = False
+    base_enabled = bool(cfg.get("enabled", False))
+
+    if purpose == "nomination_review":
+        enabled = base_enabled and bool(cfg.get("nomination_review", True))
+        env_flag = os.environ.get("MOLMIND_LLM_NOMINATION_REVIEW", "").strip().lower()
+        if env_flag in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif env_flag in {"0", "false", "no", "off"}:
+            enabled = False
+    else:
+        enabled = base_enabled and bool(cfg.get("mechanism_pdf", True))
+        # 环境变量可强制开关（不改 YAML 即可试跑）
+        env_flag = os.environ.get("MOLMIND_LLM_MECHANISM", "").strip().lower()
+        if env_flag in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif env_flag in {"0", "false", "no", "off"}:
+            enabled = False
 
     api_key = (
         os.environ.get("MOLMIND_LLM_API_KEY")

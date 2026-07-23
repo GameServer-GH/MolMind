@@ -1,4 +1,4 @@
-"""MolMind CLI：SDF → Top 10 CSV（Quality-Max 默认 auto）。"""
+"""MolMind CLI：SDF → Top 10 CSV（Quality-Max 默认）。"""
 
 from __future__ import annotations
 
@@ -29,11 +29,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode",
         choices=["auto", "online", "offline"],
-        default="auto",
-        help="auto=Quality-Max（默认）；offline/online 仅调试",
+        default=None,
+        help="已弃用：请用 --allow-live / --no-snapshot。online→联网开，offline→快照关",
+    )
+    parser.add_argument(
+        "--allow-live",
+        action="store_true",
+        help="联网补证据（ChEMBL/PubChem live）；默认关，可复现运行请保持关闭",
+    )
+    parser.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="不读取本地 evidence snapshot（仅调试）",
     )
     parser.add_argument("--top", type=int, default=None, help="Top N（默认读配置）")
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--epa-stage",
+        type=int,
+        choices=[0, 1, 2],
+        default=None,
+        help="EPA CTX 阶段：0=关闭，1=仅报告/审计，2=有限毒理风险评分",
+    )
     parser.add_argument("--eval-goldset", action="store_true", help="仅跑 GoldSet 回归")
     parser.add_argument(
         "--bake-evidence",
@@ -74,8 +91,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-mechanism", action="store_true")
     args = parser.parse_args(argv)
 
+    use_snapshot = False if args.no_snapshot else None
+    allow_live = True if args.allow_live else None
+
     if args.eval_goldset:
-        cfg = load_config(mode=args.mode, seed=args.seed)
+        cfg = load_config(
+            mode=args.mode,
+            seed=args.seed,
+            epa_stage=args.epa_stage,
+            use_snapshot=use_snapshot,
+            allow_live=allow_live,
+        )
         gold = load_goldset()
         result = run_goldset_harness(cfg, gold)
         print(
@@ -131,13 +157,20 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.output),
             mode=args.mode,
             top_n=args.top,
+            epa_stage=args.epa_stage,
+            use_snapshot=use_snapshot,
+            allow_live=allow_live,
             write_mechanism=not args.no_mechanism,
         )
     except ValueError as exc:
         print(f"错误: {exc}", file=sys.stderr)
         return 1
 
-    print(f"mode={result.config.mode} config_hash={result.config.config_hash}")
+    cfg = result.config
+    print(
+        f"quality_max allow_live={cfg.allow_live_evidence} "
+        f"use_snapshot={cfg.use_snapshot} config_hash={cfg.config_hash}"
+    )
     print(f"SDF 记录: {result.raw_count}（解析跳过 {result.parse_skipped}）")
     print(f"有效分子: {result.input_count}")
     print(f"硬过滤剔除: {result.filtered_out}")
@@ -150,19 +183,10 @@ def main(argv: list[str] | None = None) -> int:
         f"scientific_validation={result.diagnostics.scientific_validation_status}"
     )
     resource_counts = result.hepg2_ffa_resources.get("resource_counts", {})
-    print(
-        "hepg2_ffa_resources: "
-        f"total={resource_counts.get('total', 0)} "
-        f"mechanistic_context={resource_counts.get('mechanistic_context', 0)} "
-        f"assay_qc={resource_counts.get('assay_qc', 0)} "
-        f"dual_endpoint_training_eligible="
-        f"{resource_counts.get('candidate_dual_endpoint_training_eligible', 0)} "
-        "ranking_effect=none"
-    )
+    if resource_counts:
+        print(f"hepg2_ffa_resources: {resource_counts}")
     if result.config.degraded_channels:
-        print(f"degraded_channels: {', '.join(result.config.degraded_channels)}")
-    if result.note:
-        print(f"提示: {result.note}")
+        print(f"degraded_channels: {result.config.degraded_channels}")
     return 0
 
 

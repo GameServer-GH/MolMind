@@ -43,6 +43,11 @@ MEMBER_TEMPLATE = """### 候选 {rank}. {molecule_id}
 - 综合: {overall_reason}
 - 降脂相关证据 ID: {lipid_evidence}
 - 毒理/警示证据 ID（不可当作靶点或通路证据）: {tox_evidence}
+- EPA CTX/ToxCast 审计: {epa_audit}
+- ChEMBL 查询: {chembl_audit}
+- PubChem 查询: {pubchem_audit}
+- BindingDB 机制支持: {bindingdb_audit}
+- DILIrank exact 审计: {dili_audit}
 - 其他归因 ID: {other_evidence}
 - 候选特异验证: {candidate_validation}
 
@@ -124,7 +129,7 @@ def _split_evidence_ids(mol: ScoreRecord) -> tuple[list[str], list[str], list[st
             continue
         seen.add(eid_s)
         low = eid_s.lower()
-        if "ghs" in low or ":tox" in low or "dili" in low:
+        if "ghs" in low or ":tox" in low or "dili" in low or "epa_ctx" in low:
             tox.append(eid_s)
         elif "lipid" in low or low.startswith("chembl:"):
             lipid.append(eid_s)
@@ -190,6 +195,72 @@ def _context(rank: int, mol: ScoreRecord) -> dict[str, Any]:
         "pathway_support": _ascii_path_text(support),
         "lipid_evidence": _fmt_ids(lipid_e, "无"),
         "tox_evidence": _fmt_ids(tox_e, "无"),
+        "epa_audit": _ascii_path_text(
+            "; ".join(
+                f"{key}={value}"
+                for key, value in sorted((mol.epa_audit or {}).items())
+                if key
+                in {
+                    "stage",
+                    "status",
+                    "query_status",
+                    "mapping_status",
+                    "mapping_basis",
+                    "matched_identity_type",
+                    "dtxsid",
+                    "active_hit_count",
+                    "bioactivity_record_count",
+                    "risk_applied",
+                }
+            )
+            or "disabled"
+        ),
+        "chembl_audit": _ascii_path_text(
+            "; ".join(
+                f"{key}={value}"
+                for key, value in sorted(
+                    ((mol.evidence_source_audit or {}).get("chembl") or {}).items()
+                )
+                if key in {"status", "hit_count", "scored_hit_count", "ranking_effect"}
+            )
+            or "not_queried"
+        ),
+        "pubchem_audit": _ascii_path_text(
+            "; ".join(
+                f"{key}={value}"
+                for key, value in sorted(
+                    ((mol.evidence_source_audit or {}).get("pubchem") or {}).items()
+                )
+                if key in {"status", "hit_count", "scored_hit_count", "ranking_effect"}
+            )
+            or "not_queried"
+        ),
+        "bindingdb_audit": _ascii_path_text(
+            "; ".join(
+                f"{key}={value}"
+                for key, value in sorted(
+                    ((mol.evidence_source_audit or {}).get("bindingdb") or {}).items()
+                )
+                if key in {"status", "hit_count", "scored_hit_count", "ranking_effect"}
+            )
+            or "not_queried"
+        ),
+        "dili_audit": _ascii_path_text(
+            "; ".join(
+                f"{key}={value}"
+                for key, value in sorted((mol.dili_audit or {}).items())
+                if key
+                in {
+                    "status",
+                    "action",
+                    "concern",
+                    "match_basis",
+                    "compound_name",
+                    "ltkb_id",
+                }
+            )
+            or "disabled"
+        ),
         "other_evidence": _fmt_ids(other_e, "无"),
         "rescue_hint": rescue,
         "candidate_validation": _candidate_validation_plan(mol, str(pathway.get("id", "UNRESOLVED"))),

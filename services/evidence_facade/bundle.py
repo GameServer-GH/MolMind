@@ -8,7 +8,7 @@ from packages.models import EvidenceHit
 
 
 def infer_evidence_type(hit: EvidenceHit) -> str:
-    """Map internal role/status onto OriGene evidence_type vocabulary."""
+    """Map internal role/status onto export evidence_type vocabulary."""
     if hit.evidence_type and hit.evidence_type != "unresolved":
         return hit.evidence_type
     if hit.evidence_role == "query_audit" or hit.query_type == "query_audit":
@@ -37,6 +37,14 @@ class EvidenceBundle:
     normalized_inchikey: str = ""
     queried_at: str = ""
     source_versions: dict[str, str] = field(default_factory=dict)
+    # EPA stage/audit payload is report-visible even when stage 1 is
+    # non-scoring.  Keep it separate from lipid/tox task evidence so query
+    # status cannot be misread as efficacy or safety clearance.
+    epa_audit: dict[str, object] = field(default_factory=dict)
+    # DILIrank exact-identity audit / hard-exclude flag (never safety clearance).
+    dili_audit: dict[str, object] = field(default_factory=dict)
+    # Per-source shortlist query summary for PDF/CSV (ChEMBL/PubChem/BindingDB).
+    evidence_source_audit: dict[str, object] = field(default_factory=dict)
 
     @property
     def conf_e(self) -> float:
@@ -80,13 +88,14 @@ class EvidenceBundle:
 
     @property
     def has_any(self) -> bool:
+        # Annotation/query-audit rows (including EPA stage 1) are report
+        # material, not endpoint hits.  Keep this property as the historical
+        # "candidate has scoring-relevant evidence" signal.
         return bool(
             self.lipid
             or self.tox
             or self.novelty
             or self.pathway
-            or self.annotation
-            or self.query_audit
         )
 
     def all_ids(self) -> list[str]:
@@ -113,7 +122,7 @@ class EvidenceBundle:
         ]
 
     def annotate_evidence_types(self) -> None:
-        """Fill evidence_type on every hit for export / OriGene vocabulary alignment."""
+        """Fill evidence_type on every hit for export / export vocabulary alignment."""
         for hit in self.all_hits():
             hit.evidence_type = infer_evidence_type(hit)  # type: ignore[assignment]
             if not hit.source_version:

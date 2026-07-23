@@ -47,13 +47,13 @@ PYTHONPATH=. python scripts/import_public_data.py \
   --candidate-inchikeys data/public/manifests/candidate_inchikeys_topm_expand.txt \
   --sync-registry
 PYTHONPATH=. python scripts/qc_public_assay_grain.py
-# ToxCast 候选级需 CTX_API_KEY：
+# ToxCast 候选级使用 configs/evidence_providers.yaml 中的 CTX key：
 # PYTHONPATH=. python scripts/import_public_data.py \
 #   --source epa_toxcast_tox21 --limit 40 \
 #   --candidate-inchikeys data/public/manifests/candidate_inchikeys_topm_expand.txt
 ```
 
-交付镜像应包含本目录下的 JSONL，断网部署时仍可得到证据增强分数。
+发行镜像应包含本目录下的 JSONL，断网部署时仍可得到证据增强分数。
 
 ## 覆盖旧快照
 

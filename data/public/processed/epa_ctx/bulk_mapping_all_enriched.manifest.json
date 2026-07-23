@@ -1,0 +1,19 @@
+{
+  "schema_version": "molmind-epa-ctx-enriched-mapping-manifest-v1",
+  "captured_at": "2026-07-23T15:42:21+00:00",
+  "status": "imported",
+  "source_note": "hotfix_after_rematch_skip_enrich",
+  "records": 22966,
+  "dtxsid_mapped": 17713,
+  "exact_identifier_match": 14904,
+  "identity_fields": [
+    "original_inchikey",
+    "standardized_inchikey",
+    "standardized_smiles",
+    "standardization_steps"
+  ],
+  "processed_path": "data/public/processed/epa_ctx/bulk_mapping_all_enriched.jsonl",
+  "processed_sha256": "38009366f393b2fed311909c9a086c922aa55458aeb755a611d053895a82da95",
+  "missing_semantics": "audit_missing",
+  "negative_search_is_negative_label": false
+}
