@@ -66,6 +66,7 @@ deploy/images/*.tgz
 # 证据自动缓存（可再生）
 data/evidence_snapshot/auto_cache.jsonl
 data/evidence_snapshot/*.jsonl.bak
+data/evidence_snapshot/**/*.jsonl.bak
 
 # Public data may be GB-scale and remains in-project, but raw/processed files
 # require an explicit manifest and should not be committed accidentally.
