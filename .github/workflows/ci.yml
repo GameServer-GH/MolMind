@@ -38,6 +38,8 @@ jobs:
           python scripts/check_rank_config_gate.py
       - name: Run complete test suite
         run: pytest
+      - name: Agent hash-parity + R3/R4 gate
+        run: pytest tests/unit/test_agent_mvp.py tests/unit/test_agent_registry.py tests/unit/test_agent_r3.py tests/unit/test_agent_catalog_r4.py -q
       - name: Reproduce sample export
         run: |
           python -m apps.cli.main --input data/sample.sdf --output output/ci_nomination.csv --mode offline

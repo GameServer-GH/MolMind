@@ -1,21 +1,10 @@
-"""services.critic — Critic 导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.critic.
 
-from services.critic.critic import (
-    apply_llm_critic_suggestions,
-    collect_run_evidence_ids,
-    filter_suggestions_by_run_evidence,
-    llm_critic_stub,
-    rule_critic,
-    run_evidence_bound_llm_critic,
-    summarize_critic_actions,
-)
+Prefer: `from plugins.molmind_core.scientific.critic import ...`
+"""
+from __future__ import annotations
 
-__all__ = [
-    "apply_llm_critic_suggestions",
-    "collect_run_evidence_ids",
-    "filter_suggestions_by_run_evidence",
-    "llm_critic_stub",
-    "rule_critic",
-    "run_evidence_bound_llm_critic",
-    "summarize_critic_actions",
-]
+import plugins.molmind_core.scientific.critic as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

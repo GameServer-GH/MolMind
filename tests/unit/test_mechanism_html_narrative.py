@@ -77,7 +77,7 @@ def test_evidence_boundary_uses_natural_language() -> None:
     assert "未形成可计分查询结果" in text
     assert "DTXSID60273935" in text
     assert "身份仍建议人工核对" in text
-    assert "ChEMBL：已检索到注释/审计级记录" in text
+    assert "ChEMBL：查询完成，无符合计分契约的记录" in text
     assert "同条件降脂实验读出" in text
 
 
@@ -89,20 +89,51 @@ def test_compact_narrative_is_shorter() -> None:
     assert any("声明上限" in line for line in compact)
 
 
+def test_annotation_only_cannot_be_narrated_as_scored() -> None:
+    mol = _mol(
+        evidence_source_audit={
+            "chembl": {
+                "status": "annotation_only",
+                "hit_count": 1,
+                "scored_hit_count": 1,
+                "ranking_effect": "score",
+            }
+        }
+    )
+    text = "\n".join(build_evidence_boundary_narrative(mol))
+    assert "ChEMBL：已检索但无计分命中" in text
+    assert "其中 1 条进入计分" not in text
+
+
 def test_mechanism_html_is_compact_for_pdf() -> None:
-    html = build_mechanism_html([_mol(selection_reason="eligibility=eligible; score=competition=0.5")])
+    html = build_mechanism_html(
+        [_mol(selection_reason="eligibility=eligible; score=competition=0.5")],
+        run_context={
+            "run_id": "run-1",
+            "input_sha256": "a" * 64,
+            "config_hash": "config-v1",
+            "selection_sha256": "b" * 64,
+        },
+    )
     assert "毒性与证据边界" in html
     assert "evidence-bullets" in html
     assert "stage=2; status=" not in html
     assert "声明上限" in html
-    assert "不编造靶点" in html
+    assert "ACCase" in html
     assert "候选级引用与查询记录" not in html
     assert "毒性计算摘要" in html
     assert "结构与性质表达式" in html
     assert "signal-grid" in html
     assert "毒性分量与可信度" not in html
-    assert "建议实验读出清单" in html
+    assert "候选特异验证与风险控制" in html
+    assert "HepG2-FFA 双终点主筛与机制升级规则" in html
+    assert "Scientific Reports 原始研究" not in html
     assert "入选与排序理由" in html
     assert "EPA 关键指标" in html
     assert "page-break-after:always" in html
     assert "<details" not in html
+    assert "Reproducibility lineage" in html
+    assert "run-1" in html
+    assert "EPA 身份映射待结构复核" in html
+    assert "[供应商/二级资料]" in html
+    assert "其中 1 条进入计分" not in html

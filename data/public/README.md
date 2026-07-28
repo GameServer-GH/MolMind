@@ -52,7 +52,8 @@ from full public-data ingestion.
 ```bash
 # ChEMBL assay-grain (compound × assay × activity)
 # Seed-driven HepG2-FFA expansion (search skipped when ChEMBL assay search stalls);
-# merges prior rows. Curated IDs: services/public_data/chembl.py SEED_HEPG2_FFA_ASSAY_IDS
+# merges prior rows. Curated IDs:
+# plugins/molmind_core/scientific/public_data/chembl.py SEED_HEPG2_FFA_ASSAY_IDS
 # Discovery fixture: data/public/fixtures/chembl_hepg2_ffa_seed_candidates.json
 PYTHONPATH=. python scripts/import_public_data.py \
   --source chembl_bioactivity --limit 32 --sync-registry
@@ -90,7 +91,7 @@ PYTHONPATH=. python scripts/import_epa_ctx.py --limit 10
 
 # Full SDF identity mapping (checkpointed; cross-SDF identity cache enabled)
 PYTHONPATH=. python scripts/plan_epa_ctx_bulk.py \
-  --sdf "docs/demo/T001 TargetMol现货产品22966.sdf" \
+  --sdf "data/T001 TargetMol现货产品22966.sdf" \
   --limit 22966 --workers 6 --resume \
   --output data/public/processed/epa_ctx/bulk_mapping_all.jsonl
 
@@ -117,6 +118,45 @@ Artifacts (raw/processed gitignored; commit manifests):
 EvidenceFacade (`evidence.public_assay_grain.enabled`) loads QC tables by exact
 InChIKey. PubChem `Active` stays `annotation_only` (no `conf_e` lift). Only
 ChEMBL phenotype `task_evidence` may enter lipid/tox score channels.
+
+## Runtime candidate evidence lookup
+
+`query_evidence` is the read-only, candidate-scoped lookup entry point. It can
+resolve a molecule from the current screening Run by `molecule_id`, or accept a
+complete InChIKey/CAS/SMILES identity directly. It follows this local-first
+order:
+
+```text
+frozen snapshot
+  -> local public/QC tables
+  -> gateway query-state cache
+  -> remote providers only when allow_live=true
+  -> normalized EvidenceBundle and query audit
+```
+
+The canonical query statuses are `hit`, `verified_empty`, `query_failed`,
+`auth_missing`, `not_queried`, `identity_review_required`, and
+`annotation_only`. Older adapter terms such as `exact_hit`, `analogue_hit`,
+`adapter_error`, `timeout`, or `rate_limited` are internal compatibility
+details: they must be normalized into a canonical status plus `match_type` or
+an error subtype before presentation. `audit_missing` is the candidate-level
+outcome when no usable identity can be resolved; it is not evidence of absence.
+
+The lookup tool never writes selection. Live results are enrichment for its
+evidence card and query audit only; they do not mutate the current Run's
+scores, Top N, or `selection_sha256`. Evidence intended for later ranking must
+first be normalized, audited, frozen as a snapshot, and consumed by a new
+offline run. See [`EVIDENCE_GATEWAY.md`](EVIDENCE_GATEWAY.md) for the cache,
+identity, status, and live-query contract.
+
+Identity resolution is shared by all live providers: original InChIKey,
+standardized InChIKey, CAS, then standardized SMILES. Unexplained
+standardization changes, CAS/structure disagreement, multiple provider IDs, or
+snapshot/live compound-ID drift become `identity_review_required` and cannot
+increase efficacy, novelty, or safety confidence. Provider calls use bounded
+per-provider concurrency, actual HTTP-subrequest rate limits, independent
+timeouts/circuit breakers, deterministic output ordering, and a payload-hash +
+adapter/endpoint-version checked query-state cache.
 
 ## Layout
 

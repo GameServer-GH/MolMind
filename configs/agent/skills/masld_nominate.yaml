@@ -1,0 +1,12 @@
+plugin_id: molmind-core
+skill_id: masld_nominate
+title: MASLD TopN 筛选排序
+description: 解析 SDF → 打分排序 → 导出 TopN 候选 CSV 与证据卡片
+limits:
+  top_n_min: 1
+  top_n_max: 50
+tools:
+  - parse_sdf
+  - score_and_rank
+  - export_nomination
+  - build_evidence_card

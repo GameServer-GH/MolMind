@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建 molmind:0.1.1 并导出到 deploy/images/
+# 构建 molmind:0.2.0 并导出到 deploy/images/
 # 用法（仓库根目录）：
 #   bash deploy/pack-image.sh           # 默认 linux/amd64
 #   bash deploy/pack-image.sh amd64     # Windows/Linux Intel/AMD
@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-IMAGE="molmind:0.1.1"
+IMAGE="molmind:0.2.0"
 ARCH="${1:-amd64}"
 case "$ARCH" in
   x86_64|amd64) PLATFORM="linux/amd64"; ARCH_TAG="amd64" ;;
@@ -21,7 +21,7 @@ case "$ARCH" in
 esac
 
 OUT_DIR="$ROOT/deploy/images"
-OUT_TAR="$OUT_DIR/molmind-0.1.1-${ARCH_TAG}.tar"
+OUT_TAR="$OUT_DIR/molmind-0.2.0-${ARCH_TAG}.tar"
 mkdir -p "$OUT_DIR"
 
 echo "==> build $IMAGE ($PLATFORM)"

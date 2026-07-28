@@ -1,40 +1,10 @@
-"""services.pipeline — 编排与配置导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.pipeline.
 
-from services.pipeline.config_loader import AppConfig, ConfigLoadError, load_config, resolve_runtime_switches
-from services.pipeline.export import (
-    CSV_COLUMNS,
-    SCREENING_AUDIT_COLUMNS,
-    export_critic_audit_csv,
-    export_hepg2_ffa_resources_json,
-    export_nomination_csv,
-    export_screening_audit_csv,
-    export_rank_robustness_json,
-    to_csv_text,
-)
+Prefer: `from plugins.molmind_core.scientific.pipeline import ...`
+"""
+from __future__ import annotations
 
+import plugins.molmind_core.scientific.pipeline as _pkg
+import sys
 
-def __getattr__(name: str):
-    if name in ("PipelineResult", "run_pipeline", "screen_sdf"):
-        from services.pipeline import runner as _runner
-
-        return getattr(_runner, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-__all__ = [
-    "AppConfig",
-    "CSV_COLUMNS",
-    "SCREENING_AUDIT_COLUMNS",
-    "ConfigLoadError",
-    "PipelineResult",
-    "export_nomination_csv",
-    "export_critic_audit_csv",
-    "export_hepg2_ffa_resources_json",
-    "export_screening_audit_csv",
-    "export_rank_robustness_json",
-    "load_config",
-    "resolve_runtime_switches",
-    "run_pipeline",
-    "screen_sdf",
-    "to_csv_text",
-]
+sys.modules[__name__] = _pkg

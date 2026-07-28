@@ -1,3 +1,7 @@
-# services
+# Scientific shims
 
-科学计算与编排服务（ingest → filter → score → rank → critic → pipeline）。
+`services/<name>/` packages (except `agent`) are backward-compatible shims.
+
+Canonical code lives under `plugins/molmind_core/scientific/<name>/`.
+
+Prefer the plugins path in new code; legacy services imports continue to work via shims.

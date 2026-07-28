@@ -49,6 +49,11 @@ ScientificStatus = Literal[
     "identity_review_required",
 ]
 EvidenceQueryStatus = Literal[
+    # Canonical transport/query states used by the evidence gateway.
+    "hit",
+    "query_failed",
+    "auth_missing",
+    # Backward-compatible facade/export states.
     "exact_hit",
     "analogue_hit",
     "annotation_only",
@@ -168,7 +173,18 @@ class EvidenceHit:
     response_sha256: str = ""
     license: str = ""
     query_status: EvidenceQueryStatus = "not_queried"
+    # Original provider/snapshot vocabulary retained only for boundary audit.
+    # Core gateway logic always branches on canonical ``query_status``.
+    raw_status: str = ""
     evidence_type: EvidenceType = "unresolved"
+    # Gateway identity/audit metadata.  Defaults keep all existing constructors
+    # and frozen snapshot replays backward compatible.
+    provider_id: str = ""
+    lookup_field: str = ""
+    lookup_value: str = ""
+    match_type: str = ""
+    accession: str = ""
+    claim_ceiling: str = ""
 
 
 @dataclass

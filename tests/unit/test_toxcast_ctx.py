@@ -129,9 +129,9 @@ def test_toxcast_qc_keeps_active_risk_only() -> None:
     assert reasons.get("inactive_excluded_not_safety_label") == 1
     assert kept[0]["evidence_role"] == "risk_signal"
     hit = row_to_evidence_hit(kept[0])
-    assert hit.query_type == "tox"
-    assert hit.direction == "risk"
-    assert hit.score > 0
+    # risk_signal is retained for audit/mechanism visibility but must not score as tox.
+    assert hit.query_type == "annotation"
+    assert hit.score == 0.0
     ok, reason, _ = qc_toxcast_row(rows[1])
     assert ok is False
     assert "inactive" in reason

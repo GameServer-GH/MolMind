@@ -11,6 +11,9 @@ import pytest
 
 from services.evidence_facade import EvidenceBundle, EvidenceFacade
 from services.pipeline.config_loader import load_config
+from plugins.molmind_core.scientific.evidence_facade.facade import (
+    _normalize_snapshot_row,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -31,6 +34,7 @@ def snapshot_jsonl(tmp_path: Path) -> Path:
             "endpoint": "cellular_lipid_reduction",
             "direction": "supports",
             "evidence_role": "task_evidence",
+            "query_status": "exact_hit",
             "schema_version": "evidence-v2",
         },
         {
@@ -42,6 +46,7 @@ def snapshot_jsonl(tmp_path: Path) -> Path:
             "confidence": 0.55,
             "evidence_id": "pubchem:999:ghs",
             "payload": {},
+            "query_status": "exact_hit",
         },
     ]
     with path.open("w", encoding="utf-8") as fh:
@@ -154,7 +159,7 @@ def test_bundle_all_ids(snapshot_jsonl: Path) -> None:
     assert "pubchem:999:ghs" in ids
 
 
-def test_snapshot_row_is_indexed_by_inchikey_and_cas(tmp_path: Path) -> None:
+def test_snapshot_row_can_use_cas_when_structure_key_is_missing(tmp_path: Path) -> None:
     row = {
         "inchikey": "EXACT-KEY-N",
         "cas": "123-45-6",
@@ -166,6 +171,7 @@ def test_snapshot_row_is_indexed_by_inchikey_and_cas(tmp_path: Path) -> None:
         "endpoint": "cellular_lipid_reduction",
         "direction": "supports",
         "evidence_role": "task_evidence",
+        "query_status": "exact_hit",
         "schema_version": "evidence-v2",
     }
     (tmp_path / "v2.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
@@ -173,27 +179,166 @@ def test_snapshot_row_is_indexed_by_inchikey_and_cas(tmp_path: Path) -> None:
     facade = EvidenceFacade(cfg, snapshot_dir=tmp_path)
     with patch.object(facade, "_try_live") as live:
         bundle = facade.query(
-            inchikey="STANDARDIZED-KEY-N",
+            inchikey="",
             cas="123-45-6",
             smiles="CCO",
         )
     live.assert_not_called()
     assert bundle.lipid[0].evidence_id == "chembl:test"
+    assert bundle.lipid[0].lookup_field == "cas"
+    assert bundle.lipid[0].lookup_value == "123-45-6"
 
 
-def test_query_failure_is_not_cached_as_database_miss(tmp_path: Path) -> None:
+def test_snapshot_cas_identity_conflict_blocks_lifts_but_keeps_tox_risk(
+    tmp_path: Path,
+) -> None:
+    conflicting_inchikey = "OTHER-STRUCTURE-KEY-N"
+    cas = "50-00-0"
+    common = {
+        "inchikey": conflicting_inchikey,
+        "cas": cas,
+        "confidence": 0.8,
+        "evidence_role": "task_evidence",
+        "query_status": "exact_hit",
+        "schema_version": "evidence-v2",
+    }
+    rows = [
+        {
+            **common,
+            "adapter_id": "chembl_lipid_v1",
+            "query_type": "lipid",
+            "score": 0.9,
+            "evidence_id": "chembl:conflict:lipid",
+            "endpoint": "cellular_lipid_reduction",
+            "direction": "supports",
+        },
+        {
+            **common,
+            "adapter_id": "chembl_lipid_v1",
+            "query_type": "novelty",
+            "score": 0.85,
+            "evidence_id": "chembl:conflict:novelty",
+            "endpoint": "novelty",
+            "direction": "supports",
+        },
+        {
+            **common,
+            "adapter_id": "chembl_lipid_v1",
+            "query_type": "tox",
+            "score": 0.95,
+            "evidence_id": "chembl:conflict:safety",
+            "endpoint": "safety_clearance",
+            "direction": "supports_safety",
+        },
+        {
+            **common,
+            "adapter_id": "pubchem_tox_v1",
+            "query_type": "tox",
+            "score": 0.7,
+            "confidence": 0.55,
+            "evidence_id": "pubchem:conflict:risk",
+            "endpoint": "hazard_classification",
+            "direction": "risk",
+        },
+    ]
+    snapshot = tmp_path / "conflict.jsonl"
+    snapshot.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    cfg = load_config(mode="offline")
+    facade = EvidenceFacade(cfg, snapshot_dir=tmp_path)
+
+    bundle = facade.query(
+        inchikey="CANDIDATE-STRUCTURE-KEY-N",
+        cas=cas,
+        smiles="CCO",
+        allow_live=False,
+    )
+
+    assert bundle.has_identity_review_required
+    assert bundle.lipid_score == 0.0
+    assert bundle.conf_e == 0.0
+    assert bundle.novelty_score == 0.0
+    assert not bundle.has_safety_clearance_evidence
+    assert bundle.tox_score == pytest.approx(0.7)
+    assert bundle.toxicity_evidence_coverage == pytest.approx(0.55)
+    assert {hit.evidence_id for hit in bundle.tox} == {"pubchem:conflict:risk"}
+    assert bundle.tox[0].match_type == "cas_identifier_conflict_conservative_risk"
+    assert bundle.tox[0].claim_ceiling == (
+        "candidate_risk_signal_only_not_safety_clearance"
+    )
+    reviews = [
+        hit
+        for hit in bundle.query_audit
+        if hit.query_status == "identity_review_required"
+    ]
+    assert {hit.adapter_id for hit in reviews} == {
+        "chembl_lipid_v1",
+        "pubchem_tox_v1",
+    }
+    assert all(hit.score == 0.0 and hit.confidence == 0.0 for hit in reviews)
+    assert all(hit.lookup_field == "cas" and hit.lookup_value == cas for hit in reviews)
+    assert all(hit.match_type == "cas_identifier_conflict" for hit in reviews)
+    assert all(
+        hit.payload["reason"] == "cas_snapshot_inchikey_conflict"
+        for hit in reviews
+    )
+
+
+def test_legacy_snapshot_status_migration_is_strict() -> None:
+    base = {
+        "query_type": "tox",
+        "score": 0.8,
+        "confidence": 0.7,
+        "evidence_id": "legacy:test",
+        "evidence_role": "task_evidence",
+        "provenance_status": "retrieved",
+        "direction": "risk",
+    }
+
+    known = _normalize_snapshot_row({**base, "adapter_id": "pubchem_tox_v1"})
+    unknown = _normalize_snapshot_row({**base, "adapter_id": "unknown_adapter_v1"})
+
+    assert known["query_status"] == "exact_hit"
+    assert known["provenance_status"] == "legacy_snapshot_migrated"
+    assert unknown["query_status"] == "not_queried"
+
+
+def test_facade_never_uses_or_caches_legacy_live_query(tmp_path: Path) -> None:
     cfg = load_config(mode="online")
     facade = EvidenceFacade(cfg, snapshot_dir=tmp_path)
     with patch.object(facade, "_try_live", return_value=[]) as live:
-        live.side_effect = lambda **_kwargs: (
-            setattr(facade, "_live_failures", facade._live_failures + 1) or []
-        )
         facade.query(
             inchikey="FAILED-KEY-N",
             cas="555-55-5",
             smiles="CCO",
+            allow_live=True,
         )
+    live.assert_not_called()
     assert not (tmp_path / "auto_cache.jsonl").exists()
+    assert "legacy_facade_live_blocked" in cfg.degraded_channels
+
+
+def test_in_memory_cache_key_includes_input_structure(tmp_path: Path) -> None:
+    cfg = load_config(mode="offline")
+    facade = EvidenceFacade(cfg, snapshot_dir=tmp_path)
+
+    first = facade.query(
+        inchikey="SAME-IDENTITY-KEY-N",
+        cas=None,
+        smiles="CCO",
+        allow_live=False,
+    )
+    second = facade.query(
+        inchikey="SAME-IDENTITY-KEY-N",
+        cas=None,
+        smiles="CCN",
+        allow_live=False,
+    )
+
+    assert first is not second
+    assert first.input_structure_hash != second.input_structure_hash
 
 
 def test_toxicity_risk_propagates_to_frozen_standardized_alias(tmp_path: Path) -> None:
@@ -206,6 +351,7 @@ def test_toxicity_risk_propagates_to_frozen_standardized_alias(tmp_path: Path) -
         "confidence": 0.55,
         "evidence_id": "pubchem:4829:ghs",
         "direction": "risk",
+        "query_status": "exact_hit",
     }
     (tmp_path / "risk.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
     cfg = load_config(mode="offline")

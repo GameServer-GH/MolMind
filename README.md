@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>分子思维（MolMind）</strong> · 可审计的计算候选优先级系统 · MASLD / HepG2-FFA<br />
-  公开实验数据 · 毒理证据 · 多组学机制上下文<br />
+  <strong>分子思维（MolMind）</strong> · AI Agent 驱动的可审计候选优先级系统 · MASLD / HepG2-FFA<br />
+  对话 / Skills 编排 · 公开实验数据 · 毒理证据 · 多组学机制上下文<br />
   <a href="README.en.md">English</a>
 </p>
 
@@ -14,9 +14,9 @@
 
 ## 项目做什么
 
-**分子思维（MolMind）** 是面向 **MASLD / HepG2-FFA** 场景的**可审计计算候选优先级系统**：输入化合物库（单个 `.sdf`），基于公开活性、毒理与多组学机制证据，输出可复现、可追溯的优先短名单与机制假说，供实验优先验证。
+**分子思维（MolMind）** 是面向 **MASLD / HepG2-FFA** 场景的 **AI Agent 驱动候选清单平台**：上传化合物库（单个 `.sdf`）后，用自然语言或 Skill 驱动内置科学核，基于公开活性、毒理与多组学机制证据，输出可复现、可追溯的优先短名单、机制假说与交卷包，供实验优先验证。
 
-它**不是**已通过 HepG2-FFA 湿实验验证的降脂/低毒预测器。Top N 属于计算优先级层；科学声明必须受 `scientific_status` / `claim_ceiling` 约束。
+排名与毒性门控由确定性科学核 `molmind-core` 写出；LLM / 可选 Catalog 插件**不得**私改主榜。它**不是**已通过 HepG2-FFA 湿实验验证的降脂/低毒预测器。Top N 属于计算优先级层；科学声明必须受 `scientific_status` / `claim_ceiling` 约束。
 
 ### 要解决的问题
 
@@ -64,15 +64,19 @@
 | 开关 | 默认 | 含义 |
 |------|------|------|
 | **使用快照** `use_snapshot` | 开 | 读取 `data/evidence_snapshot/` |
-| **联网补证据** `allow_live` | 关 | ChEMBL/PubChem live 补洞（仅短名单） |
+| **显式联网补证** `allow_live` | 关 | 只授权 `query_evidence` / `bake-evidence` enrichment；不进入同轮排名 |
 
-推荐默认：**快照开 + 联网关**（可复现）。需要补证据时先 `bake-evidence` 或临时开联网，烘焙后再关联网复跑。
+推荐默认：**快照开 + 联网关**（可复现）。需要补证据时显式运行
+`query_evidence(..., allow_live=True)` 查看只读证据卡，或运行 `bake-evidence`
+规范化并冻结结果；随后用新快照离线复跑。筛选流水线即使收到 `allow_live=true`，
+也只记录 enrichment 授权，不让本轮 HTTP 响应进入评分对象。
 
-兼容：`--mode online` / `mode=online` 等价于 `allow_live=true`；`offline` 仅作旧别名，不再单独代表算法路径。
+兼容：`--mode online` / `mode=online` 仍解析为 `allow_live=true`，但不会恢复隐式
+联网排名；`offline` 仅作旧别名，不再单独代表算法路径。
 
-### 七步 Agent 流水线
+### 七步科学核（由 Agent Tool 调用）
 
-不是「一个脚本打分出 CSV」，而是分阶段、可观测、可审计的优先级编排流水线：
+不是「一个脚本打分出 CSV」，而是分阶段、可观测、可审计的优先级编排流水线；评委主路径经 Agent Skill（如 `masld_nominate`）调用 `score_and_rank`，亦可 CLI / `/api/screen*` 直跑同一核：
 
 | 步骤 | 模块 | 做什么 |
 |------|------|--------|
@@ -130,18 +134,99 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 
 ### Evidence Facade：会用工具的取证层
 
-统一门面 `EvidenceFacade.query()`：
+本地科学门面 `EvidenceFacade.query()`：
 
 - 适配器版本化（主路径默认 `chembl_lipid_v1` + `pubchem_tox_v1`）  
 - 结果写入 `attributions[]` / `evidence_id`，可追溯到 CSV 依据列  
-- `prefer_snapshot=true`：命中本地快照则跳过外网  
-- 显式 `online` 时启用 HTTP 超时 + 连续失败熔断；失败记入 `degraded_channels[]`，不崩库、不瞎编高分
+- `prefer_snapshot=true`：确定性重放本地快照与公开 QC 表
+- `query()` 默认且在排名链路中始终 `allow_live=false`；HTTP 只由统一 Evidence Gateway
+  在显式 Tool / bake enrichment 中调用，并按 provider 独立限流、超时与熔断
+- EPA CTX 的 live 精确 InChIKey 查询只会按既有 cytotox 阈值产生风险信号；CAS/多
+  DTXSID 只提示身份复核。BindingDB 与 GEO/PRIDE/代谢组仍是本地机制/QC 上下文，分数为 0。
+- live 结果不会写入当前主榜；必须经 `bake-evidence` 规范化、审计并冻结到 snapshot，后续离线
+  Run 才可能读取它。EPA live 凭据优先使用 `CTX_API_KEY`、`CTX_API_KEY_FILE` 或
+  OS keychain，缺省时使用发行内置的公开受限 key。该 key 与机制 LLM 的发行
+  默认 key 均由服务商侧限权、限额并可即时吊销，不得授予管理权限或生产数据
+  访问权限；环境变量仍可覆盖，`MOLMIND_USE_EMBEDDED_PUBLIC_KEYS=0` 和
+  `MOLMIND_LLM_USE_EMBEDDED=0` 可分别禁用默认 key。
+
+### 候选证据查询：独立、只读、local-first
+
+内置 Tool `query_evidence` 可按当前筛选 Run 的 `molecule_id`，或按完整的
+InChIKey / CAS / SMILES 身份单独查询候选证据。它只生成结构化
+`EvidenceBundle` 与证据卡，不重排候选、不写主榜，Registry 中保持
+`writes_selection=false`。
+
+查询顺序固定为：
+
+```text
+冻结快照
+  → 本地公开数据 / QC 表
+  → Evidence Gateway 查询状态缓存
+  → 仅 allow_live=true 时访问远端
+  → 规范化 EvidenceBundle
+  → 写入查询状态与审计记录
+```
+
+默认 `allow_live=false`。`force_refresh=true` 只表示在显式允许联网时忽略可刷新的
+缓存决策；它本身不会开启网络。远端补证据属于 enrichment，本次查询产生的证据卡
+不会改变原 Run 的 `S_lipid`、`R_tox`、`novelty`、`conf_e`、Top N 或
+`selection_sha256`。若证据未来需要参与排名，必须先规范化、审计并冻结为 snapshot，
+再离线复跑科学核。
+
+身份优先级为原始 InChIKey → 标准化 InChIKey → CAS → 标准化 SMILES。
+原始与标准化 InChIKey 不同只有在当前 Run 保留明确 `standardization_steps` 时才可接受；
+缺少标准化轨迹、CAS 绑定到其他结构、多 CID 或 provider compound identity 漂移都会进入
+`identity_review_required`，并阻止效力、创新性与安全置信度提升。既有项目规则只允许在
+审计清楚时保守传播毒性风险。
+
+证据卡会报告实际采用的 `lookup_field` / `lookup_value` / `match_type`、命中来源、
+未查询/空结果/失败/缺凭据来源、评分证据与注释证据的区别、身份冲突、
+`claim_ceiling` 以及是否建议显式联网。规范查询状态为 `hit`、
+`verified_empty`、`query_failed`、`auth_missing`、`not_queried`、
+`identity_review_required`、`annotation_only`；其中空结果、失败和缺凭据均不是
+生物学阴性、无毒或无效。
+
+离线查询一个已冻结身份：
+
+```bash
+PYTHONPATH=. .venv/bin/python - <<'PY'
+from plugins.molmind_core.tools.scientific import run_query_evidence
+
+out = run_query_evidence(
+    inchikey="PCZOHLXUXFIOCF-BXMDZJJMSA-N",
+    allow_live=False,
+)
+print(out.card)
+PY
+```
+
+显式开启 live enrichment（远端失败会写入降级审计，其他通道仍可返回）：
+
+```bash
+PYTHONPATH=. .venv/bin/python - <<'PY'
+from plugins.molmind_core.tools.scientific import run_query_evidence
+
+out = run_query_evidence(
+    inchikey="LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+    cas="64-17-5",
+    smiles="CCO",
+    providers=["chembl", "pubchem"],
+    allow_live=True,
+    force_refresh=True,
+)
+print(out.card)
+PY
+```
+
+更完整的缓存、身份和状态契约见
+[`data/public/EVIDENCE_GATEWAY.md`](data/public/EVIDENCE_GATEWAY.md)。
 
 ### 可复现与可审计
 
 | 机制 | 作用 |
 |------|------|
-| `config_hash` | 对配置、模型文件、GoldSet/通路表、快照内容和核心算法实现做稳定哈希，写入 CSV 与 API |
+| `config_hash` | 对配置、模型文件、GoldSet/通路表、快照内容和 `plugins/molmind_core/scientific/` canonical 核心实现做稳定哈希，写入 CSV 与 API |
 | 证据快照 | 短名单可预烘焙进 `data/evidence_snapshot/`，镜像内离线复现 |
 | `degraded_channels[]` | 如 `evidence_empty`、`lipid_ml`、熔断等，运行降级全程可审计 |
 | 归因列 | 降脂 / 毒性判断依据、`overall_reason` 可回溯到信号与证据 ID |
@@ -203,8 +288,8 @@ LLM Critic 架构支持证据约束（只能引用本 Run 已出现的 `evidence
 
 ```bash
 # Docker Engine 需一次性配置 insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.1
-docker tag 8.133.197.65:5001/molmind:0.1.1 molmind:0.1.1
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.0
+docker tag 8.133.197.65:5001/molmind:0.2.0 molmind:0.2.0
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```
@@ -238,8 +323,9 @@ docker compose -f deploy/docker-compose.yml run --rm cli
 | 路径 | 说明 |
 |------|------|
 | `apps/` | API、CLI、Web 静态前端 |
-| `services/` | 流水线与评分 / 证据 / Critic / 机制等服务 |
-| `packages/` | 化学核心、金标、可选 ML、数据模型等共享包 |
+| `plugins/molmind_core/` | 流水线、评分、证据 Gateway / Facade、Critic、机制与 Tool 的 canonical 实现 |
+| `services/` | 指向 canonical 实现的向后兼容 shim；新科学逻辑不放在此处 |
+| `packages/` | 化学核心、金标、可选 ML、数据模型等共享兼容入口 |
 | `configs/` | 过滤、打分、排序权重与模型清单（纳入 `config_hash`） |
 | `data/` | 样本 SDF、goldset、证据快照、`public/` 注册表与导入工作区、参考表、可选模型 |
 | `deploy/` | Dockerfile、Compose、部署说明 |

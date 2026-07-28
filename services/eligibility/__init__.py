@@ -1,5 +1,10 @@
-"""统一候选资格门控。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.eligibility.
 
-from services.eligibility.policy import evaluate_candidate_eligibility, policy_from_config
+Prefer: `from plugins.molmind_core.scientific.eligibility import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["evaluate_candidate_eligibility", "policy_from_config"]
+import plugins.molmind_core.scientific.eligibility as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

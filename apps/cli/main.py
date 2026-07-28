@@ -13,6 +13,7 @@ from services.evidence_facade.bake import (
     bake_from_sdf,
     bake_frozen_top10,
     bake_submission_evidence,
+    promote_evidence_cache,
 )
 from services.pipeline import load_config, run_pipeline
 
@@ -84,6 +85,13 @@ def main(argv: list[str] | None = None) -> int:
         help="证据 JSONL 输出路径（默认 data/evidence_snapshot/baked_evidence_v2.jsonl）",
     )
     parser.add_argument(
+        "--promote-evidence-cache",
+        action="store_true",
+        help="显式把 query cache 校验后原子晋升为冻结 snapshot",
+    )
+    parser.add_argument("--promote-cache-path", default=None)
+    parser.add_argument("--promote-dry-run", action="store_true")
+    parser.add_argument(
         "--compact-snapshot",
         action="store_true",
         help="压缩 data/evidence_snapshot/*.jsonl：同 InChIKey+adapter+query_type 保留最后一条",
@@ -118,6 +126,18 @@ def main(argv: list[str] | None = None) -> int:
 
         stats = compact_all_snapshots(backup=True)
         print(json.dumps([s.__dict__ for s in stats], ensure_ascii=False, indent=2))
+        return 0
+
+    if args.promote_evidence_cache:
+        if not args.promote_cache_path:
+            parser.error("--promote-evidence-cache 需要 --promote-cache-path")
+        output_path = Path(args.bake_output or "data/evidence_snapshot/promoted_evidence.jsonl")
+        stats = promote_evidence_cache(
+            cache_path=Path(args.promote_cache_path),
+            output_path=output_path,
+            dry_run=args.promote_dry_run,
+        )
+        print(json.dumps(stats.__dict__, ensure_ascii=False, indent=2))
         return 0
 
     if args.bake_evidence:

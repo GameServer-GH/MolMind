@@ -1,0 +1,17 @@
+plugin_id: origene-mcp
+title: OrigeneMCP · 生物医学工具面
+builtin: false
+enabled: false
+catalog: true
+description: 兼容可选。机制/靶点/文献 enrichment；失败降级；不改主榜。须在设置中主动添加。
+source: https://github.com/GENTEL-lab/OrigeneMCP
+requires:
+  network: true
+  gpu: false
+tools:
+  - mcp_query_opentargets
+  - mcp_query_chembl
+  - mcp_query_uniprot
+skills:
+  - enrich_mechanism_with_mcp
+activation: user_opt_in

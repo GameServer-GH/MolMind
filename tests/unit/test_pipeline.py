@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from plugins.molmind_core.scientific.evidence_facade.bundle import EvidenceBundle
+from plugins.molmind_core.scientific.pipeline.config_loader import ALGORITHM_PATHS
 from services.pipeline import CSV_COLUMNS, load_config, run_pipeline, screen_sdf
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,3 +80,53 @@ def test_pipeline_parse_logs_explain_slowness_and_progress() -> None:
     assert "解析完成" in joined
     assert "耗时" in joined
     assert any("预估约" in line and "条记录" in line for line in zh_logs)
+
+
+def test_explicit_live_authorization_cannot_change_same_run_ranking(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    class FrozenOnlyFacade:
+        def __init__(self, _cfg):
+            pass
+
+        def query(self, *, allow_live=False, **_identity):
+            calls.append(bool(allow_live))
+            return EvidenceBundle()
+
+        def finalize_degraded_flags(self, *, any_hit):
+            assert any_hit is False
+
+    monkeypatch.setattr(
+        "plugins.molmind_core.scientific.pipeline.runner.EvidenceFacade",
+        FrozenOnlyFacade,
+    )
+    offline = screen_sdf(
+        SAMPLE_SDF,
+        cfg=load_config(mode="auto", allow_live=False),
+        top_n=5,
+    )
+    requested = screen_sdf(
+        SAMPLE_SDF,
+        cfg=load_config(mode="auto", allow_live=True),
+        top_n=5,
+    )
+
+    assert calls and all(value is False for value in calls)
+    assert [row.molecule_id for row in requested.top_molecules] == [
+        row.molecule_id for row in offline.top_molecules
+    ]
+    assert [row.final_score for row in requested.top_molecules] == [
+        row.final_score for row in offline.top_molecules
+    ]
+    assert any(
+        "same_run_live_scoring=blocked" in entry.get("message", "")
+        for entry in requested.logs
+    )
+
+
+def test_config_hash_algorithm_boundary_uses_canonical_plugin_files() -> None:
+    assert ALGORITHM_PATHS
+    assert all(not path.startswith("services/") for path in ALGORITHM_PATHS)
+    assert all((ROOT / path).is_file() for path in ALGORITHM_PATHS)
+    assert "plugins/molmind_core/scientific/pipeline/runner.py" in ALGORITHM_PATHS
+    assert "plugins/molmind_core/scientific/evidence_facade/facade.py" in ALGORITHM_PATHS

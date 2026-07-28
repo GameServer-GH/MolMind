@@ -1,5 +1,10 @@
-"""services.hard_filter — 硬过滤导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.hard_filter.
 
-from services.hard_filter.filter import apply_hard_filters
+Prefer: `from plugins.molmind_core.scientific.hard_filter import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["apply_hard_filters"]
+import plugins.molmind_core.scientific.hard_filter as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

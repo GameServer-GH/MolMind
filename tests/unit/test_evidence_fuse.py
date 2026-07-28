@@ -50,6 +50,7 @@ def test_with_evidence_raises_lipid_vs_without() -> None:
                 score=0.75,
                 confidence=0.8,
                 evidence_id="chembl:TEST:lipid",
+                query_status="hit",
             )
         ]
     )
@@ -95,6 +96,7 @@ def test_evidence_ablation_changes_final_score() -> None:
                 score=0.8,
                 confidence=0.85,
                 evidence_id="chembl:ABL:lipid",
+                query_status="hit",
             )
         ],
         tox=[
@@ -104,6 +106,7 @@ def test_evidence_ablation_changes_final_score() -> None:
                 score=0.1,
                 confidence=0.5,
                 evidence_id="pubchem:ABL:ghs",
+                query_status="hit",
             )
         ],
     )

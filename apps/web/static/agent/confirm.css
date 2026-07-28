@@ -1,0 +1,154 @@
+/* GameGhost-style confirm dialog (DlgConfirm delete) */
+.mm-confirm-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100010;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.mm-confirm-mask.mm-confirm-mask--open {
+  opacity: 1;
+}
+
+.mm-confirm-dialog {
+  width: 85%;
+  max-width: 360px;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  transform: scale(0.92);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mm-confirm-mask--open .mm-confirm-dialog {
+  transform: scale(1);
+}
+
+.mm-confirm-header {
+  padding: 16px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mm-confirm-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+.mm-confirm-icon {
+  width: 22px;
+  height: 22px;
+  color: #ff4d4f;
+  flex-shrink: 0;
+}
+
+.mm-confirm-icon--neutral {
+  color: #005aff;
+}
+
+.mm-confirm-content {
+  padding: 14px 20px 18px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.55;
+  font-weight: 500;
+}
+
+.mm-confirm-content strong {
+  color: #222;
+  font-weight: 700;
+}
+
+.mm-confirm-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+
+.mm-confirm-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
+  padding: 0 12px;
+  border: 1.5px solid #e2e2e2;
+  border-radius: 10px;
+  background: #fafafa;
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mm-confirm-input:focus {
+  border-color: #005aff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 90, 255, 0.15);
+}
+
+.mm-confirm-input--invalid {
+  border-color: #ff4d4f;
+  background: #fff7f7;
+}
+
+.mm-confirm-footer {
+  display: flex;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.mm-confirm-footer button {
+  flex: 1;
+  height: 42px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.mm-confirm-cancel {
+  background: #e4e4e4;
+  color: #666;
+}
+
+.mm-confirm-cancel:hover {
+  background: #dcdcdc;
+}
+
+.mm-confirm-ok {
+  background: #ff4d4f;
+  color: #fff;
+}
+
+.mm-confirm-ok:hover {
+  opacity: 0.92;
+}
+
+.mm-confirm-ok--primary {
+  background: #005aff;
+  color: #fff;
+}
+
+.mm-confirm-ok--primary:hover {
+  opacity: 0.92;
+}
+
+.mm-confirm-ok:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

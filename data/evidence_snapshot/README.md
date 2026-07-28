@@ -1,8 +1,11 @@
 # 证据快照（JSONL）
 
-每行一条 JSON，按 `inchikey`（或 `cas`）索引。Quality-Max（`mode=auto`）与调试 `offline`/`online` 在 `prefer_snapshot=true` 时都**优先读这里**，命中则不再打外网。
+每行一条 JSON，按 `inchikey`（或经结构校验的 `cas`）索引。Quality-Max
+排名只读这里和本地公开/QC 表，不执行隐式 HTTP。`online` 兼容参数只表达显式
+enrichment 授权；要补证据请使用 `query_evidence` 或 `bake-evidence`，再启动新的
+离线排名 Run。
 
-> **与公开数据导入的分界**：本目录是运行时 EvidenceFacade 快照（按候选 InChIKey bake / compact）。  
+> **与公开数据导入的分界**：本目录是运行时 EvidenceFacade 快照（按候选 InChIKey bake / compact）。
 > `data/public/processed/*/records*.jsonl` 是 registry 导入的 assay-grain 表，经 QC 后由 facade 按 InChIKey 合并；二者谱系不同，不要混为同一张训练表。
 
 ## 字段
@@ -16,26 +19,43 @@
   "score": 0.72,
   "confidence": 0.6,
   "evidence_id": "chembl:CHEMBL123:lipid",
-  "payload": {}
+  "payload": {},
+  "endpoint": "cellular_lipid_reduction",
+  "direction": "supports",
+  "evidence_role": "task_evidence",
+  "evidence_type": "endpoint_evidence",
+  "query_status": "hit",
+  "lookup_field": "original_inchikey",
+  "lookup_value": "AAAAAAAAAAAAA-BBBBBBBBBB-N",
+  "match_type": "exact_original_inchikey",
+  "source_url": "https://example.org/record",
+  "retrieved_at": "2026-07-27T00:00:00+00:00",
+  "source_version": "source-release",
+  "adapter_version": "adapter-contract-v1",
+  "response_sha256": "...",
+  "claim_ceiling": "candidate_preclinical_evidence_only"
 }
 ```
 
-`query_type`：`lipid` | `tox` | `novelty` | `pathway`
+`query_type`：`lipid` | `tox` | `novelty` | `pathway` | `annotation` |
+`query_audit`。查询审计行必须是 0 分；`verified_empty` 仅表示该次有效查询未返回记录，
+不表示无效、无毒或生物学阴性。CAS 命中若绑定到不同 InChIKey，必须进入
+`identity_review_required`，不能作为效力、创新性或安全置信证据。
 
 ## 推荐用法（有网烘焙一次 → 默认 auto 稳定跑）
 
 ```bash
 # 1) 提交级一次性烘焙：冻结 Top 10 + Top-M 候选窗口（默认 bake_top_m=120）
 PYTHONPATH=. python -m apps.cli.main \
-    --input "docs/demo/T001 TargetMol现货产品22966.sdf" \
+    --input "data/T001 TargetMol现货产品22966.sdf" \
     --bake-evidence \
     --bake-submission \
     --bake-top-m 120 \
     --bake-force
 
-# 2) 正式跑（默认 auto：有 snapshot 则本地高质量；缺洞才 live）
+# 2) 正式跑（默认 auto：仅消费已冻结 snapshot/local 数据）
 PYTHONPATH=. python -m apps.cli.main \
-    --input "docs/demo/T001 TargetMol现货产品22966.sdf" \
+    --input "data/T001 TargetMol现货产品22966.sdf" \
     --output output/nomination_top10.csv
 ```
 
@@ -57,7 +77,9 @@ PYTHONPATH=. python scripts/qc_public_assay_grain.py
 
 ## 覆盖旧快照
 
-关闭网页「使用证据快照」跑 live 时，结果会 **追加** 到 `auto_cache.jsonl`。读取已改为 **同 key 取最后一条**；建议再压一次文件：
+筛选 Run 不再隐式联网，也不会自动写 `auto_cache.jsonl`。需要刷新时，应显式运行
+`bake-evidence`；Gateway 先遵守 SQLite 查询状态中的失败 backoff，再把规范化 evidence
+与 query audit 追加到目标快照。强制 bake 后可压缩同一实体的历史记录：
 
 ```bash
 PYTHONPATH=. python -m apps.cli.main --compact-snapshot
@@ -67,7 +89,7 @@ PYTHONPATH=. python -m apps.cli.main --compact-snapshot
 
 ```bash
 PYTHONPATH=. python -m apps.cli.main \
-  --input "docs/demo/T001 TargetMol现货产品22966.sdf" \
+  --input "data/T001 TargetMol现货产品22966.sdf" \
   --bake-evidence --bake-force --bake-top-m 100
 ```
 
@@ -80,7 +102,7 @@ PYTHONPATH=. python -m apps.cli.main \
 | `baked_evidence_*.jsonl.manifest.json` | 快照 SHA-256、算法冻结摘要、查询实体和失败统计 |
 | `v2/baked_evidence_topm80_*.jsonl` | 历史 Top-M80 烘焙产物 |
 | `v2/baked_evidence_topm120_*.jsonl` | Top-M120 提交级烘焙产物（含 Critic 漂移席位） |
-| `auto_cache.jsonl` | auto/online 运行时自动缓存 live 结果 |
+| `auto_cache.jsonl` | 历史兼容文件；当前筛选 Run 不再自动写入 |
 | `*.jsonl.bak` | `--compact-snapshot` / `--bake-force` 压缩前备份 |
 
 ## HepG2-FFA 公共资源注册表

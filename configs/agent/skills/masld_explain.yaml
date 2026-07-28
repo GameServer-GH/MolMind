@@ -1,0 +1,11 @@
+plugin_id: molmind-core
+skill_id: masld_explain
+title: 解释入选 / 落选
+description: 基于只读、local-first 证据查询与运行审计说明排序依据和落选原因；默认不联网、不改主榜
+tools:
+  - get_run_audit
+  - query_evidence
+limits:
+  writes_selection: false
+  allow_live_default: false
+  force_refresh_requires_live: true

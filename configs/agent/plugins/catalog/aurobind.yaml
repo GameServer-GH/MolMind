@@ -1,0 +1,16 @@
+plugin_id: aurobind
+title: AuroBind · 蛋白配体 fitness 旁证
+builtin: false
+enabled: false
+catalog: true
+description: 兼容可选。对 TopN 分子做对接/fitness 旁证，只进证据卡/PDF。须主动添加；需靶点序列与 GPU。
+source: https://github.com/GENTEL-lab/AuroBind
+requires:
+  network: false
+  gpu: true
+  target_sequence: true
+tools:
+  - predict_pl_fitness
+skills:
+  - enrich_topn_with_aurobind
+activation: user_opt_in

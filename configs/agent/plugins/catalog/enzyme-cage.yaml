@@ -1,0 +1,13 @@
+# 赛后高价值 Catalog 占位（默认不启用、不内置）。
+plugin_id: enzyme-cage
+title: EnzymeCAGE · 酶–底物检索（Catalog）
+builtin: false
+enabled: false
+catalog: true
+description: 可选扩展。酶–底物检索旁证；不改 molmind-core 主榜。
+source: https://github.com/GENTEL-lab/EnzymeCAGE
+requires:
+  gpu: true
+activation: user_opt_in
+tools: []
+skills: []

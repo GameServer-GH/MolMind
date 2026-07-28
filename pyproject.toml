@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molmind"
-version = "0.1.1"
+version = "0.2.0"
 description = "MolMind (分子思维): Quality-Max lipid-lowering & low-tox prioritization"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,7 +26,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["apps*", "services*", "packages*"]
+include = ["apps*", "services*", "packages*", "agent*", "plugins*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

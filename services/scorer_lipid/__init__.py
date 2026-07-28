@@ -1,5 +1,10 @@
-"""services.scorer_lipid — 降脂打分导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.scorer_lipid.
 
-from services.scorer_lipid.scorer import score_lipid
+Prefer: `from plugins.molmind_core.scientific.scorer_lipid import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["score_lipid"]
+import plugins.molmind_core.scientific.scorer_lipid as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

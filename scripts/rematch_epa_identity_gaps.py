@@ -35,7 +35,7 @@ from services.public_data.epa_ctx_bundle import (  # noqa: E402
     utc_now,
 )
 
-DEFAULT_SDF = ROOT / "docs/demo/T001 TargetMol现货产品22966.sdf"
+DEFAULT_SDF = ROOT / "data/T001 TargetMol现货产品22966.sdf"
 DEFAULT_MAP = ROOT / "data/public/processed/epa_ctx/bulk_mapping_all_enriched.jsonl"
 DEFAULT_MAP_RAW = ROOT / "data/public/processed/epa_ctx/bulk_mapping_all.jsonl"
 DEFAULT_BIO = ROOT / "data/public/processed/epa_ctx/bulk_bioactivity_summary.jsonl"

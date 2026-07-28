@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 
 from services.pipeline import CSV_COLUMNS, run_pipeline
+from plugins.molmind_core.scientific.pipeline.export import rows_from_top
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_SDF = ROOT / "data" / "sample.sdf"
@@ -25,6 +26,40 @@ def test_csv_columns_include_run_metadata(tmp_path: Path) -> None:
     assert "effect_x_novelty" in CSV_COLUMNS
     assert "screening_concentration_um" in CSV_COLUMNS
     assert "viability_endpoint" in CSV_COLUMNS
+    assert "submission_schema_version" in CSV_COLUMNS
+    assert "identity_review_required" in CSV_COLUMNS
+    assert "pubchem_raw_status" in CSV_COLUMNS
+
+
+def test_submission_csv_canonicalizes_provider_status_and_preserves_raw(
+    tmp_path: Path,
+) -> None:
+    result = run_pipeline(
+        SAMPLE_SDF,
+        tmp_path / "canonical-status.csv",
+        mode="offline",
+        top_n=1,
+        write_mechanism=False,
+    )
+    molecule = result.top_molecules[0]
+    molecule.evidence_source_audit = {
+        **(molecule.evidence_source_audit or {}),
+        "pubchem": {
+            "status": "exact_hit",
+            "hit_count": 1,
+            "scored_hit_count": 0,
+            "ranking_effect": "annotation_or_audit_only",
+        },
+    }
+    row = rows_from_top(
+        [molecule],
+        mode="auto",
+        config_hash=result.config.config_hash,
+        degraded_channels=[],
+    )[0]
+    assert row["pubchem_query_status"] == "hit"
+    assert row["pubchem_raw_status"] == "exact_hit"
+    assert row["submission_scope"] == "pre_wet_lab_computational_nomination"
 
 
 def test_pipeline_writes_candidate_scores_and_evidence_ledger(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ from scripts.plan_epa_ctx_bulk import read_sdf
 
 def test_bulk_reader_preserves_sdf_identity_fields() -> None:
     root = Path(__file__).resolve().parents[2]
-    path = root / "docs/demo/T001 TargetMol现货产品22966.sdf"
+    path = root / "data/T001 TargetMol现货产品22966.sdf"
     rows = read_sdf(path, 3)
     assert len(rows) == 3
     assert rows[0]["molecule_id"] == "T0002"

@@ -1,0 +1,8 @@
+skill_id: enrich_mechanism_with_mcp
+plugin_id: origene-mcp
+title: OrigeneMCP 机制旁证
+description: 对 TopN 分子做 OpenTargets/ChEMBL/UniProt enrichment；失败降级；不改主榜。
+tools:
+  - mcp_query_opentargets
+  - mcp_query_chembl
+  - mcp_query_uniprot

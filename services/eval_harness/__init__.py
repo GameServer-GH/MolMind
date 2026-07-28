@@ -1,5 +1,10 @@
-"""services.eval_harness — GoldSet 回归断言。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.eval_harness.
 
-from services.eval_harness.harness import HarnessResult, run_goldset_harness
+Prefer: `from plugins.molmind_core.scientific.eval_harness import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["HarnessResult", "run_goldset_harness"]
+import plugins.molmind_core.scientific.eval_harness as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

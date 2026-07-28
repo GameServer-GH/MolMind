@@ -336,15 +336,131 @@
       overflow: hidden;
     }
   </style>
+  <link href="./agent/agent_chat.css?v=mm-agent-run-6" rel="stylesheet" />
+  <link href="./agent/agent_icons.css?v=mm-agent-send-1" rel="stylesheet" />
+  <link href="./agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
+  <link href="./agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
+  <link href="./agent/confirm.css?v=mm-agent-hist-4" rel="stylesheet" />
 </head>
-<body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden">
+<body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden mm-body-agent">
 
-  <nav class="glass-nav sticky top-4 z-50 mx-4 md:mx-auto max-w-container-max w-[calc(100%-2rem)] md:w-[90%] rounded-full px-6 py-3 flex justify-between items-center">
-    <div class="flex items-center gap-3">
-      <div class="text-headline-md text-on-background tracking-tight">MolMind</div>
-      <span id="navModeBadge" class="glass-tag px-3 py-1 rounded-full text-label-md text-primary">Quality-Max</span>
+  <!-- Full-page Agent (default). Classic chrome is hidden via body.mm-body-agent -->
+  <div id="agentPage" aria-label="Agent 对话页">
+    <section id="agentSection" class="mm-agent-shell mm-agent-shell--fullscreen" aria-label="Agent 对话">
+      <div id="agentChatRoot" class="mm-chat-root">
+        <div class="mm-chat-main" id="agentChatMain">
+          <button type="button" id="agentDrawerScrim" class="mm-drawer-scrim" aria-label="关闭侧栏" tabindex="-1"></button>
+          <div class="mm-top-bar">
+            <div class="mm-top-left-actions">
+              <button id="agentNewChatBtn" type="button" class="mm-glass-btn" title="新对话" aria-label="新对话">
+                <span class="mm-icon mm-icon--plus" aria-hidden="true"></span>
+              </button>
+              <button id="agentDemoSdfBtn" type="button" class="mm-glass-btn" title="试用样例库" aria-label="试用样例库" aria-haspopup="dialog" aria-expanded="false">
+                <span class="mm-icon mm-icon--download mm-icon--md" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="mm-profile-banner" title="当前 Profile">
+              <span class="mm-icon mm-icon--sparkles mm-icon--sm" aria-hidden="true" style="margin-right:2px"></span>
+              <span class="mm-profile-banner-name">MolMind · MASLD</span>
+            </div>
+            <div class="mm-top-right-actions">
+              <button id="modeClassicBtn" type="button" class="mm-glass-btn" title="经典筛选" aria-label="经典筛选">
+                <span class="mm-icon mm-icon--cpu mm-icon--md" aria-hidden="true"></span>
+              </button>
+              <button id="agentSettingsBtn" type="button" class="mm-glass-btn" title="工具与插件" aria-label="设置">
+                <span class="mm-icon mm-icon--faders mm-icon--md" aria-hidden="true"></span>
+              </button>
+              <button id="agentHistoryBtn" type="button" class="mm-glass-btn" title="对话历史" aria-label="对话历史">
+                <span class="mm-icon mm-icon--menu mm-icon--md" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+
+          <div id="agentChatScroll" class="mm-messages-area mm-messages-area--empty">
+            <aside id="agentTurnRail" class="mm-turn-rail mm-turn-rail--empty" aria-label="对话进度" aria-hidden="true">
+              <div class="mm-turn-rail-ticks"></div>
+              <div class="mm-turn-rail-preview" aria-hidden="true"></div>
+            </aside>
+            <div id="agentWelcome" class="mm-empty-placeholder">
+              <div class="mm-empty-shimmer-text">你好，我是 MolMind Agent</div>
+              <p class="mm-empty-hint">
+                可以直接对话问用法；若要做化合物筛选，再上传 .sdf 附件并描述目标产物。<br />
+                我会按你的描述决定是否调用技能 / 插件，并把 CSV / PDF 放到对话里下载。
+              </p>
+            </div>
+            <div id="agentMessages" class="mm-messages-list"></div>
+            <div id="agentStreamBeam" class="mm-streaming-cursor hidden" aria-hidden="true"></div>
+          </div>
+
+          <div class="mm-bottom-send">
+            <div class="mm-bottom-send-toolbar">
+              <label id="agentUploadBtn" class="mm-glass-btn mm-glass-btn-wide cursor-pointer" title="上传附件" aria-label="上传附件">
+                <span class="mm-icon mm-icon--upload mm-icon--md" aria-hidden="true"></span>
+                <span id="agentFileLabel">上传附件</span>
+                <input id="agentFileInput" type="file" accept=".sdf" class="hidden" />
+              </label>
+              <div id="agentAttachRail" class="mm-attach-rail" aria-live="polite"></div>
+            </div>
+            <form id="agentChatForm" class="mm-send-form">
+              <div class="mm-send-wrapper">
+                <textarea id="agentInput" class="mm-send-input" rows="1"
+                  placeholder="您可以直接用自然语言描述需求"></textarea>
+                <button id="agentSendBtn" type="submit" class="mm-send-btn" aria-label="发送">
+                  <span id="agentSendShortcut" class="mm-send-btn-text">RUN ⌘ + ↵</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div id="agentToast" class="mm-agent-toast" aria-live="polite" aria-hidden="true"></div>
+        </div>
+
+        <aside id="agentHistoryPanel" class="mm-history-drawer" role="dialog" aria-label="Agent 对话历史" aria-modal="true">
+          <div class="mm-history-header">
+            <div class="flex items-baseline gap-2 min-w-0">
+              <h3 class="mm-history-title">对话历史</h3>
+              <span id="agentHistoryCount" class="mm-history-count"></span>
+            </div>
+            <button id="agentHistoryCloseBtn" type="button" class="mm-glass-btn" aria-label="关闭">
+              <span class="mm-icon mm-icon--x mm-icon--md" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div id="agentHistoryList" class="mm-history-list"></div>
+        </aside>
+
+        <aside id="agentSettingsPanel" class="mm-history-drawer mm-settings-drawer" role="dialog" aria-label="工具与插件" aria-modal="true">
+          <div class="mm-history-header">
+            <h3 class="mm-history-title">工具与插件</h3>
+            <button id="agentSettingsCloseBtn" type="button" class="mm-glass-btn" aria-label="关闭">
+              <span class="mm-icon mm-icon--x mm-icon--md" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div id="agentSettingsBody" class="mm-catalog-body"></div>
+        </aside>
+      </div>
+    </section>
+  </div>
+
+  <!-- Classic → Agent 返回浮窗（对齐 GameGhost AI Agent 入口） -->
+  <button id="modeAgentFab" type="button" class="mm-agent-fab" title="返回 Agent 对话" aria-label="返回 Agent 对话">
+    <span class="mm-agent-fab-inner">
+      <span class="mm-icon mm-icon--sparkles mm-icon--md" aria-hidden="true"></span>
+      <span class="mm-agent-fab-text">Agent</span>
+    </span>
+  </button>
+
+  <nav id="classicNav" class="glass-nav sticky top-4 z-50 mx-4 md:mx-auto max-w-container-max w-[calc(100%-2rem)] md:w-[90%] rounded-full px-6 py-3 flex justify-between items-center gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="text-headline-md text-on-background tracking-tight shrink-0">MolMind</div>
+      <span id="navModeBadge" class="glass-tag px-3 py-1 rounded-full text-label-md text-primary hidden sm:inline">Quality-Max</span>
+      <div class="flex items-center gap-1 p-1 rounded-full bg-white/50 border border-white/80" role="tablist" aria-label="工作模式">
+        <button type="button" role="tab" aria-selected="true"
+          class="px-3 py-1.5 rounded-full text-label-md text-white bg-gradient-to-br from-[#005aff] to-[#50d1ff] shadow-sm">经典筛选</button>
+        <button id="modeAgentBtn" type="button" role="tab" aria-selected="false"
+          class="px-3 py-1.5 rounded-full text-label-md text-on-surface-variant hover:text-primary transition-colors">Agent 对话</button>
+      </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <button id="reuploadBtn" type="button" title="重新上传"
         class="hidden glass-btn h-10 px-4 rounded-full text-label-md inline-flex items-center justify-center gap-1.5" aria-label="重新上传">
         <span class="material-symbols-outlined text-primary text-[20px]">upload_file</span>
@@ -357,13 +473,13 @@
     </div>
   </nav>
 
-  <main class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-6 py-10 md:py-14 flex flex-col gap-8">
+  <main id="classicMain" class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-6 py-10 md:py-14 flex flex-col gap-8">
 
     <div id="errorBanner" role="alert"
       class="hidden glass-panel rounded-2xl px-4 py-3 border border-error/20 text-on-error-container text-body-md"></div>
 
     <!-- Upload -->
-    <section id="uploadSection" class="glass-panel-strong rounded-4xl p-8 md:p-10 flex flex-col gap-8 relative overflow-hidden">
+    <section id="uploadSection" class="hidden glass-panel-strong rounded-4xl p-8 md:p-10 flex flex-col gap-8 relative overflow-hidden">
       <span class="material-symbols-outlined absolute top-6 right-6 text-[5rem] text-primary/10 pointer-events-none select-none" aria-hidden="true">science</span>
       <div class="relative z-10">
         <h2 class="text-label-md text-primary tracking-widest uppercase mb-3">Screen · 化合物筛选</h2>
@@ -412,7 +528,7 @@
             <div class="min-w-0">
               <div class="text-sm font-semibold text-on-background">联网补证据</div>
               <p id="liveHint" class="text-xs text-on-surface-variant/80 leading-relaxed mt-0.5">
-                关闭（默认）：不访问外网证据 API。开启：短名单尝试 ChEMBL/PubChem live 补洞，交卷前请关联网复跑。
+                关闭（默认）：不访问外网证据 API。开启：候选短名单尝试 ChEMBL/PubChem live 补洞，定稿前请关联网复跑。
               </p>
             </div>
           </div>
@@ -633,11 +749,11 @@
     </div>
   </div>
 
-  <footer class="w-full py-8 border-t border-black/5 flex justify-center items-center mt-auto">
+  <footer id="siteFooter" class="w-full py-8 border-t border-black/5 flex justify-center items-center mt-auto">
     <div class="text-sm text-on-surface-variant/70">MolMind · 分子思维 · Quality-Max</div>
   </footer>
 
-  <!-- History drawer -->
+  <!-- History drawer (classic screen runs) -->
   <div id="historyOverlay" class="history-overlay fixed inset-0 z-[60] hidden" aria-hidden="true"></div>
   <aside id="historyPanel" class="fixed top-0 right-0 z-[70] h-full w-full max-w-2xl translate-x-full transition-transform duration-300 glass-panel-strong border-l border-white/80 flex flex-col" role="dialog" aria-label="执行历史" aria-modal="true">
     <div class="flex items-center justify-between px-6 py-5 border-b border-black/5">
@@ -687,7 +803,7 @@
         <div class="flex items-start gap-3">
           <span class="material-symbols-outlined text-primary text-3xl shrink-0">fact_check</span>
           <div>
-            <h3 id="reviewModalTitle" class="text-lg font-semibold text-on-background">短名单人工复核</h3>
+            <h3 id="reviewModalTitle" class="text-lg font-semibold text-on-background">候选清单人工复核</h3>
             <p id="reviewModalHint" class="text-sm text-on-surface-variant mt-1.5 leading-relaxed">
               算法榜已就绪。勾选要执行的项后点确认，将生成最终 CSV 与机制假说 PDF。
             </p>
@@ -717,6 +833,14 @@
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./app.js?v=mm-live-default-off-1"></script>
+  <script src="./agent/ui_render.js?v=mm-agent-stream-1"></script>
+  <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-box-1"></script>
+  <script src="./agent/ui_history.js?v=mm-agent-hist-6"></script>
+  <script src="./agent/ui_settings.js?v=mm-agent-drawer-2"></script>
+  <script src="./agent/ui_mention.js?v=mm-agent-mention-4"></script>
+  <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
+  <script src="./agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
+  <script src="./agent/tour/ui_tour.js?v=mm-agent-send-1"></script>
+  <script src="./app.js?v=mm-agent-clarify-1"></script>
 </body>
 </html>

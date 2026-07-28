@@ -1,4 +1,4 @@
-"""主路径冻结口径：主证据 chembl/pubchem；nafldkb/dili 默认关闭。"""
+"""主路径冻结口径：仅冻存的 ChEMBL/PubChem/EPA 风险可参与评分。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from services.pipeline.config_loader import load_config
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "configs"
 
-PRIMARY_ADAPTERS = {"chembl_lipid_v1", "pubchem_tox_v1"}
+PRIMARY_ADAPTERS = {"chembl_lipid_v1", "pubchem_tox_v1", "epa_ctx_tox_v1"}
 DISABLED_BY_DEFAULT = {"nafldkb_v1", "dili_table_v1", "ot_target_v1"}
 
 
@@ -23,6 +23,8 @@ def test_freeze_primary_adapters_enabled() -> None:
     for name in PRIMARY_ADAPTERS:
         assert flags[name]["enabled"] is True
         assert float(flags[name].get("ranking_weight", 0)) > 0
+    assert evidence.get("allow_live") is False
+    assert evidence.get("epa_ctx", {}).get("integration_stage") == 2
 
 
 def test_freeze_nafldkb_dili_disabled() -> None:

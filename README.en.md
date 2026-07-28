@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>MolMind</strong> · Auditable computational candidate prioritization · MASLD / HepG2-FFA<br />
-  Public assays · toxicology evidence · multi-omics mechanism context<br />
+  <strong>MolMind</strong> · AI Agent–driven auditable candidate prioritization · MASLD / HepG2-FFA<br />
+  Dialog / Skills orchestration · public assays · toxicology · multi-omics context<br />
   <a href="README.md">中文</a>
 </p>
 
@@ -14,9 +14,9 @@
 
 ## What it does
 
-**MolMind** is an **auditable computational candidate-prioritization system** for **MASLD / HepG2-FFA**. Given a compound library (a single `.sdf`), it ranks candidates from public activity, toxicology and multi-omics mechanism evidence, and emits a reproducible, traceable shortlist with mechanism hypotheses for wet-lab priority testing.
+**MolMind** is an **AI Agent–driven candidate-nomination platform** for **MASLD / HepG2-FFA**. After uploading a compound library (a single `.sdf`), natural language or Skills invoke the built-in scientific core to rank candidates from public activity, toxicology and multi-omics evidence, and emit a reproducible shortlist, mechanism hypotheses, and a submission bundle.
 
-It is **not** a wet-lab-validated lipid-lowering or safety predictor. Top N is a computational prioritization layer; claims are bounded by `scientific_status` / `claim_ceiling`.
+Ranking and toxicity gates come only from the deterministic `molmind-core` plugin; the LLM / optional Catalog plugins **must not** rewrite the main board. It is **not** a wet-lab-validated lipid-lowering or safety predictor. Top N is a computational prioritization layer; claims are bounded by `scientific_status` / `claim_ceiling`.
 
 ### The problem it targets
 
@@ -64,15 +64,19 @@ any channel failure → auto-degrade, record degraded_channels[] → still emit 
 | Switch | Default | Meaning |
 |--------|---------|---------|
 | **Use snapshot** `use_snapshot` | on | Read `data/evidence_snapshot/` |
-| **Live evidence** `allow_live` | off | ChEMBL/PubChem live fill for shortlists only |
+| **Explicit live enrichment** `allow_live` | off | Authorizes `query_evidence` / evidence bake only; never same-run ranking |
 
-Delivery default: **snapshot on + live off**. To backfill evidence, run `bake-evidence` or temporarily enable live, bake, then rerun with live off.
+Delivery default: **snapshot on + live off**. To backfill evidence, run the read-only
+`query_evidence(..., allow_live=True)` tool or `bake-evidence`, then start a new
+offline ranking run against the normalized frozen snapshot.
 
-Compatibility: `--mode online` / `mode=online` maps to `allow_live=true`; `offline` is a legacy alias only.
+Compatibility: `--mode online` / `mode=online` still maps to `allow_live=true`,
+but the screening pipeline blocks live HTTP from affecting the current run;
+`offline` is a legacy alias only.
 
-### Seven-stage agent pipeline
+### Seven-stage scientific core (invoked by Agent tools)
 
-Not “one script, one CSV”—a staged, observable, auditable prioritization pipeline:
+Not “one script, one CSV”—a staged, observable, auditable prioritization pipeline. The judge path calls it via Agent Skills (e.g. `masld_nominate` → `score_and_rank`); CLI / `/api/screen*` hit the same core:
 
 | Stage | Module | Role |
 |-------|--------|------|
@@ -200,8 +204,8 @@ Recommended in China (pull prebuilt image; avoid slow overseas builds):
 
 ```bash
 # One-time Docker Engine: insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.1.1
-docker tag 8.133.197.65:5001/molmind:0.1.1 molmind:0.1.1
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.0
+docker tag 8.133.197.65:5001/molmind:0.2.0 molmind:0.2.0
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```

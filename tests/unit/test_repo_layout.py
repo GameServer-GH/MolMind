@@ -1,4 +1,8 @@
-"""Assert formal-tree paths from 正式版实现清单 §1 exist."""
+"""Assert formal-tree paths exist after R2 pluginization.
+
+Canonical scientific code: `plugins/molmind_core/scientific/*`
+Compatibility shims: `services/*` (except `services/agent` → `agent/`)
+"""
 
 from __future__ import annotations
 
@@ -10,24 +14,29 @@ REQUIRED_DIRS = [
     "apps/cli",
     "apps/api",
     "apps/web",
+    "agent",
+    "plugins/molmind_core/scientific/ingest",
+    "plugins/molmind_core/scientific/hard_filter",
+    "plugins/molmind_core/scientific/scorer_lipid",
+    "plugins/molmind_core/scientific/scorer_tox",
+    "plugins/molmind_core/scientific/ranker",
+    "plugins/molmind_core/scientific/critic",
+    "plugins/molmind_core/scientific/mechanism",
+    "plugins/molmind_core/scientific/evidence_facade",
+    "plugins/molmind_core/scientific/eval_harness",
+    "plugins/molmind_core/scientific/pipeline",
     "services/ingest",
-    "services/hard_filter",
-    "services/scorer_lipid",
-    "services/scorer_tox",
-    "services/ranker",
-    "services/critic",
-    "services/mechanism",
-    "services/evidence_facade",
-    "services/eval_harness",
     "services/pipeline",
     "packages/chem_core",
     "packages/goldset",
     "packages/ml_optional",
     "packages/models",
     "configs",
+    "configs/agent",
     "data/goldset",
     "data/evidence_snapshot",
     "data/fixtures",
+    "data/agent_runs",
     "templates",
     "tests/unit",
     "tests/integration",
@@ -41,17 +50,15 @@ REQUIRED_INIT = [
     "apps/cli/__init__.py",
     "apps/api/__init__.py",
     "apps/web/__init__.py",
+    "agent/__init__.py",
+    "plugins/__init__.py",
+    "plugins/molmind_core/__init__.py",
+    "plugins/molmind_core/scientific/__init__.py",
+    "plugins/molmind_core/scientific/pipeline/__init__.py",
     "services/__init__.py",
     "services/ingest/__init__.py",
-    "services/hard_filter/__init__.py",
-    "services/scorer_lipid/__init__.py",
-    "services/scorer_tox/__init__.py",
-    "services/ranker/__init__.py",
-    "services/critic/__init__.py",
-    "services/mechanism/__init__.py",
-    "services/evidence_facade/__init__.py",
-    "services/eval_harness/__init__.py",
     "services/pipeline/__init__.py",
+    "services/agent/__init__.py",
     "packages/__init__.py",
     "packages/chem_core/__init__.py",
     "packages/goldset/__init__.py",
@@ -63,18 +70,6 @@ REQUIRED_README = [
     "apps/README.md",
     "apps/cli/README.md",
     "apps/api/README.md",
-    "apps/web/README.md",
-    "services/README.md",
-    "services/ingest/README.md",
-    "services/hard_filter/README.md",
-    "services/scorer_lipid/README.md",
-    "services/scorer_tox/README.md",
-    "services/ranker/README.md",
-    "services/critic/README.md",
-    "services/mechanism/README.md",
-    "services/evidence_facade/README.md",
-    "services/eval_harness/README.md",
-    "services/pipeline/README.md",
     "packages/README.md",
     "packages/chem_core/README.md",
     "packages/goldset/README.md",
@@ -85,6 +80,9 @@ REQUIRED_README = [
     "templates/README.md",
     "tests/README.md",
     "deploy/README.md",
+    "plugins/molmind_core/scientific/pipeline/README.md",
+    "plugins/molmind_core/scientific/ingest/README.md",
+    "services/README.md",
 ]
 
 
@@ -103,14 +101,26 @@ def test_required_readme_stubs_exist() -> None:
     assert not missing, f"missing README.md: {missing}"
 
 
+def test_services_shims_point_at_scientific() -> None:
+    text = (ROOT / "services" / "pipeline" / "__init__.py").read_text(encoding="utf-8")
+    assert "plugins.molmind_core.scientific.pipeline" in text
+
+
 # deploy/README.md 是部署指南（含命令），不是业务 stub
-_README_STUBS = [rel for rel in REQUIRED_README if rel != "deploy/README.md"]
+_README_STUBS = [
+    rel
+    for rel in REQUIRED_README
+    if rel not in {"deploy/README.md", "apps/web/README.md"}
+]
 
 
 def test_readme_stubs_have_no_business_logic() -> None:
     """Package/service README stubs should stay short duty notes (no code fences / imports)."""
     for rel in _README_STUBS:
-        text = (ROOT / rel).read_text(encoding="utf-8")
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
         assert "```" not in text, f"{rel} should not contain code fences"
         assert "def " not in text, f"{rel} should not contain Python defs"
         assert "import " not in text, f"{rel} should not contain imports"

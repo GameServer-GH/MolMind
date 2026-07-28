@@ -1,0 +1,40 @@
+plugin_id: molmind-core
+title: MolMind Core · MASLD 低毒降脂筛选核
+builtin: true
+enabled: true
+catalog: false
+description: 内置科学核。解析 SDF、硬过滤、降脂/毒性打分、排序多样性、导出与机制报告。唯一写榜入口 score_and_rank。
+limits:
+  top_n_min: 1
+  top_n_max: 50
+tool_limits:
+  score_and_rank:
+    top_n_min: 1
+    top_n_max: 50
+  export_nomination:
+    top_n_min: 1
+    top_n_max: 50
+  query_evidence:
+    writes_selection: false
+    allow_live_default: false
+    force_refresh_requires_live: true
+tools:
+  - parse_sdf
+  - score_and_rank
+  - export_nomination
+  # Read-only local-first enrichment. Network access must be explicit.
+  - query_evidence
+  - start_mechanism_report
+  - get_mechanism_job
+  - get_run_audit
+  - build_evidence_card
+  - export_submission_bundle
+  - draft_nomination_review
+  - apply_review
+  - eval_goldset
+skills:
+  - masld_nominate
+  - masld_mechanism
+  - masld_explain
+  - masld_export_bundle
+  - masld_full_submission

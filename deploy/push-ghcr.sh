@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 将 molmind 镜像推送到 GitHub Container Registry
 # 用法（仓库根目录）：
-#   bash deploy/push-ghcr.sh local            # 推送本机已有 molmind:0.1.1（不重建，绕过 Docker Hub）
+#   bash deploy/push-ghcr.sh local            # 推送本机已有 molmind:0.2.0（不重建，绕过 Docker Hub）
 #   bash deploy/push-ghcr.sh local amd64      # 同上，仅 amd64
 #   bash deploy/push-ghcr.sh                  # buildx 重建并推送 amd64+arm64（需能访问 Docker Hub）
 #   bash deploy/push-ghcr.sh amd64            # buildx 仅 amd64
@@ -16,7 +16,7 @@ cd "$ROOT"
 
 ORG="${GHCR_ORG:-gameserver-gh}"
 NAME="${GHCR_NAME:-molmind}"
-VERSION="${GHCR_VERSION:-0.1.1}"
+VERSION="${GHCR_VERSION:-0.2.0}"
 LOCAL_IMAGE="${LOCAL_IMAGE:-molmind:${VERSION}}"
 REGISTRY="ghcr.io/${ORG}/${NAME}"
 

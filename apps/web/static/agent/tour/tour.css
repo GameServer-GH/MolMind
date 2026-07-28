@@ -1,0 +1,167 @@
+/* MolMind Agent first-run tour — GameGhost TourOverlay glass card */
+.tour-glass-card {
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  z-index: 9002 !important;
+  padding: 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  pointer-events: all;
+  animation: tour-card-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tour-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tour-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(0, 90, 255, 0.12);
+  color: #005aff;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+
+.tour-card-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1c1e24;
+  line-height: 1.4;
+}
+
+.tour-card-content {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: #5c6170;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.tour-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tour-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tour-btn-prev,
+.tour-btn-next {
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.04);
+  color: #3d414a;
+  border-radius: 50%;
+}
+
+.tour-btn-prev:hover,
+.tour-btn-next:hover {
+  background: rgba(0, 90, 255, 0.1);
+  color: #005aff;
+}
+
+.tour-btn-skip {
+  padding: 7px 16px;
+  background: transparent;
+  color: #8a8f9c;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tour-btn-skip:hover {
+  color: #5c6170;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tour-btn-next {
+  background: linear-gradient(279deg, #005aff 0%, #50d1ff 100%);
+  color: #fff;
+}
+
+.tour-btn-next:hover {
+  opacity: 0.92;
+  transform: scale(1.05);
+}
+
+.mm-prompt-suggest {
+  align-self: stretch;
+  margin: 8px 0 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 90, 255, 0.14);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  max-width: 520px;
+}
+
+.mm-prompt-suggest--clarify {
+  margin-left: auto;
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 90, 255, 0.2);
+  box-shadow:
+    0 8px 24px rgba(0, 90, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.mm-prompt-suggest-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 8px;
+}
+
+.mm-prompt-suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mm-prompt-chip {
+  text-align: left;
+  border: 1px solid rgba(0, 90, 255, 0.12);
+  background: rgba(0, 90, 255, 0.04);
+  color: #2c2c2c;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mm-prompt-chip:hover {
+  background: rgba(0, 90, 255, 0.08);
+  border-color: rgba(0, 90, 255, 0.28);
+}

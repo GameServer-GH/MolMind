@@ -1,10 +1,10 @@
 {
   "schema_version": "molmind-algorithm-freeze-v2",
-  "frozen_at": "2026-07-23T15:10:08+08:00",
+  "frozen_at": "2026-07-28T10:27:00+08:00",
   "source_commit": "1d3bbf33455128c0d2d8103e16f8ad1dfbe3fa0e",
-  "algorithm_contract_version": "competition-eligibility-v12",
+  "algorithm_contract_version": "competition-eligibility-v13",
   "baseline_config_hash": "4b25c69946a50aa1",
-  "active_config_hash": "0e13c978ce8954a9",
+  "active_config_hash": "7f6ffcea95ed6222",
   "baseline_run_id": "mm-4df40a7e6fea829e3ba6f346",
   "baseline_selection_sha256": "8b29798ff8c4b2cf97dfb1c63a7f0a09c92ae88ede48f45f56f4c9f38016cae0",
   "baseline_input_sha256": "3f8c560ed6df16b96ea57173f1fe87c23e3fb405b73280235e85814baf518456",
@@ -15,25 +15,26 @@
     "nomination_top10.mechanism_graph.json": "17b6cd58f81ca792d3a9751fac26607906d97f639805b76552556051a6330f03"
   },
   "critical_files": {
-    "configs/rank_weights.yaml": "2b7fb9b091f75d196cedabc6845da2e8e86be8d012f6b0e05aa1638fb89da263",
-    "configs/assumptions.yaml": "aeb87f0793aa86c0049198679ee5a39ea8771195bd821d0fd6a52a192bdce3ea",
-    "services/eligibility/policy.py": "0ca41b37aeee8a5448f672c159a91efc3dccae4e77262c6bbd7c39165c0ce74d",
-    "services/scorer_lipid/scorer.py": "d8e5954e9b762e48a43599793ffbd86849d9d0172391d496e1c7c96d8cad0836",
-    "services/scorer_tox/scorer.py": "ab3412afccc8fa196bfa1a77ccc88745a142fb7f34b0cd46ffd52224aa444103",
-    "services/ranker/ranker.py": "6ff9bfccdaefc176b55731721137a19db862803ad803a44a1c3f15f8465fadfe",
-    "services/ranker/robustness.py": "0cd574d96b4f132bd4924572138032100efed6002c7a526bfc5e2a55983fa08d",
-    "services/critic/critic.py": "db941a6eea1970b7e5740813d57ac83276e0f78912fa37d79cd499af20d48f9d",
-    "packages/models/records.py": "3f2155f7893c3c9ed7aec84f29fe020c78477178aa55ff8c2fc538c521332e16",
+    "configs/rank_weights.yaml": "ce389e8f2236f2ac8dbb23c18b8e10a36e83c968cf38c5b6e376ffb423a1bec0",
+    "configs/assumptions.yaml": "03023156670df94bc189913385cc8964686afb26d80211c875cd654477716fe2",
+    "plugins/molmind_core/scientific/eligibility/policy.py": "0ca41b37aeee8a5448f672c159a91efc3dccae4e77262c6bbd7c39165c0ce74d",
+    "plugins/molmind_core/scientific/scorer_lipid/scorer.py": "6ca69a1dd17c03f1df3c25741ab0b29a733b530a64a5a38e926fb9677a9ae0f4",
+    "plugins/molmind_core/scientific/scorer_tox/scorer.py": "c03e513cd4efb4ecdee450a8b0634a03f442d29968b16c74b05f20b6f31e7d7f",
+    "plugins/molmind_core/scientific/ranker/ranker.py": "b451454eb054a70ceeeedce5f0328e251ff3e6c2f942733c17f50835102b83eb",
+    "plugins/molmind_core/scientific/ranker/robustness.py": "ed611f631f0bbc9088ed492754154ebbb90b7a484e8a6d3e6ba95ccdc0219977",
+    "plugins/molmind_core/scientific/critic/critic.py": "359a81c64fb3361d9fe8fcfb89f800d831f87402bdaef87123b7fd698a96ce76",
+    "packages/models/records.py": "7888dc4750dc04cc0ac49fcd1cb5e53e59795bf4eb40d1a2e7f55af72533f482",
     "packages/chem_core/core.py": "a51383f5a353c007afe4934b0a1a9df3a1038d34ca2ee4673c07d19881fd5d3c",
-    "services/pipeline/config_loader.py": "cd7bdf45ef566ee2fcd89cb530377c2e10e240e53965f1f72109aaf4af4c32bd",
-    "services/pipeline/export.py": "1bf38543d6f390424402ad9dd12be9779d036be29cf32cfd5c0bccac49e55ef5",
-    "services/pipeline/manifest.py": "423b27a7ab0a140a089b0dc30a2a279b9cac195273e364b744381d24cb5e5586",
-    "services/pipeline/runner.py": "41599cdff4029ccac92c0d59995886572e2868d3c1c585010fbb6ff7c7485135",
-    "services/pipeline/run_identity.py": "523ac59a4d71ffe76319cb6f7cc80ced62f9f8625758d6eaff9797ea354358fb",
-    "services/evidence_facade/facade.py": "68b1d927b4276de28138590e5392db1bd8409d884c372d24f63be4d8d7611028",
-    "services/evidence_facade/epa_index.py": "da32f3c07c77f0775e85292f13af7de05e7631d68581363ef85c6398190ec763",
+    "plugins/molmind_core/scientific/pipeline/config_loader.py": "158ad088c681970affb272af2acab188ee7b37187d04d63e7f6265f7744136e4",
+    "plugins/molmind_core/scientific/pipeline/export.py": "49345b59255ecc1824ad1afef5f8522be54e05a35b8717bf7a0d90a06977f20a",
+    "plugins/molmind_core/scientific/pipeline/manifest.py": "0408a378eefad511d5d025d582797139cfbcb8fcbbd1b00e0a6956eeefb3543b",
+    "plugins/molmind_core/scientific/pipeline/runner.py": "e432519d260cfc85b4632ce3ff37370f87c9b367720a81c7e8d4cf6300d5797c",
+    "plugins/molmind_core/scientific/pipeline/run_identity.py": "523ac59a4d71ffe76319cb6f7cc80ced62f9f8625758d6eaff9797ea354358fb",
+    "plugins/molmind_core/scientific/evidence_facade/facade.py": "973a967cafd3b122e1368761e5a90b6ef4c243037153e39c915fbb08d29b0cf4",
+    "plugins/molmind_core/scientific/evidence_facade/bundle.py": "abb31365d07ea0077ac2b46c237351598887e5f35128648b301601021a3453bc",
+    "plugins/molmind_core/scientific/evidence_facade/epa_index.py": "23be96eaeb9a42346a9a08b28377273b27ac1017dc592081efd70cb3ec3c9de3",
     "data/goldset/positives.yaml": "907e1998d558217c1f610734d469d2e73c02ce9270abf982aafeab7d4b7f0b8e",
-    "data/goldset/false_positives.yaml": "90bfbb8307b1ffaa328e54f2e784d30842e73345f66112cb8390b78516769a67"
+    "data/goldset/false_positives.yaml": "63b2527b33c182ced49a08b4c5cf7f470ee504111fe528beb5a611af1aad126e"
   },
   "policy": {
     "evidence_may_change_scores": true,
@@ -81,7 +82,7 @@
   "origene_evidence_semantics_change": {
     "from_contract": "competition-eligibility-v9",
     "reason": "Evidence lineage/identity cutoff and Top-M orchestration, citations, structured selection reasons.",
-    "scope": "Add EvidenceBundle lineage fields and evidence_type vocabulary; keep annotation/query_audit out of lipid_query_status and scientific scores; ML/proxy clearance must not inflate safety_clearance_confidence; Top-M runs identity\u2192fill\u2192re-eligibility; export citations.jsonl and selection_audit.jsonl. Default gate thresholds unchanged (min_toxicity_confidence/min_safety_evidence_coverage remain 0.0).",
+    "scope": "Add EvidenceBundle lineage fields and evidence_type vocabulary; keep annotation/query_audit out of lipid_query_status and scientific scores; ML/proxy clearance must not inflate safety_clearance_confidence; Top-M runs identity→fill→re-eligibility; export citations.jsonl and selection_audit.jsonl. Default gate thresholds unchanged (min_toxicity_confidence/min_safety_evidence_coverage remain 0.0).",
     "regression_test": "tests/unit/test_high_value_optimizations.py::test_chembl_annotation_does_not_drive_lipid_query_status; tests/unit/test_high_value_optimizations.py::test_ml_proxy_clearance_does_not_raise_safety_clearance; tests/unit/test_high_value_optimizations.py::test_bundle_lineage_and_citations_populated; tests/unit/test_high_value_optimizations.py::test_identity_review_forces_review_required_eligibility; tests/unit/test_export.py::test_pipeline_writes_candidate_scores_and_evidence_ledger"
   },
   "screening_assumptions_alignment_change": {
@@ -101,5 +102,32 @@
     "reason": "Manual shortlist review (e.g. withdrawn zomepirac) must survive clean re-runs of the same repository.",
     "scope": "Add hashed clinical_exclusions.yaml hard gates and nomination_review.yaml seat/annotation decisions; export algorithmic and nominated Top10 plus dual selection hashes in the run manifest.",
     "regression_test": "tests/unit/test_nomination_review.py::test_clinical_exclusion_matches_zomepirac_identity; tests/unit/test_nomination_review.py::test_nomination_review_drop_promotes_reserve"
+  },
+  "change_control_r2": {
+    "reason": "R2 relocate scientific core under plugins/molmind_core/scientific; REPO_ROOT path fix; services.* remain shims.",
+    "scope": "Import path and package layout only; scoring formulas unchanged."
+  },
+  "standalone_evidence_query_change": {
+    "reason": "Add a real, read-only query_evidence Tool with unified identity and transport audit metadata.",
+    "scope": "Add defaulted EvidenceHit lineage fields and an in-memory PipelineResult molecule identity index; distinguish Facade cache entries by the full input identity and make PubChem CAS lookup explicit. Ranking weights, gates, GoldSet and frozen scoring formulas are unchanged; standalone live results never write selection or ranking snapshots.",
+    "regression_test": "tests/unit/test_query_evidence_tool.py::test_current_run_molecule_id_executes_and_preserves_frozen_selection; tests/unit/test_query_evidence_tool.py::test_identity_conflict_is_audit_only_and_cannot_raise_scores; tests/regression/test_snapshot_freeze.py"
+  },
+  "local_first_gateway_boundary_change": {
+    "from_contract": "competition-eligibility-v12",
+    "reason": "The prior Facade live path, standalone Tool declarations and Gateway query-state logic did not share one executable local-first boundary, allowing transport state and identity ambiguity to be handled inconsistently.",
+    "scope": "Make EvidenceFacade ranking reads local-only; route explicit query_evidence and bake enrichment through one identity resolver, versioned query-state cache and provider-bounded scheduler; score only explicit scientific hit states; retain only conservative adverse risk across identity conflicts. Ranking formula, weights, toxicity thresholds and GoldSet are unchanged.",
+    "regression_test": "tests/unit/test_agent_query_evidence.py; tests/unit/test_query_evidence_tool.py; tests/unit/test_evidence_retriever.py; tests/unit/test_bake_evidence.py; tests/unit/test_pipeline.py::test_pipeline_same_run_live_cannot_change_ranking; tests/regression/test_snapshot_freeze.py"
+  },
+  "gateway_contract_r5_change": {
+    "from_contract": "competition-eligibility-v13",
+    "reason": "Query status, redaction and cache identity were duplicated, total retrieval had no hard deadline, and EPA v1/v2 rows needed one explicit max-risk channel.",
+    "scope": "Add canonical gateway transport primitives, query-specific contract-hash cache migration, bounded cancellation and immutable Agent result snapshots. EPA scoring weights and thresholds are unchanged; v1/v2 EPA rows are deduplicated by DTXSID and still enter only the existing max evidence head.",
+    "regression_test": "tests/unit/test_evidence_gateway_contract_r5.py; tests/unit/test_agent_query_evidence.py; tests/unit/test_epa_staged_integration.py"
+  },
+  "submission_artifact_contract_change": {
+    "from_contract": "competition-eligibility-v13",
+    "reason": "Submission CSV exposed legacy provider statuses and the mechanism PDF repeated ambiguous audit text without showing reproducibility lineage.",
+    "scope": "Export canonical_status plus raw_status, add submission scope and evidence limitation fields, flag structure-level identity review, de-duplicate provider narrative, tier citations, and show run/input/config/selection hashes in the PDF. Ranking formulas, eligibility thresholds, and selected IDs are unchanged.",
+    "regression_test": "tests/unit/test_export.py; tests/unit/test_mechanism_html_narrative.py"
   }
 }

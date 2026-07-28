@@ -1,17 +1,10 @@
-"""services.ranker — 排序与多样性导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.ranker.
 
-from services.ranker.ranker import (
-    apply_scaffold_diversity,
-    assign_competition_scores,
-    competition_selection_score,
-    score_molecule,
-)
-from services.ranker.robustness import analyze_rank_robustness
+Prefer: `from plugins.molmind_core.scientific.ranker import ...`
+"""
+from __future__ import annotations
 
-__all__ = [
-    "analyze_rank_robustness",
-    "apply_scaffold_diversity",
-    "assign_competition_scores",
-    "competition_selection_score",
-    "score_molecule",
-]
+import plugins.molmind_core.scientific.ranker as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

@@ -1,0 +1,13 @@
+# 赛后高价值 Catalog 占位（默认不启用、不内置）。
+plugin_id: eva-rna
+title: EVA · RNA 适应度/设计（Catalog）
+builtin: false
+enabled: false
+catalog: true
+description: 可选扩展。RNA 适应度/设计旁证；不改 molmind-core 主榜。
+source: https://github.com/GENTEL-lab/EVA
+requires:
+  gpu: true
+activation: user_opt_in
+tools: []
+skills: []

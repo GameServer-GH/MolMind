@@ -38,6 +38,8 @@ output/
 **/output/*.note.txt
 **/output/*.md
 **/output/diagnostics/
+data/agent_runs/**
+!data/agent_runs/.gitkeep
 
 # 本地/密钥
 .env

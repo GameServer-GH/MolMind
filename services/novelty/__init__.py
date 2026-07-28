@@ -1,5 +1,10 @@
-"""透明结构新颖性代理。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.novelty.
 
-from services.novelty.scorer import NoveltyAssessment, assess_structural_novelty
+Prefer: `from plugins.molmind_core.scientific.novelty import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["NoveltyAssessment", "assess_structural_novelty"]
+import plugins.molmind_core.scientific.novelty as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

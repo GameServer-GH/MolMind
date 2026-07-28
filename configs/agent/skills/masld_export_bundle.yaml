@@ -1,0 +1,6 @@
+plugin_id: molmind-core
+skill_id: masld_export_bundle
+title: 导出结果打包
+description: 打包 CSV、PDF、运行轨迹与哈希，便于复现与归档
+tools:
+  - export_submission_bundle

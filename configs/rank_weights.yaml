@@ -1,11 +1,12 @@
 # MolMind 正式版默认排序与融合权重（纳入 config_hash）
 #
 # 主路径冻结口径（Quality-Max 默认）：
-#   主证据 = chembl_lipid_v1 + pubchem_tox_v1（+ 已烘焙 evidence_snapshot）
+#   主证据 = chembl_lipid_v1 + pubchem_tox_v1 + epa_ctx_tox_v1（仅已烘焙 snapshot）
 #   nafldkb_v1 / dili_table_v1 默认不进主排名（enabled: false, ranking_weight: 0）
 #   避免弱 S_lipid + 高 conf_e 刷榜
 #
-# mode_default: Quality-Max（唯一主路径）；联网补证据由 evidence.allow_live 控制
+# mode_default: Quality-Max（唯一主路径）；evidence.allow_live 只授权显式
+# query_evidence / bake enrichment，同一 screen Run 永远只消费冻结/本地证据。
 mode_default: auto
 seed: 42
 top_n: 10
@@ -60,17 +61,24 @@ tox_fuse:
 evidence:
   enabled: true
   use_snapshot: true
-  allow_live: false
+  allow_live: false              # enrichment 授权；不允许当前 screen 的 HTTP 响应参与排序
   # 生效 adapters 列表（仅列出参与主排名的通道）
   adapters:
     - chembl_lipid_v1
     - pubchem_tox_v1
+    - epa_ctx_tox_v1
   # 全量通道开关；未列入 adapters 或 enabled=false 的不进主排名
   adapter_flags:
     chembl_lipid_v1:
       enabled: true
       ranking_weight: 1.0
     pubchem_tox_v1:
+      enabled: true
+      ranking_weight: 1.0
+    # EPA CTX only contributes after explicit live enrichment has been
+    # normalized and frozen into an evidence snapshot.  It is never read from
+    # the network by the ranker.
+    epa_ctx_tox_v1:
       enabled: true
       ranking_weight: 1.0
     ot_target_v1:
@@ -108,13 +116,13 @@ evidence:
     max_assay_rows_per_candidate: 20
   tox_analog_sim_threshold: 0.75
   tox_analog_boost_alpha: 0.25
-  deep_query_top_m: 60          # auto/online 仅对短名单 live 查证（保 SLA）；覆盖 Critic 漂移席位
-  bake_top_m: 120               # bake-evidence 默认烘焙短名单，覆盖多样性/Critic 重排后的 Top10
+  deep_query_top_m: 60          # 同轮仅做冻结/local Top-M 复核；不触发 HTTP
+  bake_top_m: 120               # 显式 bake 按 provider 有界并发补证并冻结，覆盖 Critic 漂移席位
   http_timeout_sec: 4.0
   circuit_fail_threshold: 5
   chembl_max_activities: 500
-  prefer_snapshot: true         # 有本地快照则优先用，不再打外网
-  auto_cache_snapshot: true     # 仅 allow_live=true：查到的结果自动写入 snapshot
+  prefer_snapshot: true         # 排名始终优先并仅重放本地快照；Tool live 可按 TTL 刷新查询缓存
+  auto_cache_snapshot: false    # Facade 排名禁用隐式写；显式 bake 负责规范化后写 snapshot
   local_tables:
     enabled: false              # 主路径冻结：NAFLDkb/DILIrank 默认不进主排名
     dili_csv: data/reference/dilirank.csv
@@ -145,7 +153,7 @@ evidence:
       - data/reference/dilirank_identity_mapped.jsonl
       - data/reference/dilirank.csv
   # Shortlist evidence loop: deep_query covers primary+reserve drift seats.
-  # ChEMBL/PubChem live adapters remain the fair hit|verified_empty path.
+  # ChEMBL/PubChem live adapters 仅由显式 Tool/bake Gateway 调用；screen 不隐式联网。
   require_shortlist_query_statuses: true
 
 diversity:

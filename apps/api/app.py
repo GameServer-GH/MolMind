@@ -18,18 +18,20 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from services.mechanism.jobs import get_job, job_public_view, start_mechanism_job
-from services.nomination import (
+from apps.api.agent_routes import router as agent_router
+from apps.api.download_headers import content_disposition_attachment
+from plugins.molmind_core.scientific.mechanism.jobs import get_job, job_public_view, start_mechanism_job
+from plugins.molmind_core.scientific.nomination import (
     apply_selected_proposals,
     build_interactive_review_proposals,
     get_review_session,
     payload_from_applied,
     store_review_session,
 )
-from services.pipeline import load_config, screen_sdf
-from services.pipeline.config_loader import resolve_runtime_switches
-from services.pipeline.run_log import RunLogEntry
-from services.pipeline.runner import TOP_N_MAX, TOP_N_MIN
+from plugins.molmind_core.scientific.pipeline import load_config, screen_sdf
+from plugins.molmind_core.scientific.pipeline.config_loader import resolve_runtime_switches
+from plugins.molmind_core.scientific.pipeline.run_log import RunLogEntry
+from plugins.molmind_core.scientific.pipeline.runner import TOP_N_MAX, TOP_N_MIN
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 _LEGACY_MODES = frozenset({"auto", "online", "offline"})
@@ -37,10 +39,10 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=2)
 # build watermark — LJR
 _API_BUILD_MARK = "mm.ljr.api"
 
-app = FastAPI(title="MolMind", version="0.1.1")
+app = FastAPI(title="MolMind", version="0.2.0")
+app.include_router(agent_router)
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 
 def _clamp_top(top: int) -> int:
     if top < TOP_N_MIN or top > TOP_N_MAX:
@@ -271,7 +273,7 @@ def health() -> dict:
     _, allow_live, use_snapshot = resolve_runtime_switches()
     return {
         "status": "ok",
-        "version": "0.1.1",
+        "version": "0.2.0",
         "build": _API_BUILD_MARK,
         "config_hash": cfg.config_hash,
         "mode": "auto",
@@ -306,7 +308,7 @@ def mechanism_download(job_id: str) -> Response:
     return Response(
         content=base64.b64decode(b64),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": content_disposition_attachment(name)},
     )
 
 
@@ -487,11 +489,11 @@ async def screen_stream(
 @app.post("/api/screen/apply-review")
 def screen_apply_review(body: ApplyReviewRequest) -> dict:
     """Apply human-selected interactive review proposals and finalize deliverables."""
-    from services.evidence_facade.mechanism_graph import (
+    from plugins.molmind_core.scientific.evidence_facade.mechanism_graph import (
         build_mechanism_graphs,
         load_mechanism_context,
     )
-    from services.pipeline.run_identity import selection_sha256 as sel_hash
+    from plugins.molmind_core.scientific.pipeline.run_identity import selection_sha256 as sel_hash
 
     session = get_review_session(body.run_id)
     if not session:

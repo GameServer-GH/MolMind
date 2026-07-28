@@ -1,0 +1,18 @@
+profile_id: lab_extensible
+display_name: 实验室可扩展 · Catalog 主动添加
+plugins:
+  molmind-core:
+    enabled: true
+    builtin: true
+skills:
+  masld_nominate: { enabled: true }
+  masld_mechanism: { enabled: true }
+  masld_explain: { enabled: true }
+  masld_export_bundle: { enabled: true }
+policy:
+  catalog_opt_in_only: true
+  claim_ceiling: proxy_priority_only
+  # 不预置启用任何 Catalog 项；仅允许用户主动添加
+budgets:
+  max_steps: 16
+  max_tool_calls: 12

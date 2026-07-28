@@ -1,5 +1,10 @@
-"""services.scorer_tox — 毒性打分导出。"""
+"""Backward-compatible shim → plugins.molmind_core.scientific.scorer_tox.
 
-from services.scorer_tox.scorer import fuse_tox, score_tox
+Prefer: `from plugins.molmind_core.scientific.scorer_tox import ...`
+"""
+from __future__ import annotations
 
-__all__ = ["fuse_tox", "score_tox"]
+import plugins.molmind_core.scientific.scorer_tox as _pkg
+import sys
+
+sys.modules[__name__] = _pkg

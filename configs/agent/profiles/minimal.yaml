@@ -1,0 +1,17 @@
+profile_id: minimal
+display_name: 最小模式 · 仅筛选导出
+plugins:
+  molmind-core:
+    enabled: true
+    builtin: true
+skills:
+  masld_nominate: { enabled: true }
+  masld_mechanism: { enabled: false }
+  masld_explain: { enabled: false }
+  masld_export_bundle: { enabled: true }
+policy:
+  catalog_opt_in_only: true
+  claim_ceiling: proxy_priority_only
+budgets:
+  max_steps: 8
+  max_tool_calls: 4

@@ -1,0 +1,151 @@
+{
+  "schema_version": "molmind-candidate-mechanism-hypotheses-v1",
+  "scope": "non_scoring_report_enrichment",
+  "notes": [
+    "This catalog enriches the mechanism/validation report only; it never changes ranking, eligibility, or scores.",
+    "Evidence levels: L2 = same-compound pharmacology/biological evidence; L3 = close reference evidence; L4 = structure or pathway hypothesis; L5 = unresolved.",
+    "A known pharmacological target is not evidence of a HepG2-FFA lipid-lowering effect."
+  ],
+  "candidates": {
+    "76578-12-6": {
+      "name": "Quizalofop",
+      "label": "ACCase/DNL（跨物种外推，低置信）",
+      "evidence_level": "L4",
+      "targets": ["ACACA/ACACB", "ACC", "FASN", "SCD1"],
+      "basis": "公开资料将 Quizalofop 描述为植物质体 ACCase 抑制剂；这只支持脂肪酸合成受抑的跨物种药理启发，不能证明其抑制人源 HepG2 的 ACC。",
+      "hypothesis": "若该分子在 HepG2 中能影响人源 ACC/DNL，脂质读出下降应伴随 ACC/FASN/SCD1 或 malonyl-CoA 方向性变化。",
+      "validation": "双终点命中后检测 p-ACC/总ACC、FASN、SCD1 和 malonyl-CoA；再用人源 ACC 活性/结合或 ACACA/ACACB 敲低做正交验证。",
+      "falsification": "活力下降伴随脂质下降，或人源 ACC/DNL 标志物无方向性变化，则不支持该机制。",
+      "sources": [
+        "https://www.benchchem.com/es/product/b1680410",
+        "https://www.chemsrc.com/en/cas/76578-12-6_1042000.html"
+      ]
+    },
+    "96609-16-4": {
+      "name": "Lifibrol",
+      "label": "LDLR/HMGCS1 胆固醇处理",
+      "evidence_level": "L2",
+      "targets": ["LDLR", "HMGCS1", "SREBP2"],
+      "basis": "Lifibrol 的临床与培养细胞研究支持 LDL 受体途径增强；另有研究报告其可抑制 HMG-CoA synthase。该证据更接近胆固醇处理，不等同于 HepG2 脂滴下降。",
+      "hypothesis": "若 Lifibrol 在 HepG2-FFA 中产生表型，可能通过 LDLR/HMGCS1/SREBP2 轴改变胆固醇处理，并间接影响中性脂质积累。",
+      "validation": "平行双终点命中后分别测细胞 TG、总胆固醇/胆固醇酯、LDLR、HMGCS1 和 SREBP2；将胆固醇效应与脂滴效应分开解释。",
+      "falsification": "仅有细胞毒性或脂滴下降而无胆固醇/LDLR/HMGCS1方向性变化，则不支持该机制。",
+      "sources": [
+        "https://pubmed.ncbi.nlm.nih.gov/10447220/",
+        "https://pubmed.ncbi.nlm.nih.gov/11058701/",
+        "https://pubchem.ncbi.nlm.nih.gov/compound/Lifibrol"
+      ]
+    },
+    "1611483-29-4": {
+      "name": "(E)-4-(3,5-di-tert-butyl-4-hydroxyphenyl)-2-oxo-3-butenoic acid（GABAB receptor antagonist 1）",
+      "label": "GABAB/反应性结构：候选级降脂机制未解析",
+      "evidence_level": "L5",
+      "targets": ["GABBR1/GABBR2（身份注释）"],
+      "basis": "公开数据库支持该 CAS 与 GABAB receptor antagonist 1 的身份对应，但没有形成 HepG2-FFA 降脂机制证据；分子含共轭羰基/烯酸和酚性结构，需优先排查细胞毒性与化学干扰。",
+      "hypothesis": "若出现真实双终点命中，优先将其视为待解析表型；可检验方向为 GABAB 表达/信号与脂代谢应激的关联，而不是预先宣称 GABAB 介导降脂。",
+      "validation": "先做细胞活力、LDH/ATP、形态和无细胞读出干扰；命中后检测 GABBR1/2、AMPK/SREBP1 以及无偏转录或磷酸化变化。",
+      "falsification": "任何脂质下降若伴随活力下降、读出干扰或无可重复通路响应，均不支持机制升级。",
+      "sources": [
+        "https://pubchem.ncbi.nlm.nih.gov/compound/GABAB-receptor-antagonist-1",
+        "https://www.sigmaaldrich.com/US/en/product/achemblock/advh99c0ef12"
+      ]
+    },
+    "131179-95-8": {
+      "name": "Efaproxiral（RSR-13）",
+      "label": "血红蛋白别构调节：HepG2 机制转移性低",
+      "evidence_level": "L2",
+      "targets": ["血红蛋白（已知药理靶点；HepG2 单培养中不应默认存在）"],
+      "basis": "Efaproxiral 的公开药理是降低血红蛋白对氧的亲和力、改变组织氧释放；这不是已建立的肝细胞降脂机制，且与无红细胞的 HepG2 单培养存在明显情境不匹配。",
+      "hypothesis": "若 HepG2 中仍出现双终点表型，更合理的初始假说是血红蛋白无关的细胞应激/氧感知效应，而非直接沿用其血液药理。",
+      "validation": "先做溶解度/沉淀和双终点；命中后检测 HIF1A、AMPK、ROS 和氧张力控制，并与同条件 vehicle 对照比较。",
+      "falsification": "无表型、仅有细胞毒性，或在氧张力/应激指标不变时脂质读出不重复，均不支持机制。",
+      "sources": [
+        "https://pubchem.ncbi.nlm.nih.gov/compound/Efaproxiral",
+        "https://www.biomol.com/products/chemicals/biochemicals/efaproxiral-cay28294-100"
+      ]
+    },
+    "1308256-94-1": {
+      "name": "(S)-3-(3'-Chloro-[1,1'-biphenyl]-4-yl)-2-(((S)-1-ethoxy-1-oxopropan-2-yl)amino)propanoic acid",
+      "label": "未解析：身份有化学名，缺候选级药理证据",
+      "evidence_level": "L5",
+      "targets": [],
+      "basis": "已能由 CAS 锁定化学名称，但本轮未形成可靠的候选级降脂或靶点证据；不把理化性质代理改写成机制结论。",
+      "hypothesis": "任何 HepG2-FFA 表型目前都应作为待解析表型，优先区分真实脂代谢调节、溶解度效应和细胞毒性。",
+      "validation": "先做溶解度/沉淀、无细胞干扰、CCK-8/LDH 或 ATP 与脂质双终点；命中后用转录组或磷酸化面板开展无偏机制解析。",
+      "falsification": "双终点不重复、活力低于门槛或仅有读出干扰时，淘汰其机制主张。",
+      "sources": [
+        "https://static.cymitquimica.com/products/10/pdf/sds-F498544.pdf"
+      ]
+    },
+    "85691-74-3": {
+      "name": "Pirmagrel",
+      "label": "血栓烷合成酶/TXA2-前列腺素轴：低置信",
+      "evidence_level": "L2",
+      "targets": ["TBXAS1", "TXA2/前列腺素轴"],
+      "basis": "公开药理资料将 Pirmagrel 归为血栓烷合成酶抑制剂；该证据主要来自血栓烷/血小板生物学，不是 HepG2 脂滴验证。",
+      "hypothesis": "若 HepG2 中出现表型，可能通过 eicosanoid balance 与脂质应激交叉影响，但需先确认 HepG2 中 TBXAS1/相关受体的表达和响应。",
+      "validation": "双终点命中后检测 TBXAS1、TXB2/PGE2 比值和 AMPK/SREBP1；以受体/酶表达和 eicosanoid 变化作为机制门槛。",
+      "falsification": "TBXAS1/ eicosanoid 无响应，或脂质下降只伴随毒性，则不支持该机制。",
+      "sources": [
+        "https://www.solarbio.com/goodsInfo?id=256564",
+        "https://pubmed.ncbi.nlm.nih.gov/2708549/"
+      ]
+    },
+    "949875-48-3": {
+      "name": "SMS121（SMS-121）",
+      "label": "CD36/脂肪酸摄取",
+      "evidence_level": "L2",
+      "targets": ["CD36/SCARB3", "脂肪酸摄取"],
+      "basis": "同分子研究显示 SMS121 结合并抑制 CD36，降低脂肪酸摄取；但原始研究主要在 AML 细胞，不能直接等同于 HepG2-FFA 有效低毒。",
+      "hypothesis": "SMS121 可能通过限制 CD36 介导的脂肪酸进入，降低 HepG2 的脂质负荷；同时需排除 CD36 抑制伴随的细胞活力损伤。",
+      "validation": "双终点命中后加入 BODIPY-脂肪酸摄取、CD36/SCARB3 表达和竞争/过表达或敲低验证；将脂肪酸摄取下降与细胞活力并列判断。",
+      "falsification": "脂质下降但脂肪酸摄取、CD36信号不变，或活力下降解释全部表型，则不支持该机制。",
+      "sources": [
+        "https://www.nature.com/articles/s41598-024-58689-1",
+        "https://pubmed.ncbi.nlm.nih.gov/38643249/"
+      ]
+    },
+    "587852-28-6": {
+      "name": "SMI-16a（PIM1/2 Kinase Inhibitor VI）",
+      "label": "PIM1/2-生长与代谢信号：低置信",
+      "evidence_level": "L2",
+      "targets": ["PIM1", "PIM2", "AKT/mTOR/SREBP1（待验证）"],
+      "basis": "SMI-16a 已知为 PIM1/2 抑制剂；PIM 药理与 HepG2 脂质蓄积之间的联系在本报告中仍是推断，不能把 PIM 抑制直接写成降脂。",
+      "hypothesis": "若 SMI-16a 产生真实双终点表型，可能通过 PIM 相关生长/能量信号影响 SREBP1 及脂质合成，但也可能只是增殖抑制假象。",
+      "validation": "优先做细胞计数/ATP 或 LDH；命中后检测 PIM1/2、p-BAD、AKT/mTOR、SREBP1/FASN，并用 PIM 抑制剂或遗传干预做正交验证。",
+      "falsification": "活力/增殖下降完全解释脂质下降，或 PIM/代谢标志物无响应，则不支持机制。",
+      "sources": [
+        "https://www.chemicalbook.com/CAS_587852-28-6.htm",
+        "https://cdn.caymanchem.com/cdn/msds/29456m.pdf"
+      ]
+    },
+    "1206629-08-4": {
+      "name": "TUG-499",
+      "label": "FFAR1/GPR40 脂肪酸感知",
+      "evidence_level": "L2",
+      "targets": ["FFAR1/GPR40", "Ca2+/cAMP"],
+      "basis": "TUG-499 是选择性 FFAR1/GPR40 激动剂，具有同受体药理和体外活性资料；但其在 HepG2-FFA 中是否改变脂滴仍需实验确认。",
+      "hypothesis": "若 HepG2 表达并响应 FFAR1，TUG-499 可能改变脂肪酸感知、Ca2+/cAMP 和下游能量代谢，进而影响脂质蓄积；也可能因受体不表达而无效。",
+      "validation": "先确认 FFAR1/GPR40 表达；命中后检测 Ca2+/cAMP、AMPK/SREBP1，并用受体拮抗或敲低验证受体依赖性。",
+      "falsification": "FFAR1 不表达、第二信使无响应，或脂质下降仅伴随毒性，则不支持该机制。",
+      "sources": [
+        "https://pubmed.ncbi.nlm.nih.gov/23294321/",
+        "https://www.molnova.com/en/ProductsThr/M35364.html"
+      ]
+    },
+    "33458-93-4": {
+      "name": "AH6809（6-isopropoxy-9-oxo-9H-xanthene-2-carboxylic acid）",
+      "label": "EP/DP 前列腺素受体拮抗：低置信",
+      "evidence_level": "L2",
+      "targets": ["EP1/PTGER1", "EP2/PTGER2", "DP1/PTGDR1"],
+      "basis": "AH6809 是 EP/DP 受体拮抗剂，且对 EP1/EP2/DP1 的选择性并不绝对；这支持 eicosanoid signaling 假说，但不提供 HepG2 降脂证据。",
+      "hypothesis": "若 HepG2 中存在相关受体，AH6809 可能通过 PGE2/PGD2-cAMP 轴改变脂质应激；必须先确认受体表达并避免把非选择性药理归因于单一受体。",
+      "validation": "双终点命中后检测 PTGER1/PTGER2/PTGDR1、PGE2/PGD2 刺激下 cAMP 与脂质读出；用受体选择性工具或遗传干预做验证。",
+      "falsification": "受体不表达、cAMP 不响应，或活力下降解释脂质变化，则不支持该机制。",
+      "sources": [
+        "https://pubmed.ncbi.nlm.nih.gov/7503778/",
+        "https://www.chemicalbook.com/CASEN_33458-93-4.htm"
+      ]
+    }
+  }
+}

@@ -131,6 +131,77 @@ def test_pubchem_multiple_cids_requires_identity_review_without_toxicity_lookup(
     assert hits[0].payload["cids"] == [11, 22]
 
 
+def test_pubchem_server_failure_is_query_failure_not_verified_empty(
+    tmp_path: Path,
+) -> None:
+    facade = EvidenceFacade(load_config(mode="online"), snapshot_dir=tmp_path)
+    request = httpx.Request("GET", "https://pubchem.example.test")
+    cid = httpx.Response(
+        200,
+        json={"IdentifierList": {"CID": [11]}},
+        request=request,
+    )
+    unavailable = httpx.Response(503, content=b"unavailable", request=request)
+    client = MagicMock()
+    client.get.side_effect = [cid, unavailable, unavailable]
+
+    with pytest.raises(httpx.HTTPStatusError):
+        facade._pubchem_tox(client, "SERVER-FAILURE-KEY")
+
+
+def test_pubchem_cas_uses_name_namespace_and_records_lookup_basis(
+    tmp_path: Path,
+) -> None:
+    facade = EvidenceFacade(load_config(mode="online"), snapshot_dir=tmp_path)
+    request = httpx.Request("GET", "https://pubchem.example.test")
+    not_found = httpx.Response(404, content=b"{}", request=request)
+    client = MagicMock()
+    client.get.return_value = not_found
+
+    hits = facade._pubchem_tox(
+        client,
+        "64-17-5",
+        lookup_field="cas",
+        lookup_value="64-17-5",
+    )
+
+    requested_url = str(client.get.call_args.args[0])
+    assert "/compound/name/64-17-5/cids/JSON" in requested_url
+    assert hits[0].query_status == "verified_empty"
+    assert hits[0].payload["lookup_field"] == "cas"
+
+
+def test_live_adapters_use_configurable_api_bases(tmp_path: Path) -> None:
+    facade = EvidenceFacade(load_config(mode="online"), snapshot_dir=tmp_path)
+    not_found = MagicMock()
+    not_found.status_code = 404
+    not_found.content = b"{}"
+    client = MagicMock()
+    client.get.return_value = not_found
+
+    facade._chembl_lipid(
+        client,
+        "LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+        api_base="https://chembl.example.test/api",
+    )
+    assert str(client.get.call_args.args[0]).startswith(
+        "https://chembl.example.test/api/"
+    )
+
+    client.reset_mock()
+    client.get.return_value = not_found
+    facade._pubchem_tox(
+        client,
+        "64-17-5",
+        lookup_field="cas",
+        lookup_value="64-17-5",
+        api_base="https://pubchem.example.test/rest/pug",
+    )
+    assert str(client.get.call_args.args[0]).startswith(
+        "https://pubchem.example.test/rest/pug/compound/name/"
+    )
+
+
 @pytest.mark.parametrize(
     ("activity", "expected"),
     [

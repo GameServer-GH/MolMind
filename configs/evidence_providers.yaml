@@ -1,15 +1,17 @@
-schema_version: molmind-evidence-providers-v1
+schema_version: molmind-evidence-providers-v2
 credential_policy:
-  plaintext_in_repository: explicitly_accepted_by_project_owner
-  resolution_order: [explicit_runtime, environment, project_provider_config]
+  plaintext_in_repository: forbidden
+  public_restricted_obfuscated_compatibility_value: true
+  resolution_order: [explicit_runtime, environment, environment_file, os_keychain, embedded_public_fallback]
   docker_and_ci: environment_or_mounted_secret
 cache:
   state_db: data/public/cache/evidence_query_state.sqlite
   payload_objects: data/public/cache/objects
   immutable_payloads: true
-  statuses: [hit, verified_empty, query_failed, auth_missing, not_queried]
+  statuses: [hit, verified_empty, query_failed, auth_missing, not_queried, identity_review_required, annotation_only]
   ttl_days:
     hit: 90
+    annotation_only: 30
     verified_empty: 14
     query_failed: 0
   retry_minutes:
@@ -23,35 +25,112 @@ ingestion:
 providers:
   epa_ctx:
     enabled: true
+    query_tool_default: true
+    live_supported: true
     api_base: https://comptox.epa.gov/ctx-api
-    api_key: 95080f05-1ebb-48d0-bb6b-d75ae6de9338
-    credential_storage: plaintext_project_config
+    credential_storage: environment_or_mounted_secret_or_os_keychain_or_public_fallback
     environment_fallback: CTX_API_KEY
+    environment_file_fallback: CTX_API_KEY_FILE
     identity_order: [original_inchikey, standardized_inchikey, cas]
+    endpoint: candidate_bundle
+    query_types:
+      annotation: {endpoint: candidate_bundle}
+      tox: {endpoint: candidate_bundle}
     concurrency: 6
-    roles: [chemical_identity, toxicity_risk, hazard]
+    timeout_sec: 20
+    rate_limit_per_sec: 3
+    retry_attempts: 1
+    retry_backoff_sec: 1
+    circuit_fail_threshold: 3
+    circuit_reset_sec: 120
+    # Normalized evidence contract used for cache invalidation; transport API
+    # revision is recorded separately so endpoint changes cannot masquerade as
+    # a compatible normalized payload.
+    adapter_version: epa_ctx_tox_v1
+    transport_api_version: ctx-api-v1
+    roles: [chemical_identity_annotation, toxicity_risk_or_annotation]
   chembl:
     enabled: true
+    query_tool_default: true
+    live_supported: true
     api_base: https://www.ebi.ac.uk/chembl/api/data
     credential: none
     identity_order: [original_inchikey, standardized_inchikey]
+    endpoint: molecule_activity
+    # One activity response can yield all three channels; the planner merges
+    # equal endpoints into one transport request and filters normalized hits.
+    query_types:
+      lipid: {endpoint: molecule_activity}
+      tox: {endpoint: molecule_activity}
+      pathway: {endpoint: molecule_activity}
     concurrency: 4
+    timeout_sec: 20
+    rate_limit_per_sec: 4
+    retry_attempts: 1
+    retry_backoff_sec: 0.5
+    circuit_fail_threshold: 3
+    circuit_reset_sec: 60
+    adapter_version: chembl_lipid_v3
+    transport_api_version: chembl-rest-v1
     roles: [candidate_activity, mechanism_support]
   pubchem:
     enabled: true
+    query_tool_default: true
+    live_supported: true
     api_base: https://pubchem.ncbi.nlm.nih.gov/rest/pug
     credential: none
     identity_order: [original_inchikey, standardized_inchikey, cas]
+    endpoint: compound_bundle
+    query_types:
+      tox: {endpoint: compound_bundle}
     concurrency: 4
-    roles: [chemical_identity, candidate_activity, cytotoxicity]
+    timeout_sec: 20
+    rate_limit_per_sec: 4
+    retry_attempts: 1
+    retry_backoff_sec: 0.5
+    circuit_fail_threshold: 3
+    circuit_reset_sec: 60
+    adapter_version: pubchem_tox_v3
+    transport_api_version: pubchem-pug-v1
+    roles: [chemical_identity, toxicity_risk_or_annotation]
   bindingdb:
     enabled: true
+    query_tool_default: false
+    live_supported: false
     api_base: https://www.bindingdb.org/rest
     credential: none
     mapping_mode: target_then_ligand_identity
+    identity_order: [original_inchikey, standardized_inchikey]
+    endpoint: target_ligand_context
+    query_types:
+      pathway: {endpoint: target_ligand_context}
     concurrency: 2
+    timeout_sec: 30
+    rate_limit_per_sec: 1
+    retry_attempts: 1
+    retry_backoff_sec: 1
+    circuit_fail_threshold: 2
+    circuit_reset_sec: 120
+    adapter_version: bindingdb-rest-v1
     roles: [mechanism_support]
+    # BindingDB is imported/frozen as mechanism context.  Live target scans
+    # are intentionally disabled until a candidate-identity adapter and
+    # target-panel provenance snapshot are supplied; no affinity can score
+    # lipid efficacy directly.
   geo_pride_metabolomics:
     enabled: true
+    query_tool_default: false
+    live_supported: false
     mapping_mode: study_accession_not_candidate_identity
+    endpoint: study_accession
+    query_types:
+      pathway: {endpoint: study_accession}
+    concurrency: 1
+    timeout_sec: 30
+    rate_limit_per_sec: 0.5
+    retry_attempts: 0
+    circuit_fail_threshold: 2
+    circuit_reset_sec: 120
     roles: [mechanism_support, assay_qc]
+    # Study/omics records are accession-scoped context/QC, never a molecule
+    # efficacy endpoint.  They remain local-only in the query tool.
