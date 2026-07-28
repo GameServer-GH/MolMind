@@ -58,6 +58,7 @@ deploy_pro/
 deploy/images/*.tar
 deploy/images/*.tar.gz
 deploy/images/*.tgz
+deploy/images/.tmp-*
 
 .DS_Store
 .idea/
