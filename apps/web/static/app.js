@@ -2433,13 +2433,10 @@
       });
     }
 
-    try {
-      await refreshHistoryList();
-    } catch (err) {
-      if (agentHistoryList) {
-        agentHistoryList.innerHTML = `<p class="mm-history-empty">${err.message || err}</p>`;
-      }
-    }
+    await refreshHistoryList();
+    HistoryUI.syncSessions()
+      .then(() => refreshHistoryList())
+      .catch(() => {});
   }
 
   async function refreshAgentSettings() {
@@ -2629,6 +2626,7 @@
   syncNewChatBtnTitle();
 
   (async () => {
+    if (HistoryUI) HistoryUI.syncSessions().catch(() => {});
     const cachedSid = readCachedAgentSessionId();
     if (cachedSid) {
       try {

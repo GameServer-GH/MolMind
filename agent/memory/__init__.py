@@ -104,7 +104,7 @@ class FileRunStore:
                 continue
             preview = ""
             messages = meta.get("messages") or []
-            for msg in messages:
+            for msg in reversed(messages):
                 if msg.get("role") == "user" and msg.get("text"):
                     preview = str(msg["text"]).strip()
                     break

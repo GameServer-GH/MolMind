@@ -63,6 +63,22 @@ def test_list_sessions_and_events(client: TestClient) -> None:
     assert "done" in types
 
 
+def test_session_preview_uses_latest_user_question(tmp_path) -> None:
+    from agent.memory import FileRunStore
+
+    store = FileRunStore(root=tmp_path / "agent_runs")
+    session = store.create()
+    session.messages = [
+        {"role": "user", "text": "第一个问题"},
+        {"role": "assistant", "text": "第一个回答"},
+        {"role": "user", "text": "这是最新的问题"},
+        {"role": "assistant", "text": "最新回答"},
+    ]
+    store.persist(session)
+
+    assert store.list_sessions()[0]["preview"] == "这是最新的问题"
+
+
 def test_settings_catalog_opt_in(client: TestClient) -> None:
     sid = client.post("/api/agent/sessions").json()["session_id"]
     settings = client.get(f"/api/agent/settings?session_id={sid}").json()

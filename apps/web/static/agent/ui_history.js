@@ -3,6 +3,7 @@
   const LONG_PRESS_MS = 500;
   const MOVE_TOLERANCE = 20;
   const LOCAL_HISTORY_KEY = "molmind_agent_history_local_v1";
+  const LOCAL_HISTORY_CACHE_KEY = "molmind_agent_history_cache_v1";
 
   function readLocalIds() {
     try {
@@ -16,6 +17,23 @@
   function writeLocalIds(ids) {
     try {
       localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify([...new Set(ids)]));
+    } catch {
+      /* local storage may be unavailable */
+    }
+  }
+
+  function readCachedSessions() {
+    try {
+      const value = JSON.parse(localStorage.getItem(LOCAL_HISTORY_CACHE_KEY) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeCachedSessions(sessions) {
+    try {
+      localStorage.setItem(LOCAL_HISTORY_CACHE_KEY, JSON.stringify(sessions.slice(0, 50)));
     } catch {
       /* local storage may be unavailable */
     }
@@ -368,11 +386,23 @@
 
   const MolMindAgentHistory = {
     async fetchSessions() {
+      const localIds = new Set(readLocalIds());
+      return readCachedSessions().filter((session) => localIds.has(session.session_id));
+    },
+
+    async syncSessions() {
       const resp = await fetch("/api/agent/sessions?limit=50");
       if (!resp.ok) throw new Error("无法加载会话历史");
       const data = await resp.json();
       const localIds = new Set(readLocalIds());
-      return (data.sessions || []).filter((session) => localIds.has(session.session_id));
+      const remote = (data.sessions || []).filter((session) => localIds.has(session.session_id));
+      const merged = new Map(readCachedSessions().map((session) => [session.session_id, session]));
+      remote.forEach((session) => merged.set(session.session_id, session));
+      const sessions = [...merged.values()]
+        .filter((session) => localIds.has(session.session_id))
+        .sort((a, b) => Date.parse(b.updated_at || b.created_at || "") - Date.parse(a.updated_at || a.created_at || ""));
+      writeCachedSessions(sessions);
+      return sessions;
     },
 
     registerSession(sessionId) {
@@ -382,12 +412,14 @@
 
     forgetSession(sessionId) {
       writeLocalIds(readLocalIds().filter((id) => id !== sessionId));
+      writeCachedSessions(readCachedSessions().filter((session) => session.session_id !== sessionId));
     },
 
     async clearLocalHistory() {
       const ok = await openClearHistoryConfirm();
       if (!ok) return false;
       writeLocalIds([]);
+      writeCachedSessions([]);
       if (refreshCallback) await refreshCallback();
       return true;
     },
