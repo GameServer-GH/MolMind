@@ -2,6 +2,24 @@
 (function (global) {
   const LONG_PRESS_MS = 500;
   const MOVE_TOLERANCE = 20;
+  const LOCAL_HISTORY_KEY = "molmind_agent_history_local_v1";
+
+  function readLocalIds() {
+    try {
+      const value = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || "[]");
+      return Array.isArray(value) ? value.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeLocalIds(ids) {
+    try {
+      localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify([...new Set(ids)]));
+    } catch {
+      /* local storage may be unavailable */
+    }
+  }
 
   function groupByDay(sessions) {
     const groups = { 今天: [], 昨天: [], 更早: [] };
@@ -124,6 +142,7 @@
       throw new Error(err.detail || "删除失败");
     }
     if (onDeletedActive) onDeletedActive(session.session_id);
+    MolMindAgentHistory.forgetSession(session.session_id);
     if (refreshCallback) await refreshCallback();
   }
 
@@ -352,7 +371,25 @@
       const resp = await fetch("/api/agent/sessions?limit=50");
       if (!resp.ok) throw new Error("无法加载会话历史");
       const data = await resp.json();
-      return data.sessions || [];
+      const localIds = new Set(readLocalIds());
+      return (data.sessions || []).filter((session) => localIds.has(session.session_id));
+    },
+
+    registerSession(sessionId) {
+      if (!sessionId) return;
+      writeLocalIds([...readLocalIds(), sessionId]);
+    },
+
+    forgetSession(sessionId) {
+      writeLocalIds(readLocalIds().filter((id) => id !== sessionId));
+    },
+
+    async clearLocalHistory() {
+      const ok = await openClearHistoryConfirm();
+      if (!ok) return false;
+      writeLocalIds([]);
+      if (refreshCallback) await refreshCallback();
+      return true;
     },
 
     renderList(listEl, sessions, onSelect, { activeId, countEl, onRefresh, onDeleted } = {}) {
@@ -440,6 +477,32 @@
       root.classList.remove("mm-chat-root--settings-drawer");
     },
   };
+
+  function openClearHistoryConfirm() {
+    return mountConfirmMask(
+      "agentClearHistoryConfirm",
+      `
+        <div class="mm-confirm-dialog">
+          <div class="mm-confirm-header">
+            <span class="mm-icon mm-icon--trash mm-confirm-icon" aria-hidden="true"></span>
+            <h3 id="agentClearHistoryConfirmTitle">清空对话历史</h3>
+          </div>
+          <div class="mm-confirm-content">确定清空本机浏览器中的全部对话历史吗？云端会话不会被删除。</div>
+          <div class="mm-confirm-footer">
+            <button type="button" class="mm-confirm-cancel">取消</button>
+            <button type="button" class="mm-confirm-ok">确认清空</button>
+          </div>
+        </div>
+      `,
+      (mask, finish) => {
+        mask.setAttribute("aria-labelledby", "agentClearHistoryConfirmTitle");
+        mask.querySelector(".mm-confirm-ok").addEventListener("click", (e) => {
+          e.stopPropagation();
+          finish(true);
+        });
+      }
+    );
+  }
 
   global.MolMindAgentHistory = MolMindAgentHistory;
 })(window);

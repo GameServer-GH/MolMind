@@ -1638,6 +1638,12 @@
   z-index: 1;
 }
 
+.mm-history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .mm-history-title {
   margin: 0;
   font-size: 18px;

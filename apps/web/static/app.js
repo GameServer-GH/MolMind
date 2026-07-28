@@ -1585,6 +1585,7 @@
   const agentHistoryPanel = document.getElementById("agentHistoryPanel");
   const agentHistoryList = document.getElementById("agentHistoryList");
   const agentHistoryCount = document.getElementById("agentHistoryCount");
+  const agentHistoryClearBtn = document.getElementById("agentHistoryClearBtn");
   const agentHistoryCloseBtn = document.getElementById("agentHistoryCloseBtn");
   const agentSettingsPanel = document.getElementById("agentSettingsPanel");
   const agentSettingsBody = document.getElementById("agentSettingsBody");
@@ -1883,6 +1884,7 @@
     if (!resp.ok) throw new Error("无法创建 Agent 会话");
     const data = await resp.json();
     setAgentSessionId(data.session_id);
+    if (HistoryUI) HistoryUI.registerSession(data.session_id);
     updateSessionMeta(agentSessionId);
     await applyCatalogPrefs(agentSessionId, []);
     if (MentionUI) MentionUI.refresh(agentSessionId).catch(() => {});
@@ -2562,6 +2564,15 @@
     });
   }
   if (agentHistoryBtn) agentHistoryBtn.addEventListener("click", () => openAgentHistory());
+  if (agentHistoryClearBtn) {
+    agentHistoryClearBtn.addEventListener("click", async () => {
+      try {
+        await HistoryUI.clearLocalHistory();
+      } catch (err) {
+        alert(err.message || err);
+      }
+    });
+  }
   if (agentSettingsBtn) agentSettingsBtn.addEventListener("click", () => openAgentSettings());
   if (agentHistoryCloseBtn) {
     agentHistoryCloseBtn.addEventListener("click", () =>

@@ -27,6 +27,8 @@ RUN pip install --index-url "${PIP_INDEX_URL}" --no-cache-dir -r deploy/requirem
 COPY apps ./apps
 COPY services ./services
 COPY packages ./packages
+COPY agent ./agent
+COPY plugins ./plugins
 COPY configs ./configs
 COPY data ./data
 COPY templates ./templates

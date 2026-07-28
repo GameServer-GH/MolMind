@@ -25,12 +25,22 @@ OUT_TAR="$OUT_DIR/molmind-0.2.0-${ARCH_TAG}.tar"
 mkdir -p "$OUT_DIR"
 
 echo "==> build $IMAGE ($PLATFORM)"
-docker buildx build \
-  --platform "$PLATFORM" \
-  -f deploy/Dockerfile \
-  -t "$IMAGE" \
-  --load \
-  .
+if [[ "$ARCH_TAG" == "amd64" ]]; then
+  # Reuse the base image pulled into the local Docker daemon. The configured
+  # docker-container Buildx builder is isolated and may try Docker Hub again.
+  docker build \
+    --platform "$PLATFORM" \
+    -f deploy/Dockerfile \
+    -t "$IMAGE" \
+    .
+else
+  docker buildx build \
+    --platform "$PLATFORM" \
+    -f deploy/Dockerfile \
+    -t "$IMAGE" \
+    --load \
+    .
+fi
 
 echo "==> save $OUT_TAR"
 docker save -o "$OUT_TAR" "$IMAGE"

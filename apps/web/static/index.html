@@ -421,9 +421,14 @@
               <h3 class="mm-history-title">对话历史</h3>
               <span id="agentHistoryCount" class="mm-history-count"></span>
             </div>
-            <button id="agentHistoryCloseBtn" type="button" class="mm-glass-btn" aria-label="关闭">
-              <span class="mm-icon mm-icon--x mm-icon--md" aria-hidden="true"></span>
-            </button>
+            <div class="mm-history-header-actions">
+              <button id="agentHistoryClearBtn" type="button" class="mm-glass-btn" aria-label="清空对话历史" title="清空本机对话历史">
+                <span class="mm-icon mm-icon--trash mm-icon--md" aria-hidden="true"></span>
+              </button>
+              <button id="agentHistoryCloseBtn" type="button" class="mm-glass-btn" aria-label="关闭">
+                <span class="mm-icon mm-icon--x mm-icon--md" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
           <div id="agentHistoryList" class="mm-history-list"></div>
         </aside>
@@ -835,7 +840,7 @@
   </script>
   <script src="./agent/ui_render.js?v=mm-agent-stream-1"></script>
   <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-box-1"></script>
-  <script src="./agent/ui_history.js?v=mm-agent-hist-6"></script>
+  <script src="./agent/ui_history.js?v=mm-agent-hist-7"></script>
   <script src="./agent/ui_settings.js?v=mm-agent-drawer-2"></script>
   <script src="./agent/ui_mention.js?v=mm-agent-mention-4"></script>
   <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
