@@ -28,6 +28,9 @@ def test_health(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
+    assert data["version"] == app.version
+    assert data["version"] != "unknown"
+    assert data["build"]
     assert data["mode"] == "auto"
     assert data["quality_max"] is True
     assert data["use_snapshot"] is True

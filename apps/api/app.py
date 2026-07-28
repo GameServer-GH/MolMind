@@ -8,8 +8,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,7 +41,25 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=2)
 # build watermark — LJR
 _API_BUILD_MARK = "mm.ljr.api"
 
-app = FastAPI(title="MolMind", version="0.2.0")
+def _resolve_app_version() -> str:
+    """Use the checked-out project version before stale installed metadata."""
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+        match = re.search(r"(?m)^\s*version\s*=\s*[\"']([^\"']+)[\"']", text)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    try:
+        return package_version("molmind")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+APP_VERSION = _resolve_app_version()
+
+app = FastAPI(title="MolMind", version=APP_VERSION)
 app.include_router(agent_router)
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -273,7 +293,7 @@ def health() -> dict:
     _, allow_live, use_snapshot = resolve_runtime_switches()
     return {
         "status": "ok",
-        "version": "0.2.0",
+        "version": APP_VERSION,
         "build": _API_BUILD_MARK,
         "config_hash": cfg.config_hash,
         "mode": "auto",

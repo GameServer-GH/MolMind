@@ -1586,6 +1586,10 @@
   const agentHistoryList = document.getElementById("agentHistoryList");
   const agentHistoryCount = document.getElementById("agentHistoryCount");
   const agentHistoryClearBtn = document.getElementById("agentHistoryClearBtn");
+  const mmProfileBanner = document.getElementById("mmProfileBanner");
+  const profileInfoModal = document.getElementById("profileInfoModal");
+  const profileInfoVersion = document.getElementById("profileInfoVersion");
+  const profileInfoBuild = document.getElementById("profileInfoBuild");
   const agentHistoryCloseBtn = document.getElementById("agentHistoryCloseBtn");
   const agentSettingsPanel = document.getElementById("agentSettingsPanel");
   const agentSettingsBody = document.getElementById("agentSettingsBody");
@@ -2564,6 +2568,36 @@
     });
   }
   if (agentHistoryBtn) agentHistoryBtn.addEventListener("click", () => openAgentHistory());
+  if (mmProfileBanner && profileInfoModal) {
+    const closeProfileInfo = () => {
+      profileInfoModal.classList.remove("mm-profile-info-modal--open");
+      profileInfoModal.setAttribute("aria-hidden", "true");
+    };
+    mmProfileBanner.addEventListener("click", () => {
+      profileInfoModal.classList.add("mm-profile-info-modal--open");
+      profileInfoModal.setAttribute("aria-hidden", "false");
+      if (profileInfoVersion && profileInfoVersion.textContent === "加载中…") {
+        fetch("/health")
+          .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error("health request failed"))))
+          .then((data) => {
+            profileInfoVersion.textContent = data.version || "未知";
+            if (profileInfoBuild) profileInfoBuild.textContent = data.build || "未知";
+          })
+          .catch(() => {
+            profileInfoVersion.textContent = "未知";
+            if (profileInfoBuild) profileInfoBuild.textContent = "未知";
+          });
+      }
+    });
+    profileInfoModal.querySelectorAll("[data-profile-close]").forEach((el) => {
+      el.addEventListener("click", closeProfileInfo);
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && profileInfoModal.classList.contains("mm-profile-info-modal--open")) {
+        closeProfileInfo();
+      }
+    });
+  }
   if (agentHistoryClearBtn) {
     agentHistoryClearBtn.addEventListener("click", async () => {
       try {
