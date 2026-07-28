@@ -46,11 +46,23 @@ class AgentSession:
     top_n: int = 10
     #: Awaiting user confirm to run at capped top_n after over-limit request.
     pending_top_confirm: dict[str, Any] | None = None
+    #: A requested screening configuration that is not executable under the
+    #: current tool contract. It must be clarified or explicitly discarded;
+    #: later exports must not silently run the default pipeline instead.
+    pending_goal: dict[str, Any] | None = None
     last_run_id: str = ""
     last_selection_sha256: str = ""
     last_config_hash: str = ""
     last_input_sha256: str = ""
     last_result: Any = None
+    #: Durable summaries of frozen runs. ``last_result`` remains the hot,
+    #: in-memory object; this history lets future planning distinguish runs
+    #: after a process restart without serializing mutable score objects.
+    run_history: list[dict[str, Any]] = field(default_factory=list)
+    #: Current plan plus recent completed plans, persisted as plain JSON so a
+    #: restarted runtime can explain what was attempted and observed.
+    active_plan: dict[str, Any] | None = None
+    plan_history: list[dict[str, Any]] = field(default_factory=list)
     #: 当前筛选 Run 的最小身份索引；可跨进程恢复，绝不包含评分或排名字段。
     last_molecule_index: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     last_mechanism_job_id: str = ""
@@ -212,10 +224,14 @@ class FileRunStore:
             "sdf_ui_pending": bool(session.sdf_ui_pending) and bool(session.sdf_filename),
             "top_n": session.top_n,
             "pending_top_confirm": session.pending_top_confirm,
+            "pending_goal": session.pending_goal,
             "last_run_id": session.last_run_id,
             "last_selection_sha256": session.last_selection_sha256,
             "last_config_hash": session.last_config_hash,
             "last_input_sha256": session.last_input_sha256,
+            "run_history": session.run_history[-20:],
+            "active_plan": session.active_plan,
+            "plan_history": session.plan_history[-20:],
             "last_molecule_index": session.last_molecule_index,
             "last_mechanism_job_id": session.last_mechanism_job_id,
             "artifact_ids": list(session.artifacts.keys()),
@@ -296,10 +312,22 @@ class FileRunStore:
                 if isinstance(meta.get("pending_top_confirm"), dict)
                 else None
             ),
+            pending_goal=(dict(meta["pending_goal"]) if isinstance(meta.get("pending_goal"), dict) else None),
             last_run_id=str(meta.get("last_run_id") or ""),
             last_selection_sha256=str(meta.get("last_selection_sha256") or ""),
             last_config_hash=str(meta.get("last_config_hash") or ""),
             last_input_sha256=str(meta.get("last_input_sha256") or ""),
+            run_history=[
+                dict(item)
+                for item in meta.get("run_history") or []
+                if isinstance(item, dict)
+            ][-20:],
+            active_plan=(dict(meta["active_plan"]) if isinstance(meta.get("active_plan"), dict) else None),
+            plan_history=[
+                dict(item)
+                for item in meta.get("plan_history") or []
+                if isinstance(item, dict)
+            ][-20:],
             last_molecule_index=molecule_index,
             last_mechanism_job_id=str(meta.get("last_mechanism_job_id") or ""),
             messages=list(meta.get("messages") or []),

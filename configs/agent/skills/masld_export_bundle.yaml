@@ -1,6 +1,8 @@
 plugin_id: molmind-core
 skill_id: masld_export_bundle
 title: 导出结果打包
-description: 打包 CSV、PDF、运行轨迹与哈希，便于复现与归档
+description: 打包候选清单 CSV、冻结候补 CSV、PDF、运行轨迹与哈希，便于复现与结果归档
+requires: [frozen_result]
+produces: [results_bundle]
 tools:
   - export_submission_bundle

@@ -23,6 +23,10 @@ class AgentIntent:
     raw_text: str
     reason: str
     skill_ids: tuple[str, ...]
+    #: 导出同一冻结运行中的 reserve CSV。
+    want_reserve: bool = False
+    #: 生成包含主榜、候补、manifest 与 trace 的竞赛交卷包。
+    want_bundle: bool = False
     #: False = 纯对话，不调用筛选 / 导出工具
     wants_tools: bool = True
     #: 输入中通过 / 或 @ 点选的插件 / 技能 / 工具
@@ -46,12 +50,51 @@ class AgentIntent:
     evidence_allow_live: bool = False
     evidence_force_refresh: bool = False
     evidence_total_timeout_sec: float = 45.0
+    #: 追问上一轮候选为何处于某个排名；只解释，不重跑或导出。
+    explain_ranking: bool = False
+    ranking_molecule_id: str | None = None
+    #: 用户明确点名的多个冻结排名，例如“解释 Top4 和 Top5”。
+    #: 空值表示未点名或只点名一个排名，沿用原有单分子/TopN 概览语义。
+    ranking_positions: tuple[int, ...] = ()
+    #: “排名 Top5 的分子”中的 Top5 指向单个排名对象，不是 Top5 概览。
+    ranking_position_subject: bool = False
 
 
 _TOP_RE = re.compile(
     r"(?:top[\s\-_]*)(\d{1,3})\s*(?:个|名)?|"
     r"(?:提名|清单|候选|导出|生成).{0,12}?(\d{1,3})\s*(?:个|名)?|"
     r"(\d{1,3})\s*(?:个|名)?\s*(?:提名|清单|候选)",
+    re.I,
+)
+
+_RANKING_CONTEXT_RE = re.compile(
+    r"top[\s\-_]*\d+|排名|排第|第\s*\d+\s*(?:名|位)?|第一名|榜首|首位|入选",
+    re.I,
+)
+_RANK_POSITION_RE = re.compile(
+    r"(?:(?<![A-Za-z])top[\s\-_]*|第\s*)(\d{1,3})(?:\s*(?:名|位))?",
+    re.I,
+)
+_RANK_POSITION_SUBJECT_RE = re.compile(
+    r"(?:排名\s*)?(?:(?<![A-Za-z])top[\s\-_]*|第\s*)\d{1,3}"
+    r"(?:\s*(?:名|位))?\s*(?:的)?\s*(?:分子|候选|化合物)",
+    re.I,
+)
+_RANKING_EXPLANATION_RE = re.compile(
+    r"为什么|为何|为啥|凭什么|原因|理由|依据|解释|说明|介绍|讲讲|聊聊|"
+    r"怎么(?:会|是|排|选|成为|成了|来的)|如何(?:排|选|得出)|"
+    r"\bwhy\b|\bhow\s+come\b|\bexplain\b",
+    re.I,
+)
+_EXPLICIT_RUN_RE = re.compile(
+    r"生成|导出|筛选|重跑|重新跑|开始跑|跑一下|制作|做一份|出一份|"
+    r"\bgenerate\b|\bexport\b|\brerun\b|\brun\b",
+    re.I,
+)
+_QUESTION_END_RE = re.compile(r"(?:吗|呢|么|？|\?)\s*$", re.I)
+_MOLECULE_ID_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])([A-Za-z][A-Za-z0-9_.-]*\d[A-Za-z0-9_.-]*)"
+    r"(?![A-Za-z0-9_.-])",
     re.I,
 )
 
@@ -317,6 +360,57 @@ def _mention_action(_text: str, mentions: tuple[MentionRef, ...]) -> str:
     return "introduce"
 
 
+def ranking_question_fallback(text: str) -> tuple[bool, str | None]:
+    """Conservative offline fallback for a question about an existing rank.
+
+    ``top1`` is ambiguous: in “生成 top1” it is an output size, while in
+    “为啥 top1 是 T19959” it is the subject of a question.  Tool execution must
+    require the former dialog act; an explanatory follow-up stays read-only.
+    The runtime gives this narrow, read-only pattern precedence over optional
+    planning, so a phrase such as “介绍排名 Top5 的分子” cannot become export.
+    """
+    raw = (text or "").strip()
+    if not _RANKING_CONTEXT_RE.search(raw):
+        return False, None
+
+    asks_for_explanation = bool(_RANKING_EXPLANATION_RE.search(raw))
+    asks_a_question = bool(_QUESTION_END_RE.search(raw))
+    explicitly_runs = bool(_EXPLICIT_RUN_RE.search(raw))
+    if not asks_for_explanation and (not asks_a_question or explicitly_runs):
+        return False, None
+    if asks_for_explanation and explicitly_runs:
+        return False, None
+
+    molecule_id = None
+    for match in _MOLECULE_ID_RE.finditer(raw):
+        candidate = match.group(1)
+        if not candidate.lower().startswith("top"):
+            molecule_id = candidate
+            break
+    return True, molecule_id
+
+
+def extract_ranking_positions(text: str) -> tuple[int, ...]:
+    """Return explicitly named frozen ranks in their original order.
+
+    ``Top4 和 Top5`` is a pairwise explanation request, rather than shorthand
+    for the first four rows.  Keep the positional list separate from
+    ``requested_top_n`` so an execution-size parser cannot collapse it to the
+    first number it encounters.
+    """
+    out: list[int] = []
+    for match in _RANK_POSITION_RE.finditer(text or ""):
+        rank = int(match.group(1))
+        if TOP_N_MIN <= rank <= TOP_N_MAX and rank not in out:
+            out.append(rank)
+    return tuple(out)
+
+
+def ranking_position_subject_fallback(text: str) -> bool:
+    """Whether a named rank refers to one molecule rather than a TopN set."""
+    return bool(_RANK_POSITION_SUBJECT_RE.search(text or ""))
+
+
 def parse_intent(
     text: str,
     *,
@@ -388,14 +482,38 @@ def parse_intent(
         k in low for k in ("csv", "清单", "提名", "候选", "筛选", "top", "短名单")
     )
     mentions_pdf = any(k in low for k in ("pdf", "机制", "假说", "验证方案", "报告"))
+    mentions_reserve = any(
+        k in low
+        for k in (
+            "候补",
+            "备用",
+            "reserve",
+            "nomination_reserve",
+            "replacement",
+            "顺延",
+        )
+    )
+    mentions_bundle = any(
+        k in low
+        for k in (
+            "交卷包",
+            "提交包",
+            "结果包",
+            "submission bundle",
+            "submission_bundle",
+            "export_submission_bundle",
+        )
+    )
     # Explicit deliverable markers → tools even without soft verbs like「帮我」
-    strong_product = any(k in low for k in ("csv", "pdf", "top", "清单", "sdf"))
+    strong_product = any(
+        k in low for k in ("csv", "pdf", "top", "清单", "sdf", "候补", "reserve", "交卷包")
+    )
     soft_request = any(
         k in low
         for k in ("生成", "帮我", "导出", "跑", "开始", "做一份", "出一份", "给我", "来一份")
     )
 
-    product = mentions_csv or mentions_pdf
+    product = mentions_csv or mentions_pdf or mentions_reserve or mentions_bundle
     if not product or (not soft_request and not strong_product):
         return AgentIntent(
             want_csv=False,
@@ -413,10 +531,23 @@ def parse_intent(
             top_n_min=int(top_n_min),
         )
 
-    want_csv = mentions_csv or (soft_request and not mentions_pdf) or (
+    want_reserve = mentions_reserve or mentions_bundle
+    want_bundle = mentions_bundle
+    primary_markers = (
+        "top",
+        "主榜",
+        "primary",
+        "nomination_top",
+        "候选",
+        "提名清单",
+    )
+    mentions_primary_csv = mentions_csv and (
+        not mentions_reserve or any(marker in low for marker in primary_markers)
+    )
+    want_csv = mentions_primary_csv or want_bundle or (soft_request and not mentions_pdf and not want_reserve) or (
         soft_request and mentions_pdf
     )
-    only_pdf = mentions_pdf and not mentions_csv and not any(
+    only_pdf = mentions_pdf and not mentions_csv and not want_reserve and not want_bundle and not any(
         k in low for k in ("清单", "提名", "候选", "csv", "top")
     )
     if only_pdf:
@@ -432,6 +563,8 @@ def parse_intent(
         skills.append("masld_nominate")
     if want_pdf:
         skills.append("masld_mechanism")
+    if want_bundle:
+        skills.append("masld_export_bundle")
 
     shown_n = requested_top_n if (requested_top_n and top_n_over_limit) else top_n
     parts = []
@@ -439,6 +572,10 @@ def parse_intent(
         parts.append(f"Top{shown_n} 候选 CSV")
     if want_pdf:
         parts.append("机制与验证方案 PDF")
+    if want_reserve:
+        parts.append("候补名单 CSV")
+    if want_bundle:
+        parts.append("竞赛提交包")
     reason = "需要：" + " + ".join(parts)
     if top_n_over_limit and requested_top_n is not None:
         reason += f"（超出上限 {top_n_max}，需确认）"
@@ -450,6 +587,8 @@ def parse_intent(
         raw_text=raw,
         reason=reason,
         skill_ids=tuple(skills),
+        want_reserve=want_reserve,
+        want_bundle=want_bundle,
         wants_tools=True,
         mentions=mentions,
         mention_action="",

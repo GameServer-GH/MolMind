@@ -211,7 +211,7 @@
 
   function buildArtifactCard(card) {
     const fullTitle = card.title || card.filename || "附件";
-    const kind = card.kind === "pdf" ? "pdf" : "csv";
+    const kind = card.kind === "pdf" ? "pdf" : card.kind === "bundle" ? "bundle" : "csv";
 
     const row = document.createElement("div");
     row.className = "mm-artifact-attach";
@@ -223,7 +223,7 @@
     a.setAttribute("aria-label", `下载 ${fullTitle}`);
     a.title = fullTitle;
 
-    const fileIcon = kind === "pdf" ? "file" : "file-txt";
+    const fileIcon = kind === "pdf" ? "file" : kind === "bundle" ? "stack" : "file-txt";
     a.appendChild(icon(fileIcon, "mm-icon--md"));
 
     const title = document.createElement("span");
@@ -704,11 +704,11 @@
       appendTool(kind, tool, extra) {
         const el = document.createElement("div");
         el.className = "mm-thinking-step mm-thinking-step--tool";
-        const mark = kind === "start" ? "▶" : kind === "end" ? "■" : "·";
+        const status = kind === "start" ? "正在执行" : kind === "end" ? "已完成" : "执行";
         body.appendChild(el);
         this.bump();
         // Tool lines stay snappy — short fade via CSS, no typewriter.
-        paintStep(el, `${mark} ${tool}${extra ? " · " + extra : ""}`, { stream: false });
+        paintStep(el, `${status}：${tool}${extra ? `（${extra}）` : ""}`, { stream: false });
       },
       appendQuery(ev) {
         const el = document.createElement("div");
@@ -718,6 +718,35 @@
         paintStep(el, queryEventLine(ev), { stream: false });
       },
     };
+  }
+
+  function friendlyTraceLog(message) {
+    const text = String(message || "");
+    if (/开始规则 Critic/.test(text)) return "正在核对候选是否符合关键筛选要求…";
+    const criticDone = text.match(/规则 Critic 完成：.*?keep=(\d+).*?当前短名单大小=(\d+)/);
+    if (criticDone) return `候选核对完成：保留 ${criticDone[2]} 个符合要求的候选。`;
+    if (/开始证据约束 LLM Critic/.test(text)) return "正在确认本轮是否有可用于补充判断的证据…";
+    if (/LLM Critic 未改动短名单/.test(text)) return "本轮没有额外证据需要调整候选顺序。";
+    if (/诊断备注：/.test(text)) {
+      return "筛选结果可用；候选的结构多样性仍有提升空间，建议后续扩大候选来源。";
+    }
+    const complete = text.match(/筛选完成：正式主榜=(\d+)\/(\d+)，候补=(\d+)\/(\d+)/);
+    if (complete) return `筛选完成：已得到 ${complete[1]} 个优先候选和 ${complete[3]} 个备选。`;
+    return text;
+  }
+
+  function friendlyToolLine(kind, tool, event) {
+    const topN = event && event.args && event.args.top_n;
+    if (tool === "score_and_rank") {
+      if (kind === "start") return `开始筛选${topN ? ` Top${topN}` : ""}候选`;
+      return event && event.ok === false
+        ? "候选筛选未完成"
+        : `候选筛选完成${event && event.elapsed_s != null ? `（用时 ${event.elapsed_s} 秒）` : ""}`;
+    }
+    if (tool === "export_nomination") {
+      return kind === "start" ? "正在生成 CSV 文件" : event && event.ok === false ? "CSV 文件生成失败" : "CSV 文件已准备好";
+    }
+    return tool;
   }
 
   function applyEventToTurn(turn, ev) {
@@ -741,14 +770,11 @@
       if (type === "thinking") trace.appendThinking(ev.text || "");
       else if (type === "plan") trace.appendPlan(ev.steps || []);
       else if (type === "tool_start") {
-        trace.appendTool("start", ev.tool, JSON.stringify(safeToolArgs(ev.args || {})));
+        trace.appendTool("start", friendlyToolLine("start", ev.tool, ev));
       } else if (type === "tool_end") {
-        const extra = ev.ok
-          ? `ok${ev.elapsed_s != null ? " " + ev.elapsed_s + "s" : ""}`
-          : `fail ${ev.error || ""}`;
-        trace.appendTool("end", ev.tool, extra);
+        trace.appendTool("end", friendlyToolLine("end", ev.tool, ev));
       } else if (type === "log" && ev.message) {
-        trace.appendTool("log", "pipeline", ev.message);
+        trace.appendTool("log", "进度", friendlyTraceLog(ev.message));
       } else if (
         type === "query_plan" ||
         type === "local_hit" ||

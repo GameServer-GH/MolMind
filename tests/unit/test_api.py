@@ -126,6 +126,19 @@ def test_screen_top_bounds(client: TestClient) -> None:
     assert resp.status_code == 400
 
 
+def test_screen_download_reserve_has_stable_name_and_bom(client: TestClient) -> None:
+    with SAMPLE_SDF.open("rb") as fh:
+        resp = client.post(
+            "/api/screen/download?top=3&tier=reserve&allow_live=false",
+            files={"file": ("sample.sdf", fh, "chemical/x-mdl-sdf")},
+        )
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"\xef\xbb\xbf")
+    disposition = resp.headers.get("content-disposition", "")
+    assert "sample_nomination_reserve.csv" in disposition
+    assert "nomination_tier" in resp.content.decode("utf-8-sig")
+
+
 def test_screen_stream_ndjson(client: TestClient) -> None:
     with SAMPLE_SDF.open("rb") as fh:
         resp = client.post(

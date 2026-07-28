@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from packages.models import ScoreRecord
 from agent.runtime.reply import (
+    format_ranking_explanation,
     format_run_completion,
     mechanism_pdf_blurb,
     nomination_markdown_table,
@@ -71,3 +72,93 @@ def test_format_run_completion_friendly_and_has_table() -> None:
     assert "| 排名 | 分子 |" in text
     assert "机制 PDF" in text
     assert "HepG2-FFA" in mechanism_pdf_blurb(_R().top_molecules)
+
+
+def test_format_ranking_explanation_uses_frozen_result() -> None:
+    top1 = _mol(
+        molecule_id="T19959",
+        selection_score=0.504,
+        competition_scoring_version="organizer-relative-effect-novelty-v1",
+        effect_rank=2,
+        novelty_rank=3,
+    )
+    top2 = _mol(
+        molecule_id="T27832",
+        selection_score=0.426,
+        competition_scoring_version="organizer-relative-effect-novelty-v1",
+    )
+
+    class _R:
+        run_id = "mm-existing"
+        top_molecules = [top1, top2]
+        reserve_molecules = []
+        scored_molecules = []
+
+    text = format_ranking_explanation(_R(), molecule_id="t19959")
+    assert text is not None
+    assert "不会重新筛选" in text
+    assert "T19959" in text
+    assert "0.504" in text
+    assert "T27832" in text
+    assert "0.426" in text
+    assert "效应相对名次 2" in text
+
+
+def test_format_ranking_explanation_for_top_n_uses_current_frozen_count() -> None:
+    top1 = _mol(molecule_id="T19959", selection_score=0.504)
+    top2 = _mol(molecule_id="T27832", selection_score=0.426)
+
+    class _R:
+        run_id = "mm-top15"
+        top_molecules = [top1, top2]
+        reserve_molecules = []
+        scored_molecules = []
+
+    text = format_ranking_explanation(_R(), rank_limit=15)
+    assert text is not None
+    assert "实际冻结了 Top 2" in text
+    assert "Top 2 的排名概览" in text
+    assert "T19959" in text and "T27832" in text
+    assert "不会重新筛选、导出或修改排名" in text
+
+
+def test_format_ranking_explanation_keeps_two_named_ranks_distinct() -> None:
+    top = [
+        _mol(molecule_id=f"T{i}", selection_score=0.50 - i / 100)
+        for i in range(1, 6)
+    ]
+
+    class _R:
+        run_id = "mm-top4-top5"
+        top_molecules = top
+        reserve_molecules = []
+        scored_molecules = []
+
+    text = format_ranking_explanation(_R(), rank_positions=(4, 5))
+    assert text is not None
+    assert "你点名的是Top 4、Top 5" in text
+    assert "| Top 4 | T4 |" in text
+    assert "| Top 5 | T5 |" in text
+    assert "Top 4 与 Top 5 的组合排序分相差" in text
+    assert "不会重新筛选、导出或修改排名" in text
+
+
+def test_format_ranking_explanation_resolves_named_rank_to_one_molecule() -> None:
+    top = [
+        _mol(molecule_id=f"T{i}", selection_score=0.50 - i / 100)
+        for i in range(1, 6)
+    ]
+
+    class _R:
+        run_id = "mm-top5-introduction"
+        top_molecules = top
+        reserve_molecules = []
+        scored_molecules = []
+
+    text = format_ranking_explanation(
+        _R(), rank_positions=(5,), rank_position_subject=True
+    )
+    assert text is not None
+    assert "T5 是上一轮冻结结果" in text
+    assert "Top 5" in text
+    assert "Top 1 的排名概览" not in text

@@ -20,6 +20,10 @@ from plugins.molmind_core.scientific.pipeline.config_loader import (
     AppConfig,
 )
 from plugins.molmind_core.scientific.pipeline.run_identity import canonical_selection, selection_sha256
+from plugins.molmind_core.scientific.pipeline.export import (
+    reserve_output_path,
+    reserve_shortage_note,
+)
 
 
 def _hash_files(paths: list[Path]) -> str:
@@ -61,7 +65,8 @@ def write_run_manifest(
         output_path.with_suffix(".screening_audit.csv"),
         output_path.with_suffix(".critic_audit.csv"),
         output_path.with_suffix(".rank_robustness.json"),
-        output_path.with_suffix(".reserve.csv"),
+        reserve_output_path(output_path),
+        reserve_output_path(output_path).with_suffix(".note.txt"),
         output_path.with_suffix(".mechanism_graph.json"),
         output_path.with_suffix(".hepg2_ffa_resources.json"),
     ]
@@ -84,7 +89,7 @@ def write_run_manifest(
     algorithmic_top = list(algorithmic_top_molecules or top_molecules)
     algorithmic_hash = algorithmic_selection_hash or selection_hash
     manifest = {
-        "schema_version": "molmind-run-manifest-v3",
+        "schema_version": "molmind-run-manifest-v4",
         "run_id": run_id,
         "selection_sha256": selection_hash,
         "algorithmic_selection_sha256": algorithmic_hash,
@@ -93,6 +98,23 @@ def write_run_manifest(
         "ordered_candidates": canonical_selection(top_molecules),
         "ordered_algorithmic_candidates": canonical_selection(algorithmic_top),
         "ordered_reserve_candidates": canonical_selection(list(reserve_molecules or [])),
+        "reserve_policy": {
+            "requested_count": cfg.reserve_n,
+            "actual_count": len(reserve_molecules or []),
+            "shortage": len(reserve_molecules or []) < cfg.reserve_n,
+            "shortage_note": (
+                reserve_shortage_note(
+                    actual_count=len(reserve_molecules or []),
+                    requested_count=cfg.reserve_n,
+                )
+                if len(reserve_molecules or []) < cfg.reserve_n
+                else ""
+            ),
+            "promotion_rule": (
+                "仅当正式主榜候选不可采购、无法配制或身份复核失败时，"
+                "优先按冻结 reserve_rank 顺序顺延；已有 replacement_for 时保留其关联。"
+            ),
+        },
         "nomination_review": {
             "enabled": bool(review_cfg.get("enabled", True)),
             "require_input_match": bool(

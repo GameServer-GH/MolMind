@@ -1,4 +1,4 @@
-/* MolMind Agent — history drawer + context tips (rename / delete) */
+/* MolMind Agent — history drawer + context tips (export / rename / delete) */
 (function (global) {
   const LONG_PRESS_MS = 500;
   const MOVE_TOLERANCE = 20;
@@ -116,7 +116,7 @@
   }
 
   function placeMenu(x, y) {
-    const menuEstH = 110;
+    const menuEstH = 158;
     const menuHalfW = 80;
     let posX = x;
     let posY = y;
@@ -162,6 +162,60 @@
     if (onDeletedActive) onDeletedActive(session.session_id);
     MolMindAgentHistory.forgetSession(session.session_id);
     if (refreshCallback) await refreshCallback();
+  }
+
+  function safeFilename(value) {
+    return (
+      String(value || "未命名对话")
+        .trim()
+        .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+        .replace(/\s+/g, "_")
+        .slice(0, 60) || "未命名对话"
+    );
+  }
+
+  function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function exportSessionLog(session) {
+    const sessionId = session.session_id;
+    const [detailResp, eventsResp] = await Promise.all([
+      fetch(`/api/agent/sessions/${sessionId}`),
+      fetch(`/api/agent/sessions/${sessionId}/events`),
+    ]);
+    if (!detailResp.ok || !eventsResp.ok) {
+      const failedResp = !detailResp.ok ? detailResp : eventsResp;
+      const err = await failedResp.json().catch(() => ({}));
+      throw new Error(err.detail || "导出日志失败");
+    }
+
+    const [detail, eventData] = await Promise.all([detailResp.json(), eventsResp.json()]);
+    const exportedAt = new Date();
+    const stamp = exportedAt.toISOString().replace(/[:.]/g, "-");
+    const title = detail.title || session.title || session.preview || "未命名对话";
+    downloadJson(`MolMind_${safeFilename(title)}_${stamp}.json`, {
+      format: "molmind-agent-session-log",
+      format_version: 1,
+      exported_at: exportedAt.toISOString(),
+      session_summary: session,
+      conversation: detail,
+      execution: {
+        event_seq: eventData.event_seq,
+        events: eventData.events || [],
+      },
+    });
   }
 
   function mountConfirmMask(id, html, onReady) {
@@ -327,6 +381,10 @@
     menuEl.style.left = pos.x + "px";
     menuEl.style.top = pos.y + "px";
     menuEl.innerHTML = `
+      <button type="button" class="mm-context-menu-item" data-act="export">
+        <span class="mm-icon mm-icon--download mm-icon--md" aria-hidden="true"></span>
+        <span>导出日志</span>
+      </button>
       <button type="button" class="mm-context-menu-item" data-act="rename">
         <span class="mm-icon mm-icon--pencil mm-icon--md" aria-hidden="true"></span>
         <span>重命名</span>
@@ -345,6 +403,7 @@
       closeMenu();
       longPressJustFired = true;
       try {
+        if (act === "export") await exportSessionLog(target);
         if (act === "rename") await renameSession(target);
         if (act === "delete") await deleteSession(target);
       } catch (err) {

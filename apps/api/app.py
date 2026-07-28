@@ -32,6 +32,7 @@ from plugins.molmind_core.scientific.nomination import (
 )
 from plugins.molmind_core.scientific.pipeline import load_config, screen_sdf
 from plugins.molmind_core.scientific.pipeline.config_loader import resolve_runtime_switches
+from plugins.molmind_core.scientific.pipeline.export import reserve_shortage_note
 from plugins.molmind_core.scientific.pipeline.run_log import RunLogEntry
 from plugins.molmind_core.scientific.pipeline.runner import TOP_N_MAX, TOP_N_MIN
 
@@ -191,6 +192,19 @@ def _result_payload(
         "input_sha256": result.input_sha256,
         "selection_sha256": result.selection_sha256,
         "reserve_selection_sha256": result.reserve_selection_sha256,
+        "primary_label": f"候选分子清单：Top {result.output_count}",
+        "reserve_label": (
+            "候补名单：仅在主榜候选不可采购、无法配制或身份复核失败时"
+            "按冻结顺序顺延，不参与主榜并列排名"
+        ),
+        "reserve_note": (
+            reserve_shortage_note(
+                actual_count=len(result.reserve_molecules),
+                requested_count=result.config.reserve_n,
+            )
+            if len(result.reserve_molecules) < result.config.reserve_n
+            else ""
+        ),
         "degraded_channels": result.config.degraded_channels,
         "diagnostics": {
             "std_tox": result.diagnostics.std_tox,
@@ -212,6 +226,7 @@ def _result_payload(
         "rows": result.to_row_dicts(),
         "reserve_rows": result.to_reserve_row_dicts(),
         "csv": result.to_csv_text(),
+        "reserve_csv": result.to_reserve_csv_text(),
         "logs": result.logs,
         "mechanism_graphs": [graph.to_dict() for graph in result.mechanism_graphs],
         "hepg2_ffa_resources": result.hepg2_ffa_resources,
@@ -607,7 +622,11 @@ async def screen_download(
     allow_live: Optional[bool] = None,
     epa_stage: Optional[int] = None,
     nomination_review: bool = False,
+    tier: str = "primary",
 ) -> Response:
+    export_tier = (tier or "primary").strip().lower()
+    if export_tier not in {"primary", "reserve"}:
+        raise HTTPException(status_code=400, detail="tier 须为 primary 或 reserve")
     payload = await screen_endpoint(
         file=file,
         top=top,
@@ -617,8 +636,15 @@ async def screen_download(
         epa_stage=epa_stage,
         nomination_review=nomination_review,
     )
+    source = Path(file.filename or "library.sdf").stem or "library"
+    if export_tier == "reserve":
+        content = payload["reserve_csv"]
+        filename = f"{source}_nomination_reserve.csv"
+    else:
+        content = payload["csv"]
+        filename = f"{source}_nomination_top10.csv"
     return Response(
-        content="\ufeff" + payload["csv"],
+        content="\ufeff" + content,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=nomination_top10.csv"},
+        headers={"Content-Disposition": content_disposition_attachment(filename)},
     )

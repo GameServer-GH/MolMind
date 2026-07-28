@@ -15,6 +15,14 @@ class ToolSpec:
     description: str = ""
     writes_selection: bool = False
     limits: dict[str, Any] = field(default_factory=dict)
+    #: Declarative execution contract. The planner may select only tools whose
+    #: preconditions are satisfied; the runtime validates arguments again.
+    input_schema: dict[str, Any] = field(default_factory=dict)
+    requires: list[str] = field(default_factory=list)
+    produces: list[str] = field(default_factory=list)
+    idempotent: bool = False
+    timeout_sec: float | None = None
+    confirmation_required: bool = False
 
 
 @dataclass
@@ -25,6 +33,8 @@ class SkillSpec:
     description: str = ""
     tools: list[str] = field(default_factory=list)
     limits: dict[str, Any] = field(default_factory=dict)
+    requires: list[str] = field(default_factory=list)
+    produces: list[str] = field(default_factory=list)
 
 
 @dataclass

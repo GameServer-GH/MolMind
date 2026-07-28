@@ -308,6 +308,11 @@ CLI 一键示例：
 python -m apps.cli.main --input data/sample.sdf --output output/nomination_top10.csv
 ```
 
+同次运行会在同目录生成 `nomination_reserve.csv`（或输入名前缀对应的
+`*_nomination_reserve.csv`）。正式主榜保持 Top 10；候补默认最多 20 个，
+仅在主榜候选不可采购、无法配制或身份复核失败时按冻结 `reserve_rank` 顺延。
+在 Agent 中可说“导出 Top10 和候补名单”或“生成竞赛提交包，包含主榜和候补名单”。
+
 Docker 内离线 CLI 冒烟：
 
 ```bash

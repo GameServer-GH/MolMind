@@ -61,6 +61,11 @@ def test_list_sessions_and_events(client: TestClient) -> None:
     assert "thinking" in types
     assert "card" in types
     assert "done" in types
+    completion = next(e["text"] for e in events["events"] if e.get("type") == "assistant")
+    assert any(
+        message.get("role") == "assistant" and message.get("text") == completion
+        for message in detail["messages"]
+    )
 
 
 def test_session_preview_uses_latest_user_question(tmp_path) -> None:

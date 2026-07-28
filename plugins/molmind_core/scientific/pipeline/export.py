@@ -336,6 +336,32 @@ def to_csv_text(
     return buffer.getvalue()
 
 
+def reserve_output_path(output_path: str | Path) -> Path:
+    """Return the stable reserve sibling for a primary nomination CSV.
+
+    ``*_nomination_top10.csv`` maps to ``*_nomination_reserve.csv``.  Arbitrary
+    output names retain the historical ``.reserve.csv`` convention so existing
+    callers remain compatible.
+    """
+    out = Path(output_path)
+    stem = out.stem
+    if stem == "nomination_top10":
+        return out.with_name("nomination_reserve.csv")
+    if stem.endswith("_nomination_top10"):
+        return out.with_name(
+            f"{stem[:-len('_nomination_top10')]}_nomination_reserve{out.suffix}"
+        )
+    return out.with_suffix(".reserve.csv")
+
+
+def reserve_shortage_note(*, actual_count: int, requested_count: int) -> str:
+    """Machine- and human-auditable explanation for a short reserve list."""
+    return (
+        f"候补名单合格候选仅 {actual_count} 个，少于冻结目标 {requested_count} 个；"
+        "已导出同一次冻结结果中的实际合格数量，未临时重跑或补入不合格候选。"
+    )
+
+
 def export_nomination_csv(
     molecules: list[ScoreRecord],
     output_path: str | Path,
@@ -347,9 +373,20 @@ def export_nomination_csv(
     run_id: str = "",
     input_sha256: str = "",
     selection_hash: str = "",
+    nomination_tier: str | None = None,
 ) -> Path:
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    if nomination_tier:
+        invalid = [
+            mol.molecule_id
+            for mol in molecules
+            if mol.nomination_tier != nomination_tier
+        ]
+        if invalid:
+            raise ValueError(
+                f"导出 {nomination_tier} CSV 时发现层级不一致候选: {', '.join(invalid)}"
+            )
     with out.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
         writer.writeheader()
@@ -366,10 +403,15 @@ def export_nomination_csv(
 
     if len(molecules) < requested_top_n:
         note_path = out.with_suffix(".note.txt")
-        note_path.write_text(
-            f"合格候选仅 {len(molecules)} 个，少于请求的 Top {requested_top_n}。\n",
-            encoding="utf-8",
+        note = (
+            reserve_shortage_note(
+                actual_count=len(molecules),
+                requested_count=requested_top_n,
+            )
+            if nomination_tier == "reserve"
+            else f"正式参赛主榜合格候选仅 {len(molecules)} 个，少于要求的 Top {requested_top_n}。"
         )
+        note_path.write_text(note + "\n", encoding="utf-8")
     return out
 
 

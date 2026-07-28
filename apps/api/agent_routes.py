@@ -107,8 +107,12 @@ def get_session(session_id: str) -> dict[str, Any]:
         "has_sdf": bool(session.sdf_bytes),
         "sdf_ui_pending": bool(session.sdf_ui_pending) and bool(session.sdf_bytes),
         "top_n": session.top_n,
+        "pending_goal": session.pending_goal,
         "last_run_id": session.last_run_id or None,
         "last_selection_sha256": session.last_selection_sha256 or None,
+        "run_history": list(session.run_history),
+        "active_plan": session.active_plan,
+        "plan_history": list(session.plan_history),
         "artifact_ids": list(session.artifacts.keys()),
         "artifacts": [
             {
@@ -288,14 +292,17 @@ async def message_stream(session_id: str, body: MessageBody) -> StreamingRespons
                 status_code=400,
                 detail=f"top_n 须在 {TOP_N_MIN}–{TOP_N_MAX} 之间",
             )
-        session.top_n = body.top_n
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
     def run_job() -> None:
         try:
-            for event in runtime.handle_message(session, body.text):
+            for event in runtime.handle_session_message(
+                session_id,
+                body.text,
+                top_n=body.top_n,
+            ):
                 loop.call_soon_threadsafe(queue.put_nowait, event)
         except Exception as exc:  # noqa: BLE001
             loop.call_soon_threadsafe(

@@ -2079,18 +2079,10 @@
     setAgentAttachment(name);
     setAgentEmpty(false);
     if (Render && agentMessages) {
-      const Tour = window.MolMindAgentTour;
-      if (Tour) {
-        Tour.showPromptSuggestions(agentMessages, {
-          onPick: (text) => {
-            if (agentInput) {
-              agentInput.value = text;
-              agentInput.focus();
-              if (typeof resizeAgentInput === "function") resizeAgentInput();
-            }
-          },
-        });
-      }
+      // An attached SDF is actionable immediately. Show the deterministic
+      // choice card here rather than relying on a model reply or waiting for
+      // an empty submit; it applies equally to uploads and the demo library.
+      showAttachmentClarify([{ kind: "sdf", filename: name }]);
       agentScrollBottom();
     }
   }

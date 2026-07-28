@@ -1,6 +1,7 @@
 /* MolMind Agent first-run tour (localStorage, no URL param) */
 (function (global) {
-  const STORAGE_KEY = "molmind:agent_tour_v1";
+  // Bump the tour version whenever its steps change so existing users see new controls.
+  const STORAGE_KEY = "molmind:agent_tour_v2";
   const PROMPT_TIP_KEY = "molmind:agent_upload_tip_v1";
 
   const PROMPT_EXAMPLES = [
@@ -49,6 +50,13 @@
         cardPlacement: "bottom",
         title: "新对话",
         content: "清空当前对话并开启新一轮会话。不会删除历史记录，可随时从右侧历史找回。",
+      },
+      {
+        targetSelector: "#agentDemoSdfBtn",
+        spotlightPadding: 8,
+        cardPlacement: "bottom",
+        title: "试用样例库",
+        content: "打开样例库后，可将内置 SDF 直接附加到当前会话，或下载到本地后再使用，方便快速体验筛选流程。",
       },
       {
         targetSelector: "#modeClassicBtn",

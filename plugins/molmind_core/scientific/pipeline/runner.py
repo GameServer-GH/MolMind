@@ -56,6 +56,8 @@ from plugins.molmind_core.scientific.pipeline.export import (
     export_rank_robustness_json,
     export_screening_audit_csv,
     export_selection_audit_jsonl,
+    reserve_output_path,
+    reserve_shortage_note,
     rows_from_top,
     to_csv_text,
 )
@@ -144,6 +146,17 @@ class PipelineResult:
 
     def to_reserve_row_dicts(self) -> list[dict[str, str | int | float]]:
         return rows_from_top(
+            self.reserve_molecules,
+            mode=self.config.mode,
+            config_hash=self.config.config_hash,
+            degraded_channels=self.config.degraded_channels,
+            run_id=self.run_id,
+            input_sha256=self.input_sha256,
+            selection_hash=self.reserve_selection_sha256,
+        )
+
+    def to_reserve_csv_text(self) -> str:
+        return to_csv_text(
             self.reserve_molecules,
             mode=self.config.mode,
             config_hash=self.config.config_hash,
@@ -988,6 +1001,13 @@ def _screen_sdf_inner(
     note_parts: list[str] = []
     if len(top) < n:
         note_parts.append(f"合格候选仅 {len(top)} 个，少于请求的 Top {n}。")
+    if len(reserve) < reserve_n:
+        note_parts.append(
+            reserve_shortage_note(
+                actual_count=len(reserve),
+                requested_count=reserve_n,
+            )
+        )
     if parsed.skipped:
         note_parts.append(
             f"解析跳过 {parsed.skipped}/{parsed.raw_count} 条无效结构（价态/kekulize 等）。"
@@ -1007,12 +1027,12 @@ def _screen_sdf_inner(
     log.emit(
         "SUCCESS" if q_pass is not False else "WARN",
         (
-            f"筛选完成：输出 Top={len(top)}，请求 Top={n}，质量门禁={quality_zh}，"
+            f"筛选完成：正式主榜={len(top)}/{n}，候补={len(reserve)}/{reserve_n}，质量门禁={quality_zh}，"
             f"{mode_label}，使用快照={snap_zh}，显式联网授权={live_zh}，"
             f"同轮 live 入榜=禁止，config_hash={config.config_hash}"
         ),
         (
-            f"Screen complete: output_top={len(top)}, requested_top={n}, quality_gate={quality_en}, "
+            f"Screen complete: primary={len(top)}/{n}, reserve={len(reserve)}/{reserve_n}, quality_gate={quality_en}, "
             f"{mode_label}, use_snapshot={snap_en}, live_enrichment={live_en}, "
             "same_run_live_scoring=blocked, "
             f"config_hash={config.config_hash}"
@@ -1022,6 +1042,19 @@ def _screen_sdf_inner(
 
     algorithmic_selection_hash = selection_sha256(algorithmic_top)
     selection_hash = selection_sha256(top)
+    top_ids = {mol.molecule_id for mol in top}
+    reserve_ids = {mol.molecule_id for mol in reserve}
+    if len(top_ids) != len(top) or len(reserve_ids) != len(reserve):
+        raise ValueError("冻结提名结果中的 molecule_id 必须在各层级内唯一")
+    overlap = sorted(top_ids & reserve_ids)
+    if overlap:
+        raise ValueError(f"候补名单不得与正式主榜重复: {', '.join(overlap)}")
+    if any(mol.nomination_tier != "primary" for mol in top):
+        raise ValueError("正式主榜只能包含 nomination_tier=primary")
+    if any(mol.nomination_tier != "reserve" for mol in reserve):
+        raise ValueError("候补名单只能包含 nomination_tier=reserve")
+    if [mol.reserve_rank for mol in reserve] != list(range(1, len(reserve) + 1)):
+        raise ValueError("候补 reserve_rank 必须从 1 连续递增")
     run_id = deterministic_run_id(
         input_sha256=input_hash,
         config_hash=config.config_hash,
@@ -1100,6 +1133,7 @@ def run_pipeline(
         run_id=result.run_id,
         input_sha256=result.input_sha256,
         selection_hash=result.selection_sha256,
+        nomination_tier="primary",
     )
     algorithmic_path = Path(output_path).with_suffix(".algorithmic.csv")
     export_nomination_csv(
@@ -1121,7 +1155,7 @@ def run_pipeline(
         ),
         encoding="utf-8",
     )
-    reserve_path = Path(output_path).with_suffix(".reserve.csv")
+    reserve_path = reserve_output_path(output_path)
     export_nomination_csv(
         result.reserve_molecules,
         reserve_path,
@@ -1132,6 +1166,7 @@ def run_pipeline(
         run_id=result.run_id,
         input_sha256=result.input_sha256,
         selection_hash=result.reserve_selection_sha256,
+        nomination_tier="reserve",
     )
     audit_path = Path(output_path).with_suffix(".screening_audit.csv")
     export_screening_audit_csv(result.screening_audit, audit_path)

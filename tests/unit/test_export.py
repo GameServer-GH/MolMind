@@ -4,12 +4,45 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import csv
+import io
 
+from packages.models import ScoreRecord
 from services.pipeline import CSV_COLUMNS, run_pipeline
-from plugins.molmind_core.scientific.pipeline.export import rows_from_top
+from plugins.molmind_core.scientific.pipeline.export import (
+    export_nomination_csv,
+    reserve_output_path,
+    rows_from_top,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_SDF = ROOT / "data" / "sample.sdf"
+
+
+def _eligible_record(molecule_id: str, *, tier: str, rank: int) -> ScoreRecord:
+    return ScoreRecord(
+        molecule_id=molecule_id,
+        smiles="CCO",
+        inchikey=f"{molecule_id:0<14}-ABCDEFGHIJ-A"[:27],
+        cas=None,
+        scaffold_smiles="CCO",
+        lipid_score=0.4,
+        tox_risk=0.2,
+        novelty_score=0.8,
+        conf_e=0.5,
+        final_score=0.6,
+        tox_heads={},
+        lipid_parts={},
+        attributions=[],
+        lipid_rationale="proxy",
+        tox_rationale="proxy",
+        overall_reason="eligible",
+        eligibility_status="eligible",
+        nomination_tier=tier,
+        primary_rank=rank if tier == "primary" else None,
+        reserve_rank=rank if tier == "reserve" else None,
+        replacement_for=(f"primary_slot_{((rank - 1) % 10) + 1}" if tier == "reserve" else ""),
+    )
 
 
 def test_csv_columns_include_run_metadata(tmp_path: Path) -> None:
@@ -90,3 +123,72 @@ def test_pipeline_writes_candidate_scores_and_evidence_ledger(tmp_path: Path) ->
     assert any(row.get("outcome") == "selected" for row in audit_rows)
     assert all("selection_factors" in row for row in audit_rows)
     assert all("effect_x_novelty" in row for row in score_rows)
+
+
+def test_primary_and_reserve_exports_keep_frozen_lineage_and_bom(tmp_path: Path) -> None:
+    primary = [_eligible_record(f"P{i:02}", tier="primary", rank=i) for i in range(1, 11)]
+    reserve = [_eligible_record(f"R{i:02}", tier="reserve", rank=i) for i in range(1, 21)]
+    run_id = "mm-frozen"
+    input_sha256 = "input-hash"
+    config_hash = "config-hash"
+    primary_path = tmp_path / "library_nomination_top10.csv"
+    reserve_path = reserve_output_path(primary_path)
+
+    export_nomination_csv(
+        primary,
+        primary_path,
+        mode="auto",
+        config_hash=config_hash,
+        degraded_channels=[],
+        requested_top_n=10,
+        run_id=run_id,
+        input_sha256=input_sha256,
+        selection_hash="primary-selection",
+        nomination_tier="primary",
+    )
+    export_nomination_csv(
+        reserve,
+        reserve_path,
+        mode="auto",
+        config_hash=config_hash,
+        degraded_channels=[],
+        requested_top_n=20,
+        run_id=run_id,
+        input_sha256=input_sha256,
+        selection_hash="reserve-selection",
+        nomination_tier="reserve",
+    )
+
+    assert primary_path.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert reserve_path.read_bytes().startswith(b"\xef\xbb\xbf")
+    primary_rows = list(csv.DictReader(io.StringIO(primary_path.read_text(encoding="utf-8-sig"))))
+    reserve_rows = list(csv.DictReader(io.StringIO(reserve_path.read_text(encoding="utf-8-sig"))))
+    assert len(primary_rows) == 10
+    assert {row["nomination_tier"] for row in primary_rows} == {"primary"}
+    assert {row["nomination_tier"] for row in reserve_rows} == {"reserve"}
+    assert [int(row["reserve_rank"]) for row in reserve_rows] == list(range(1, 21))
+    assert not ({row["molecule_id"] for row in primary_rows} & {row["molecule_id"] for row in reserve_rows})
+    for rows in (primary_rows, reserve_rows):
+        assert {row["run_id"] for row in rows} == {run_id}
+        assert {row["input_sha256"] for row in rows} == {input_sha256}
+        assert {row["config_hash"] for row in rows} == {config_hash}
+
+
+def test_reserve_shortage_writes_auditable_note(tmp_path: Path) -> None:
+    reserve = [_eligible_record(f"R{i:02}", tier="reserve", rank=i) for i in range(1, 4)]
+    out = tmp_path / "library_nomination_reserve.csv"
+    export_nomination_csv(
+        reserve,
+        out,
+        mode="auto",
+        config_hash="config-hash",
+        degraded_channels=[],
+        requested_top_n=20,
+        run_id="mm-frozen",
+        input_sha256="input-hash",
+        selection_hash="reserve-selection",
+        nomination_tier="reserve",
+    )
+    note = out.with_suffix(".note.txt").read_text(encoding="utf-8")
+    assert "仅 3 个" in note
+    assert "未临时重跑" in note

@@ -18,6 +18,78 @@ tool_limits:
     writes_selection: false
     allow_live_default: false
     force_refresh_requires_live: true
+tool_contracts:
+  parse_sdf:
+    requires: [sdf]
+    produces: [molecule_index]
+    idempotent: true
+    input_schema:
+      type: object
+      properties: {}
+  score_and_rank:
+    requires: [sdf]
+    produces: [frozen_result]
+    timeout_sec: 300
+    input_schema:
+      type: object
+      required: [top_n]
+      properties:
+        top_n: { type: integer, minimum: 1, maximum: 50 }
+  export_nomination:
+    requires: [frozen_result]
+    produces: [candidate_csv]
+    idempotent: true
+    input_schema:
+      type: object
+      properties:
+        tier: { type: string, enum: [primary, reserve] }
+  query_evidence:
+    requires: [frozen_result]
+    produces: [evidence_card]
+    idempotent: true
+    timeout_sec: 45
+    input_schema:
+      type: object
+      properties:
+        molecule_id: { type: string }
+        providers: { type: array }
+  start_mechanism_report:
+    requires: [frozen_result]
+    produces: [mechanism_job]
+    timeout_sec: 120
+    input_schema: { type: object, properties: {} }
+  get_mechanism_job:
+    requires: [mechanism_job]
+    produces: [mechanism_pdf]
+    idempotent: true
+    input_schema: { type: object, properties: {} }
+  get_run_audit:
+    requires: [frozen_result]
+    produces: [run_audit]
+    idempotent: true
+    input_schema: { type: object, properties: {} }
+  build_evidence_card:
+    requires: [frozen_result]
+    produces: [evidence_card]
+    idempotent: true
+    input_schema:
+      type: object
+      properties:
+        molecule_id: { type: string }
+  export_submission_bundle:
+    requires: [frozen_result]
+    produces: [results_bundle]
+    idempotent: true
+    input_schema: { type: object, properties: {} }
+  apply_review:
+    requires: [frozen_result]
+    produces: [revised_result]
+    confirmation_required: true
+    input_schema:
+      type: object
+      required: [review_id]
+      properties:
+        review_id: { type: string }
 tools:
   - parse_sdf
   - score_and_rank

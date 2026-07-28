@@ -743,6 +743,15 @@ def payload_from_applied(
             input_sha256=input_sha256,
             selection_hash=reserve_sel,
         ),
+        "reserve_csv": to_csv_text(
+            reserve,
+            mode=mode,
+            config_hash=config_hash,
+            degraded_channels=list(degraded_channels or []),
+            run_id=run_id,
+            input_sha256=input_sha256,
+            selection_hash=reserve_sel,
+        ),
         "csv": to_csv_text(
             top,
             mode=mode,

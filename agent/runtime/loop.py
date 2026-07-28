@@ -4,22 +4,39 @@ from __future__ import annotations
 
 import base64
 import copy
+import io
+import json
 import queue
 import re
 import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from dataclasses import asdict, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Iterator
 
-from agent.intent import AgentIntent, MentionRef, parse_intent
+from agent.intent import (
+    AgentIntent,
+    MentionRef,
+    extract_ranking_positions,
+    parse_intent,
+    ranking_position_subject_fallback,
+    ranking_question_fallback,
+)
 from agent.memory import STORE, AgentSession, Artifact, FileRunStore
 from agent.policy import claim_ceiling_default
 from agent.registry import get_registry
 from agent.runtime.decide import llm_json_decision
-from agent.runtime.reply import format_run_completion
+from agent.runtime.planning import (
+    PlanStep,
+    llm_plan_request,
+    plan_for_skills,
+    session_capabilities,
+)
+from agent.runtime.reply import format_ranking_explanation, format_run_completion
+from agent.runtime.verification import evidence_correction, verify_assistant_claims
 from plugins.catalog_dispatch import (
     TOOL_HANDLERS,
     dispatch_tool,
@@ -27,6 +44,7 @@ from plugins.catalog_dispatch import (
 )
 from plugins.molmind_core.tools.scientific import run_score_and_rank, timed_call
 from plugins.molmind_core.scientific.mechanism.jobs import get_job, start_mechanism_job
+from plugins.molmind_core.scientific.pipeline.export import reserve_shortage_note
 from plugins.molmind_core.scientific.pipeline.run_log import RunLogEntry
 from plugins.molmind_core.scientific.evidence_gateway.contract import content_sha256
 
@@ -36,6 +54,48 @@ def _aid() -> str:
 
 
 _EVIDENCE_MENTION_IDS = frozenset({"query_evidence", "masld_explain"})
+_DEFAULT_CONFIG_EXECUTION_RE = re.compile(
+    r"(?:使用|按).{0,12}(?:当前)?默认.{0,20}(?:MASLD|筛选|配置).{0,32}"
+    r"(?:生成|导出|筛选|运行|top)",
+    re.I,
+)
+_DIRECT_DELIVERABLE_RE = re.compile(
+    r"(?:生成|导出|筛选|运行|重跑|重新跑|开始跑|制作|做一份|出一份)|"
+    r"(?:希望|想要|需要|请|给我).{0,28}"
+    r"(?:csv|候选|提名|清单|短名单|候补|结果包|top)",
+    re.I,
+)
+
+
+def _is_direct_deliverable_request(intent: AgentIntent, text: str) -> bool:
+    """Whether a parsed deliverable must bypass optional chat planning.
+
+    The intent parser has already established a concrete output type. The
+    conversational LLM may refine ambiguous rank-follow-up questions, but it
+    must not turn a clear CSV/run request into a chat turn because the caller
+    did not repeat the session-default TopN as a literal number.
+    """
+    if (
+        not intent.wants_tools
+        or intent.mentions
+        or intent.query_evidence
+        or not (
+            intent.want_csv
+            or intent.want_pdf
+            or intent.want_reserve
+            or intent.want_bundle
+        )
+    ):
+        return False
+    is_rank_question, _ = ranking_question_fallback(text)
+    if is_rank_question:
+        return False
+    return bool(
+        _DEFAULT_CONFIG_EXECUTION_RE.search(text or "")
+        or _DIRECT_DELIVERABLE_RE.search(text or "")
+    )
+
+
 _QUERY_EVENT_TYPES = frozenset(
     {
         "query_plan",
@@ -269,12 +329,37 @@ class AgentRuntime:
     def __init__(self, store: FileRunStore | None = None) -> None:
         self.store = store or STORE
         self.registry = get_registry()
+        # One mutable AgentSession is shared by all HTTP streams for its id.
+        # A session lock preserves user-turn order while allowing unrelated
+        # sessions to use the worker pool concurrently.
+        self._session_locks: dict[str, threading.Lock] = {}
+        self._session_locks_guard = threading.Lock()
 
     def create_session(self, *, profile_id: str = "competition_masld") -> AgentSession:
         return self.store.create(profile_id=profile_id)
 
     def get_session(self, session_id: str) -> AgentSession | None:
         return self.store.get(session_id)
+
+    def _session_lock(self, session_id: str) -> threading.Lock:
+        with self._session_locks_guard:
+            return self._session_locks.setdefault(session_id, threading.Lock())
+
+    def handle_session_message(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        top_n: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Run one user turn after earlier turns of the same session finish."""
+        with self._session_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            if top_n is not None:
+                session.top_n = top_n
+            yield from self.handle_message(session, text)
 
     def attach_sdf(self, session: AgentSession, *, filename: str, content: bytes) -> None:
         session.sdf_bytes = content
@@ -285,6 +370,7 @@ class AgentRuntime:
         session.last_selection_sha256 = ""
         session.last_molecule_index = {}
         session.last_mechanism_job_id = ""
+        session.active_plan = None
         self.store.save_sdf(session)
 
     def detach_sdf(self, session: AgentSession) -> None:
@@ -295,6 +381,7 @@ class AgentRuntime:
         session.last_input_sha256 = ""
         session.last_molecule_index = {}
         session.last_mechanism_job_id = ""
+        session.active_plan = None
         session.sdf_ui_pending = False
         self.store.clear_sdf(session)
 
@@ -325,8 +412,105 @@ class AgentRuntime:
         )
 
     def _emit(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
+        self._observe_plan_event(session, event)
+        if event.get("type") == "assistant" and event.get("text"):
+            original = str(event["text"])
+            # Some successful tool paths emit their completion directly. Keep
+            # the durable transcript complete even when the caller did not
+            # manually append the same assistant message first.
+            if not (
+                session.messages
+                and session.messages[-1].get("role") == "assistant"
+                and session.messages[-1].get("text") == original
+            ):
+                session.messages.append({"role": "assistant", "text": original})
+            violations = verify_assistant_claims(session, str(event["text"]))
+            if violations:
+                event["text"] = evidence_correction(session, violations)
+                event["claim_verification"] = {
+                    "ok": False,
+                    "violations": [v.code for v in violations],
+                }
+                # Most assistant messages are appended immediately before the
+                # event is emitted. Keep persisted conversation and stream in
+                # agreement when a claim is intercepted.
+                if session.messages and session.messages[-1].get("text") == original:
+                    session.messages[-1]["text"] = event["text"]
         event.setdefault("claim_ceiling", claim_ceiling_default())
         return self.store.append_event(session, event)
+
+    @staticmethod
+    def _observe_plan_event(session: AgentSession, event: dict[str, Any]) -> None:
+        """Project existing tool events onto durable plan-step observations."""
+        kind = str(event.get("type") or "")
+        if kind == "agent_plan":
+            plan_id = uuid.uuid4().hex[:12]
+            event["plan_id"] = plan_id
+            session.active_plan = {
+                "plan_id": plan_id,
+                "goal": str(event.get("goal") or ""),
+                "action": str(event.get("action") or ""),
+                "expected_artifacts": list(event.get("expected_artifacts") or []),
+                "diagnostics": list(event.get("diagnostics") or []),
+                "status": "running",
+                "steps": [
+                    {
+                        "tool": str(step.get("tool") or ""),
+                        "args": dict(step.get("args") or {}),
+                        "status": "pending",
+                        "observation": {},
+                    }
+                    for step in event.get("steps") or []
+                    if isinstance(step, dict)
+                ],
+            }
+            return
+
+        active = session.active_plan
+        if not isinstance(active, dict):
+            return
+        tool = str(event.get("tool") or "")
+        if kind == "tool_start" and tool:
+            for step in active.get("steps") or []:
+                if step.get("tool") == tool and step.get("status") == "pending":
+                    step["status"] = "running"
+                    step["observation"] = {"started": True, "args": event.get("args") or {}}
+                    break
+            return
+        if kind == "tool_end" and tool:
+            for step in active.get("steps") or []:
+                if step.get("tool") == tool and step.get("status") in {"pending", "running"}:
+                    ok = bool(event.get("ok"))
+                    step["status"] = "succeeded" if ok else "failed"
+                    step["observation"] = {
+                        "ok": ok,
+                        "digest": event.get("digest") or {},
+                        "error": event.get("error") or "",
+                    }
+                    if not ok:
+                        active["status"] = "failed"
+                    break
+            return
+        if kind == "done":
+            if active.get("status") != "failed":
+                pending_steps = [
+                    step
+                    for step in active.get("steps") or []
+                    if step.get("status") == "pending"
+                ]
+                if pending_steps:
+                    # A compiled plan is an audit promise. If the stream ends
+                    # before a step has even started, show it as incomplete
+                    # rather than silently converting it to a success.
+                    for step in pending_steps:
+                        step["status"] = "not_executed"
+                        step["observation"] = {"reason": "stream_ended_before_execution"}
+                    active["status"] = "incomplete"
+                else:
+                    active["status"] = "completed"
+            session.plan_history.append(copy.deepcopy(active))
+            session.plan_history = session.plan_history[-20:]
+            session.active_plan = None
 
     def handle_message(self, session: AgentSession, text: str) -> Iterator[dict[str, Any]]:
         lo, hi = self.registry.resolve_top_n_bounds()
@@ -351,6 +535,8 @@ class AgentRuntime:
                 intent = AgentIntent(
                     want_csv=bool(pending.get("want_csv")),
                     want_pdf=bool(pending.get("want_pdf")),
+                    want_reserve=bool(pending.get("want_reserve")),
+                    want_bundle=bool(pending.get("want_bundle")),
                     top_n=capped,
                     raw_text=text,
                     reason=f"用户确认按上限 Top{capped} 输出",
@@ -404,6 +590,57 @@ class AgentRuntime:
                     top_n_min=lo2,
                     top_n_max=hi2,
                 )
+        # Tool-shaped surface text is still ambiguous: let the conversation
+        # model classify the dialog act before executing anything.  The
+        # structural parser only supplies candidate parameters and a safe
+        # offline fallback; it is not the source of truth for follow-ups.
+        if intent.wants_tools and not intent.mentions and not intent.query_evidence:
+            is_ranking_followup, ranking_molecule_id = ranking_question_fallback(text)
+            if is_ranking_followup:
+                # A ranking introduction/explanation is never an implicit
+                # request to export a similarly numbered TopN.  Route it
+                # before optional LLM planning, which otherwise sees the
+                # tool-shaped “top5” surface and may choose export.
+                action, why = "explain_ranking", "deterministic_frozen_ranking_followup"
+            elif _is_direct_deliverable_request(intent, text):
+                action, why = "execute_tools", "deterministic_direct_deliverable"
+            else:
+                action, why = self._classify_request_action(session, text, intent)
+            if action != "execute_tools":
+                intent = replace(
+                    intent,
+                    want_csv=False,
+                    want_pdf=False,
+                    skill_ids=(),
+                    wants_tools=False,
+                    reason=(
+                        "询问上一轮候选排名原因，不重新筛选或导出"
+                        if action == "explain_ranking"
+                        else "一般对话，暂不调用筛选工具"
+                    ),
+                    explain_ranking=action == "explain_ranking",
+                    ranking_molecule_id=ranking_molecule_id,
+                    ranking_positions=(
+                        extract_ranking_positions(text)
+                        if action == "explain_ranking"
+                        else ()
+                    ),
+                    ranking_position_subject=(
+                        action == "explain_ranking"
+                        and ranking_position_subject_fallback(text)
+                    ),
+                )
+            yield self._emit(
+                session,
+                {
+                    "type": "thinking",
+                    "text": (
+                        "我已确认你的目标，接下来会为你准备所需结果。"
+                        if action == "execute_tools"
+                        else "我先理解你的问题，再决定是否需要执行筛选。"
+                    ),
+                },
+            )
         # Mentions: refine introduce vs invoke with LLM (parse_intent only sets safe default).
         if intent.mentions:
             if any(m.id in _EVIDENCE_MENTION_IDS for m in intent.mentions):
@@ -420,6 +657,57 @@ class AgentRuntime:
                     + ("试用调用" if action == "invoke" else "介绍说明")
                     + f"（{why}）"
                 ),
+            )
+        # Emit the registry-compiled plan before dispatch.  The legacy intent
+        # adapter still supplies candidate skills during this migration, while
+        # the execution contract—not keyword branches—defines their ordered
+        # tool dependencies and preconditions.
+        if intent.skill_ids and not intent.mentions:
+            executable_tools = {
+                tool_id
+                for tool_id in self.registry.tools
+                if callable(getattr(self, f"_execute_{tool_id}", None))
+            }
+            plan, diagnostics = plan_for_skills(
+                goal=intent.reason,
+                action="execute" if intent.wants_tools else "chat",
+                skill_ids=intent.skill_ids,
+                skills=self.registry.skills,
+                tools=self.registry.tools,
+                capabilities=session_capabilities(session),
+                executable_tools=executable_tools,
+            )
+            planned_steps: list[PlanStep] = []
+            for step in plan.steps:
+                if step.tool_id == "score_and_rank":
+                    planned_steps.append(
+                        PlanStep(tool_id=step.tool_id, args={"top_n": intent.top_n})
+                    )
+                elif step.tool_id == "export_nomination":
+                    if intent.want_csv:
+                        planned_steps.append(
+                            PlanStep(tool_id=step.tool_id, args={"tier": "primary"})
+                        )
+                    if intent.want_reserve:
+                        planned_steps.append(
+                            PlanStep(tool_id=step.tool_id, args={"tier": "reserve"})
+                        )
+                else:
+                    planned_steps.append(step)
+            plan_steps = tuple(planned_steps)
+            yield self._emit(
+                session,
+                {
+                    "type": "agent_plan",
+                    "goal": plan.goal,
+                    "action": plan.action,
+                    "steps": [
+                        {"tool": step.tool_id, "args": step.args}
+                        for step in plan_steps
+                    ],
+                    "expected_artifacts": list(plan.expected_artifacts),
+                    "diagnostics": diagnostics,
+                },
             )
         yield from self._handle_intent(session, text, intent)
 
@@ -440,6 +728,88 @@ class AgentRuntime:
             default="introduce",
         )
         return decision, why
+
+    def _classify_request_action(
+        self, session: AgentSession, text: str, intent: AgentIntent
+    ) -> tuple[str, str]:
+        """Classify execute-vs-chat before a tool-shaped request is dispatched."""
+        # Online path: the LLM plans against the live registry rather than a
+        # fixed action prompt. Its output is schema- and precondition-checked
+        # inside ``llm_plan_request``. The legacy classifier below is retained
+        # only as an offline/compatibility fallback.
+        planned, plan_status = llm_plan_request(
+            text=text,
+            recent_messages=session.messages,
+            tools=self.registry.tools,
+            skills=self.registry.skills,
+            capabilities=session_capabilities(session),
+            default_top_n=session.top_n,
+        )
+        if planned is not None:
+            if planned.action == "execute":
+                return "execute_tools", f"{plan_status};{planned.rationale}"
+            if planned.action == "explain":
+                return "explain_ranking", f"{plan_status};{planned.rationale}"
+            if planned.action == "clarify":
+                session.pending_goal = {
+                    "goal": planned.goal,
+                    "rationale": planned.rationale,
+                    "source_text": text,
+                    "reason": "tool_contract_missing_parameters",
+                }
+            return "chat", f"{plan_status};{planned.rationale}"
+
+        history_lines: list[str] = []
+        for message in session.messages[-6:]:
+            role = str(message.get("role") or "")
+            body = str(message.get("text") or "").strip()
+            if role in {"user", "assistant"} and body:
+                history_lines.append(f"{role}: {body[:500]}")
+        history = "\n".join(history_lines) if history_lines else "（无）"
+        frozen_runs = ", ".join(
+            f"{entry.get('run_id', '')}:Top{entry.get('top_n', '')}"
+            for entry in session.run_history[-4:]
+            if entry.get("run_id")
+        ) or "（无持久化运行摘要）"
+        decision, why = llm_json_decision(
+            system=(
+                "你是 MolMind 的对话动作分类器。只返回 JSON："
+                '{"decision":"execute_tools|explain_ranking|chat","reason":"..."}。'
+                "execute_tools=用户明确要求生成/导出/运行筛选或报告；"
+                "explain_ranking=用户在追问已有候选为何排名、入选或被淘汰，"
+                "此类请求只解释冻结结果，不重新筛选；"
+                "chat=普通知识问答、澄清或能力咨询。"
+                "必须结合上下文判断：例如“top1”可以是输出数量，也可以是被询问的排名对象。"
+                "已有冻结结果时，含“解释/说明/为什么/为何/为啥/原因/理由”并指向 TopN"
+                " 的请求属于 explain_ranking，即使没有点名某个分子。"
+                "不要因为出现 plugin、skill、tool、top、候选、csv 等词就自动执行。"
+            ),
+            user=(
+                f"已有筛选结果：{'有' if session.last_result is not None else '无'}；"
+                f"最近冻结主榜数量：{len(getattr(session.last_result, 'top_molecules', None) or []) if session.last_result is not None else 0}；"
+                f"最近冻结运行：{frozen_runs}；"
+                f"结构解析出的候选动作：{intent.reason}\n"
+                f"最近对话：\n{history}\n"
+                f"用户本轮原文：{text}\n请判定本轮唯一 dialog action。"
+            ),
+            allowed={"execute_tools", "explain_ranking", "chat"},
+            default="execute_tools",
+            # Reuse the conversational model switch; intent classification is
+            # part of the agent turn, not a separate mechanism/critic model.
+            purpose="agent_chat",
+            max_tokens=160,
+            timeout_sec=8.0,
+        )
+        if why.startswith("llm_"):
+            # No model: retain a narrow, read-only safety fallback for the
+            # known ambiguity. This is not the primary routing policy.
+            is_question, _ = ranking_question_fallback(text)
+            if is_question:
+                return "explain_ranking", f"{why};structural_question_fallback"
+            return "execute_tools", why
+        if decision in {"execute_tools", "explain_ranking", "chat"}:
+            return decision, why
+        return "execute_tools", why
 
     def _classify_top_confirm(
         self, text: str, pending: dict[str, Any]
@@ -477,7 +847,10 @@ class AgentRuntime:
     def _handle_intent(
         self, session: AgentSession, text: str, intent: Any
     ) -> Iterator[dict[str, Any]]:
-        session.top_n = intent.top_n
+        # A Top-N token inside a question is not a new session preference.
+        # Update it only for an actual nomination/report execution intent.
+        if intent.want_csv or intent.want_pdf:
+            session.top_n = intent.top_n
         # Consume pending UI attachment into this turn (same-session SDF bytes stay).
         turn_attachments: list[dict[str, str]] = []
         if session.sdf_ui_pending and session.sdf_filename and session.sdf_bytes:
@@ -515,6 +888,35 @@ class AgentRuntime:
             self.store.persist(session)
             return
 
+        if (
+            intent.wants_tools
+            and isinstance(session.pending_goal, dict)
+            and (
+                _DEFAULT_CONFIG_EXECUTION_RE.search(text)
+                or re.search(r"忽略(?:上述|之前)?(?:条件|偏好)", text, re.I)
+            )
+        ):
+            # Explicit user confirmation is the only way to discard an
+            # unexecutable constraint set and run the default scientific path.
+            session.pending_goal = None
+
+        if intent.wants_tools and isinstance(session.pending_goal, dict):
+            pending = session.pending_goal
+            reply = (
+                "你此前提出的筛选条件尚未映射为当前工具的可执行参数，因此我没有启动筛选。"
+                f"待确认目标：{pending.get('goal') or pending.get('source_text') or '筛选条件'}。\n\n"
+                "请明确选择：\n"
+                "1. 使用当前默认 MASLD 筛选配置生成 TopN；或\n"
+                "2. 继续只讨论这些条件；或\n"
+                "3. 提供已支持的参数配置后再执行。\n\n"
+                "在你确认前，我不会把这些条件静默替换成默认筛选。"
+            )
+            session.messages.append({"role": "assistant", "text": reply})
+            yield out({"type": "assistant", "text": reply})
+            yield out({"type": "done"})
+            self.store.persist(session)
+            return
+
         # 纯对话：用 LLM 回答（不强制 SDF）；失败再降级模板
         if not intent.wants_tools:
             yield out(
@@ -529,7 +931,21 @@ class AgentRuntime:
                     "text": "识别为一般问答，准备用对话模型回复。",
                 }
             )
-            reply = self._llm_chat_reply(session, text)
+            reply = None
+            if intent.explain_ranking:
+                reply = format_ranking_explanation(
+                    session.last_result,
+                    molecule_id=intent.ranking_molecule_id,
+                    rank_limit=(
+                        intent.requested_top_n
+                        if intent.ranking_molecule_id is None
+                        else None
+                    ),
+                    rank_positions=intent.ranking_positions,
+                    rank_position_subject=intent.ranking_position_subject,
+                )
+            if not reply:
+                reply = self._llm_chat_reply(session, text)
             session.messages.append({"role": "assistant", "text": reply})
             yield out({"type": "assistant", "text": reply})
             yield out({"type": "done"})
@@ -562,6 +978,8 @@ class AgentRuntime:
                 "top_n_min": lo,
                 "want_csv": bool(intent.want_csv),
                 "want_pdf": bool(intent.want_pdf),
+                "want_reserve": bool(intent.want_reserve),
+                "want_bundle": bool(intent.want_bundle),
                 "skill_ids": list(intent.skill_ids),
                 "raw_text": intent.raw_text,
                 "limit_source": limit_src,
@@ -572,28 +990,59 @@ class AgentRuntime:
             self.store.persist(session)
             return
 
-        yield out(
-            {
-                "type": "thinking",
-                "text": (
-                    f"理解你的需求：{intent.reason}。"
-                    f"将调用技能 {list(intent.skill_ids)}；"
-                    "使用确定性科学工具，不会用模型直接改排名。"
-                    + (f" 会话内可用附件：{session.sdf_filename}。" if has_sdf else " 尚未绑定 SDF 附件。")
-                ),
-            }
+        frozen_primary_count = (
+            len(getattr(session.last_result, "top_molecules", None) or [])
+            if has_result
+            else 0
         )
+        if intent.want_pdf and has_result and not intent.want_csv and not intent.want_reserve and not intent.want_bundle:
+            progress_text = (
+                f"我会基于已冻结的 Top{frozen_primary_count} 候选生成机制与验证方案 PDF，"
+                "不会重新筛选或改动排名。"
+            )
+        else:
+            progress_text = (
+                f"我会为你筛选 Top{intent.top_n} 候选，并整理成"
+                + (" CSV 文件。" if intent.want_csv else "结果文件。")
+                + "排名将依据固定的科学规则生成，确保结果可复核。"
+                + (f" 将使用你上传的「{session.sdf_filename}」。" if has_sdf else " 还需要你先上传 SDF 化合物库。")
+            )
+        yield out({"type": "thinking", "text": progress_text})
 
         steps: list[str] = []
-        if intent.want_csv or (intent.want_pdf and not has_result):
-            steps.append(f"Skill masld_nominate：生成 Top{intent.top_n} 候选清单")
-            steps.append("Tool export_nomination：导出 CSV")
+        if intent.want_csv or intent.want_reserve or intent.want_bundle or (intent.want_pdf and not has_result):
+            steps.append(f"筛选并挑选最符合要求的 Top{intent.top_n} 候选")
+            steps.append("整理候选分子 CSV")
+        if intent.want_reserve:
+            steps.append("从同一次冻结结果导出候补名单 CSV")
         if intent.want_pdf:
-            steps.append("Skill masld_mechanism：生成机制与验证方案 PDF")
-        steps.append("返回可下载产物卡片")
+            steps.append("生成机制与后续验证建议 PDF")
+        if intent.want_bundle:
+            steps.append("打包候选清单、候补、运行清单与轨迹")
+        steps.append("准备好下载结果")
         yield out({"type": "plan", "steps": steps})
 
-        need_screen = intent.want_csv or (intent.want_pdf and not has_result)
+        # A frozen Top10 cannot satisfy a later explicit Top15 request.  In
+        # that case this is an execute_tools turn and must create a new frozen
+        # result from the session SDF; merely exporting the old result would
+        # produce a mislabeled, short CSV.  Conversely, explanation turns
+        # have already exited above and never reach this gate.
+        need_screen = (
+            (
+                intent.want_csv
+                and (
+                    not has_result
+                    or (
+                        intent.requested_top_n is not None
+                        and frozen_primary_count != intent.top_n
+                    )
+                )
+            )
+            or (
+                (intent.want_reserve or intent.want_bundle or intent.want_pdf)
+                and not has_result
+            )
+        )
         if need_screen and not has_sdf:
             yield out(
                 {
@@ -612,7 +1061,27 @@ class AgentRuntime:
             return
 
         if need_screen:
-            yield from self._run_nominate(session, top_n=intent.top_n)
+            yield from self._execute_tool_adapter(
+                session, "score_and_rank", {"top_n": intent.top_n}
+            )
+            if isinstance(session.active_plan, dict) and session.active_plan.get("status") == "failed":
+                yield out(
+                    {
+                        "type": "assistant",
+                        "text": (
+                            "计划中的筛选步骤未完成，因此我已停止后续导出和报告生成，"
+                            "不会拿旧结果冒充本轮结果。请根据错误信息调整附件或条件后重试。"
+                        ),
+                    }
+                )
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
+
+        if intent.want_csv:
+            yield from self._execute_tool_adapter(session, "export_nomination", {"tier": "primary"})
+        if intent.want_reserve:
+            yield from self._execute_tool_adapter(session, "export_nomination", {"tier": "reserve"})
 
         if intent.want_pdf:
             if session.last_result is None:
@@ -625,7 +1094,10 @@ class AgentRuntime:
                 yield out({"type": "done"})
                 self.store.persist(session)
                 return
-            yield from self._run_mechanism(session)
+            yield from self._execute_tool_adapter(session, "start_mechanism_report", {})
+
+        if intent.want_bundle:
+            yield from self._execute_tool_adapter(session, "export_submission_bundle", {})
 
         # Catalog enrichment：仅在已主动添加时执行；失败降级，不改主榜
         if session.installed_catalog and session.last_result is not None:
@@ -637,6 +1109,8 @@ class AgentRuntime:
                 "text": format_run_completion(
                     want_csv=bool(intent.want_csv),
                     want_pdf=bool(intent.want_pdf),
+                    want_reserve=bool(intent.want_reserve),
+                    want_bundle=bool(intent.want_bundle),
                     want_catalog=bool(
                         session.installed_catalog and session.last_result is not None
                     ),
@@ -792,6 +1266,24 @@ class AgentRuntime:
             kind == "skill" and mid == "masld_explain"
         ):
             yield from self._run_query_evidence(session, intent or parse_intent(mention.raw))
+            return
+
+        if (kind == "skill" and mid == "masld_export_bundle") or (
+            kind == "tool" and mid == "export_submission_bundle"
+        ):
+            if session.last_result is None:
+                yield self._emit(
+                    session,
+                    {
+                        "type": "assistant",
+                        "text": (
+                            f"试用 `{mention.raw}` 需要已有冻结筛选结果。"
+                            "请先完成候选筛选，再导出包含候选清单与候补名单的结果归档包。"
+                        ),
+                    },
+                )
+                return
+            yield from self._export_submission_bundle(session)
             return
 
         # 技能 / 核心工具：可单独跑对应段
@@ -1407,6 +1899,279 @@ class AgentRuntime:
         session.messages.append({"role": "assistant", "text": message})
         yield self._emit(session, {"type": "assistant", "text": message})
 
+    @staticmethod
+    def _artifact_download_url(session: AgentSession, artifact: Artifact) -> str:
+        return (
+            f"/api/agent/sessions/{session.session_id}/artifacts/"
+            f"{artifact.artifact_id}/download"
+        )
+
+    @staticmethod
+    def _submission_csv_name(
+        session: AgentSession, *, tier: str, primary_count: int | None = None
+    ) -> str:
+        source = Path(session.sdf_filename or "library.sdf").stem or "library"
+        if tier == "primary":
+            count = max(1, int(primary_count or 1))
+            suffix = f"nomination_top{count}.csv"
+        else:
+            suffix = "nomination_reserve.csv"
+        return f"{source}_{suffix}"
+
+    def _csv_artifact(self, session: AgentSession, *, tier: str, trial: bool = False) -> Artifact:
+        result = session.last_result
+        if result is None:
+            raise RuntimeError("尚无冻结筛选结果")
+        if tier == "primary":
+            csv_text = result.to_csv_text()
+            title = f"候选分子清单：Top {len(result.top_molecules)}"
+            selection_hash = result.selection_sha256
+        elif tier == "reserve":
+            csv_text = result.to_reserve_csv_text()
+            title = "候补名单：冻结顺延顺序"
+            selection_hash = result.reserve_selection_sha256
+        else:
+            raise ValueError(f"未知导出层级: {tier}")
+        subtitle = (
+            f"run_id={result.run_id[:12]}… · selection_sha256={selection_hash[:12]}…"
+        )
+        if trial:
+            subtitle = "单独试用 export_nomination · " + subtitle
+        return Artifact(
+            artifact_id=_aid(),
+            kind="csv",
+            filename=self._submission_csv_name(
+                session,
+                tier=tier,
+                primary_count=(len(result.top_molecules) if tier == "primary" else None),
+            ),
+            title=title,
+            subtitle=subtitle,
+            media_type="text/csv; charset=utf-8",
+            # Browser artifact downloads are CSV deliverables, so include BOM
+            # just like on-disk exports for direct Excel opening.
+            content=("\ufeff" + csv_text).encode("utf-8"),
+        )
+
+    def _emit_artifact_card(
+        self, session: AgentSession, artifact: Artifact
+    ) -> Iterator[dict[str, Any]]:
+        yield self._emit(
+            session,
+            {
+                "type": "card",
+                "card": {
+                    "kind": artifact.kind,
+                    "title": artifact.title,
+                    "subtitle": artifact.subtitle,
+                    "filename": artifact.filename,
+                    "artifact_id": artifact.artifact_id,
+                    "download_url": self._artifact_download_url(session, artifact),
+                },
+            },
+        )
+
+    def _export_reserve_only(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        result = session.last_result
+        if result is None:
+            return
+        yield self._emit(
+            session,
+            {
+                "type": "tool_start",
+                "tool": "export_nomination",
+                "plugin": "molmind-core",
+                "args": {
+                    "format": "csv",
+                    "tier": "reserve",
+                    "reserve_n": result.config.reserve_n,
+                    "run_id": result.run_id,
+                },
+            },
+        )
+        artifact = self._csv_artifact(session, tier="reserve")
+        self.store.put_artifact(session, artifact)
+        digest: dict[str, Any] = {
+            "artifact_id": artifact.artifact_id,
+            "bytes": len(artifact.content),
+            "run_id": result.run_id,
+            "selection_sha256": result.reserve_selection_sha256,
+            "reserve_count": len(result.reserve_molecules),
+        }
+        if len(result.reserve_molecules) < result.config.reserve_n:
+            digest["reserve_note"] = reserve_shortage_note(
+                actual_count=len(result.reserve_molecules),
+                requested_count=result.config.reserve_n,
+            )
+        yield self._emit(
+            session,
+            {"type": "tool_end", "tool": "export_nomination", "ok": True, "digest": digest},
+        )
+        yield from self._emit_artifact_card(session, artifact)
+
+    def _export_primary_only(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        result = session.last_result
+        if result is None:
+            return
+        expected_name = self._submission_csv_name(
+            session, tier="primary", primary_count=len(result.top_molecules)
+        )
+        existing = next(
+            (
+                artifact
+                for artifact in session.artifacts.values()
+                if artifact.kind == "csv"
+                and artifact.filename == expected_name
+                and f"run_id={result.run_id[:12]}" in artifact.subtitle
+            ),
+            None,
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "tool_start",
+                "tool": "export_nomination",
+                "plugin": "molmind-core",
+                "args": {
+                    "format": "csv",
+                    "tier": "primary",
+                    "top_n": len(result.top_molecules),
+                    "run_id": result.run_id,
+                    "reuse": existing is not None,
+                },
+            },
+        )
+        if existing is not None:
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_end",
+                    "tool": "export_nomination",
+                    "ok": True,
+                    "digest": {
+                        "artifact_id": existing.artifact_id,
+                        "bytes": len(existing.content),
+                        "run_id": result.run_id,
+                        "reused": True,
+                    },
+                },
+            )
+            yield from self._emit_artifact_card(session, existing)
+            return
+        artifact = self._csv_artifact(session, tier="primary")
+        self.store.put_artifact(session, artifact)
+        yield self._emit(
+            session,
+            {
+                "type": "tool_end",
+                "tool": "export_nomination",
+                "ok": True,
+                "digest": {
+                    "artifact_id": artifact.artifact_id,
+                    "bytes": len(artifact.content),
+                    "run_id": result.run_id,
+                    "selection_sha256": result.selection_sha256,
+                    "primary_count": len(result.top_molecules),
+                },
+            },
+        )
+        yield from self._emit_artifact_card(session, artifact)
+
+    def _export_submission_bundle(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        result = session.last_result
+        if result is None:
+            return
+        yield self._emit(
+            session,
+            {
+                "type": "tool_start",
+                "tool": "export_submission_bundle",
+                "plugin": "molmind-core",
+                "args": {"run_id": result.run_id, "writes_selection": False},
+            },
+        )
+        primary_name = self._submission_csv_name(
+            session, tier="primary", primary_count=len(result.top_molecules)
+        )
+        reserve_name = self._submission_csv_name(session, tier="reserve")
+        stem = Path(session.sdf_filename or "library.sdf").stem or "library"
+        manifest = {
+            "schema_version": "molmind-agent-submission-bundle-v1",
+            "run_id": result.run_id,
+            "input_sha256": result.input_sha256,
+            "config_hash": result.config.config_hash,
+            "primary": {
+                "filename": primary_name,
+                "count": len(result.top_molecules),
+                "selection_sha256": result.selection_sha256,
+                "nomination_tier": "primary",
+            },
+            "reserve": {
+                "filename": reserve_name,
+                "count": len(result.reserve_molecules),
+                "requested_count": result.config.reserve_n,
+                "selection_sha256": result.reserve_selection_sha256,
+                "nomination_tier": "reserve",
+                "promotion_rule": (
+                    "仅在主榜候选不可采购、无法配制或身份复核失败时，"
+                    "优先按冻结 reserve_rank 顺延；保留 replacement_for 关联。"
+                ),
+                "shortage_note": (
+                    reserve_shortage_note(
+                        actual_count=len(result.reserve_molecules),
+                        requested_count=result.config.reserve_n,
+                    )
+                    if len(result.reserve_molecules) < result.config.reserve_n
+                    else ""
+                ),
+            },
+        }
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(primary_name, ("\ufeff" + result.to_csv_text()).encode("utf-8"))
+            zf.writestr(reserve_name, ("\ufeff" + result.to_reserve_csv_text()).encode("utf-8"))
+            zf.writestr(
+                f"{stem}_submission_manifest.json",
+                json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
+            trace = self.store.read_events(session.session_id)
+            zf.writestr(
+                f"{stem}_agent_trace.jsonl",
+                ("\n".join(json.dumps(event, ensure_ascii=False) for event in trace) + "\n").encode("utf-8"),
+            )
+            for artifact in session.artifacts.values():
+                if artifact.kind == "pdf" and result.run_id[:8] in artifact.subtitle:
+                    zf.writestr(artifact.filename, artifact.content)
+        artifact = Artifact(
+            artifact_id=_aid(),
+            kind="bundle",
+            filename=f"{stem}_results_bundle.zip",
+            title="结果归档包：候选清单 + 候补 + 审计",
+            subtitle=(
+                f"run_id={result.run_id[:12]}… · 候选={len(result.top_molecules)} · "
+                f"候补={len(result.reserve_molecules)}"
+            ),
+            media_type="application/zip",
+            content=archive.getvalue(),
+        )
+        self.store.put_artifact(session, artifact)
+        yield self._emit(
+            session,
+            {
+                "type": "tool_end",
+                "tool": "export_submission_bundle",
+                "ok": True,
+                "digest": {
+                    "artifact_id": artifact.artifact_id,
+                    "bytes": len(artifact.content),
+                    "run_id": result.run_id,
+                    "primary_selection_sha256": result.selection_sha256,
+                    "reserve_selection_sha256": result.reserve_selection_sha256,
+                },
+            },
+        )
+        yield from self._emit_artifact_card(session, artifact)
+
     def _export_nomination_only(self, session: AgentSession) -> Iterator[dict[str, Any]]:
         result = session.last_result
         if result is None:
@@ -1421,17 +2186,7 @@ class AgentRuntime:
                 "args": {"format": "csv", "top_n": top_n, "trial": True},
             },
         )
-        csv_text = result.to_csv_text()
-        csv_name = f"nomination_top{result.output_count}_{result.run_id[:8]}_trial.csv"
-        art = Artifact(
-            artifact_id=_aid(),
-            kind="csv",
-            filename=csv_name,
-            title=f"Top{result.output_count} 候选分子清单",
-            subtitle=f"单独试用 export_nomination · {csv_name}",
-            media_type="text/csv; charset=utf-8",
-            content=csv_text.encode("utf-8"),
-        )
+        art = self._csv_artifact(session, tier="primary", trial=True)
         self.store.put_artifact(session, art)
         yield self._emit(
             session,
@@ -1442,23 +2197,7 @@ class AgentRuntime:
                 "digest": {"artifact_id": art.artifact_id, "bytes": len(art.content)},
             },
         )
-        yield self._emit(
-            session,
-            {
-                "type": "card",
-                "card": {
-                    "kind": "csv",
-                    "title": art.title,
-                    "subtitle": art.subtitle,
-                    "filename": art.filename,
-                    "artifact_id": art.artifact_id,
-                    "download_url": (
-                        f"/api/agent/sessions/{session.session_id}/artifacts/"
-                        f"{art.artifact_id}/download"
-                    ),
-                },
-            },
-        )
+        yield from self._emit_artifact_card(session, art)
         yield self._emit(
             session,
             {
@@ -1499,6 +2238,15 @@ class AgentRuntime:
 
             has_sdf = bool(session.sdf_bytes)
             name = session.sdf_filename or ""
+            frozen_result = session.last_result
+            frozen_count = len(getattr(frozen_result, "top_molecules", None) or [])
+            frozen_run_id = str(getattr(frozen_result, "run_id", "") or "").strip()
+            frozen_context = (
+                f"本会话最近冻结结果：Top {frozen_count}"
+                + (f"，run_id={frozen_run_id}" if frozen_run_id else "")
+                if frozen_result is not None
+                else "本会话最近冻结结果：无"
+            )
             hist_lines: list[str] = []
             for m in session.messages[-8:-1]:
                 role = m.get("role")
@@ -1511,9 +2259,20 @@ class AgentRuntime:
                 "你是 MolMind Agent，面向 MASLD 低毒降脂分子筛选的能力助手。"
                 "用简洁中文直接回答用户问题（化学概念、用法、流程等）。"
                 "不要编造具体筛选排名或虚构实验数据。"
+                "若用户追问已有排名，只解释最近对话中的冻结结果，"
+                "不要声称重新筛选或重新导出。"
+                "若本轮属于普通对话但提到了已有筛选结果，只能使用下方提供的"
+                "冻结结果数量；不得沿用较早轮次的 TopN，也不得声称该结果不存在。"
                 "若用户其实想导出候选 CSV / 机制 PDF，可提示他们用自然语言描述产物；"
                 "不要只回复『不调用工具』这类空话。"
+                "当前会话绑定 SDF 时，本地 score_and_rank 工具可以执行实际筛选；"
+                "绝不能声称当前环境不具备筛选/排序能力，或要求用户改到外部工具链。"
+                "能力介绍只能承诺当前已注册流程：按默认 MASLD 配置筛选并排序、"
+                "导出候选 CSV、基于冻结榜单生成机制 PDF、解释冻结排名。"
+                "不得承诺任意属性统计、任意筛选阈值、指定靶点虚拟筛选或跨库对比，"
+                "除非当前工具事件已经明确提供该能力。"
                 f"当前会话附件：{'已绑定 ' + name if has_sdf else '无'}（仅本会话可用，不跨会话）。"
+                f"{frozen_context}。"
             )
             user = (
                 f"最近对话：\n{history}\n\n"
@@ -1538,7 +2297,57 @@ class AgentRuntime:
             "试试问一个具体概念，或上传附件后说目标产物。"
         )
 
-    def _run_nominate(self, session: AgentSession, *, top_n: int) -> Iterator[dict[str, Any]]:
+    def _execute_tool_adapter(
+        self, session: AgentSession, tool_id: str, args: dict[str, Any]
+    ) -> Iterator[dict[str, Any]]:
+        """Dispatch an approved plan tool through a uniform runtime adapter."""
+        tool = self.registry.tools.get(tool_id)
+        if tool is None:
+            yield self._emit(
+                session,
+                {"type": "error", "detail": f"计划引用了未注册工具：{tool_id}"},
+            )
+            return
+        method = getattr(self, f"_execute_{tool_id}", None)
+        if not callable(method):
+            yield self._emit(
+                session,
+                {"type": "error", "detail": f"工具 {tool_id} 尚无运行时适配器"},
+            )
+            return
+        yield from method(session, **args)
+
+    def _execute_score_and_rank(
+        self, session: AgentSession, *, top_n: int
+    ) -> Iterator[dict[str, Any]]:
+        yield from self._run_nominate(session, top_n=top_n, export_primary=False)
+
+    def _execute_export_nomination(
+        self, session: AgentSession, *, tier: str = "primary"
+    ) -> Iterator[dict[str, Any]]:
+        if tier == "reserve":
+            yield from self._export_reserve_only(session)
+            return
+        yield from self._export_primary_only(session)
+
+    def _execute_start_mechanism_report(
+        self, session: AgentSession
+    ) -> Iterator[dict[str, Any]]:
+        yield from self._run_mechanism(session)
+
+    def _execute_export_submission_bundle(
+        self, session: AgentSession
+    ) -> Iterator[dict[str, Any]]:
+        yield from self._export_submission_bundle(session)
+
+    def _run_nominate(
+        self,
+        session: AgentSession,
+        *,
+        top_n: int,
+        export_primary: bool = True,
+        export_reserve: bool = False,
+    ) -> Iterator[dict[str, Any]]:
         assert session.sdf_bytes is not None
         yield self._emit(
             session,
@@ -1558,7 +2367,7 @@ class AgentRuntime:
             session,
             {
                 "type": "thinking",
-                "text": "正在解析 SDF，并执行硬过滤 → 降脂/毒性打分 → 排序与多样性约束…",
+                "text": "正在读取化合物库，依次排除不符合要求的分子，并综合活性、安全性和结构差异挑选候选…",
             },
         )
 
@@ -1593,7 +2402,8 @@ class AgentRuntime:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)
 
-        for ev in log_events[-12:]:
+        # 运行日志会同时记录中英文版本，界面只展示中文版本，避免同一信息重复出现。
+        for ev in (event for event in log_events[-12:] if event.get("lang") == "zh"):
             yield self._emit(session, ev)
 
         session.last_result = result
@@ -1602,6 +2412,22 @@ class AgentRuntime:
         session.last_config_hash = result.config.config_hash
         session.last_input_sha256 = result.input_sha256
         session.last_molecule_index = _molecule_index_from_result(result)
+        session.run_history = [
+            entry
+            for entry in session.run_history
+            if str(entry.get("run_id") or "") != str(result.run_id)
+        ]
+        session.run_history.append(
+            {
+                "run_id": result.run_id,
+                "top_n": len(getattr(result, "top_molecules", None) or []),
+                "selection_sha256": result.selection_sha256,
+                "config_hash": result.config.config_hash,
+                "input_sha256": result.input_sha256,
+                "source_filename": session.sdf_filename,
+            }
+        )
+        session.run_history = session.run_history[-20:]
 
         yield self._emit(
             session,
@@ -1619,53 +2445,10 @@ class AgentRuntime:
             },
         )
 
-        yield self._emit(
-            session,
-            {
-                "type": "tool_start",
-                "tool": "export_nomination",
-                "plugin": "molmind-core",
-                "args": {"format": "csv", "top_n": top_n},
-            },
-        )
-        csv_text = result.to_csv_text()
-        csv_name = f"nomination_top{result.output_count}_{result.run_id[:8]}.csv"
-        art = Artifact(
-            artifact_id=_aid(),
-            kind="csv",
-            filename=csv_name,
-            title=f"Top{result.output_count} 候选分子清单",
-            subtitle=f"{csv_name} · selection_sha256={result.selection_sha256[:12]}…",
-            media_type="text/csv; charset=utf-8",
-            content=csv_text.encode("utf-8"),
-        )
-        self.store.put_artifact(session, art)
-        yield self._emit(
-            session,
-            {
-                "type": "tool_end",
-                "tool": "export_nomination",
-                "ok": True,
-                "digest": {"artifact_id": art.artifact_id, "bytes": len(art.content)},
-            },
-        )
-        yield self._emit(
-            session,
-            {
-                "type": "card",
-                "card": {
-                    "kind": "csv",
-                    "title": art.title,
-                    "subtitle": art.subtitle,
-                    "filename": art.filename,
-                    "artifact_id": art.artifact_id,
-                    "download_url": (
-                        f"/api/agent/sessions/{session.session_id}/artifacts/"
-                        f"{art.artifact_id}/download"
-                    ),
-                },
-            },
-        )
+        if export_primary:
+            yield from self._export_primary_only(session)
+        if export_reserve:
+            yield from self._export_reserve_only(session)
 
     def _run_catalog_enrichment(
         self, session: AgentSession, *, only_plugin: str | None = None

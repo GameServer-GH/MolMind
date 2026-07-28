@@ -1,6 +1,6 @@
 {
   "schema_version": "molmind-algorithm-freeze-v2",
-  "frozen_at": "2026-07-28T10:27:00+08:00",
+  "frozen_at": "2026-07-28T16:38:00+08:00",
   "source_commit": "1d3bbf33455128c0d2d8103e16f8ad1dfbe3fa0e",
   "algorithm_contract_version": "competition-eligibility-v13",
   "baseline_config_hash": "4b25c69946a50aa1",
@@ -26,9 +26,9 @@
     "packages/models/records.py": "7888dc4750dc04cc0ac49fcd1cb5e53e59795bf4eb40d1a2e7f55af72533f482",
     "packages/chem_core/core.py": "a51383f5a353c007afe4934b0a1a9df3a1038d34ca2ee4673c07d19881fd5d3c",
     "plugins/molmind_core/scientific/pipeline/config_loader.py": "158ad088c681970affb272af2acab188ee7b37187d04d63e7f6265f7744136e4",
-    "plugins/molmind_core/scientific/pipeline/export.py": "49345b59255ecc1824ad1afef5f8522be54e05a35b8717bf7a0d90a06977f20a",
-    "plugins/molmind_core/scientific/pipeline/manifest.py": "0408a378eefad511d5d025d582797139cfbcb8fcbbd1b00e0a6956eeefb3543b",
-    "plugins/molmind_core/scientific/pipeline/runner.py": "e432519d260cfc85b4632ce3ff37370f87c9b367720a81c7e8d4cf6300d5797c",
+    "plugins/molmind_core/scientific/pipeline/export.py": "72ada4bc12b700ec0634338f2442475168ee4bc8700486b45b19a08eb322f736",
+    "plugins/molmind_core/scientific/pipeline/manifest.py": "6a6c03a5e1c3f611b6adcf8194b3e9d95ab31f2ab9046749b9f22fdfd6881ec3",
+    "plugins/molmind_core/scientific/pipeline/runner.py": "e4fd7faff65f079a166bf500e047b08423b2746450f7bc2198895a7a57380620",
     "plugins/molmind_core/scientific/pipeline/run_identity.py": "523ac59a4d71ffe76319cb6f7cc80ced62f9f8625758d6eaff9797ea354358fb",
     "plugins/molmind_core/scientific/evidence_facade/facade.py": "973a967cafd3b122e1368761e5a90b6ef4c243037153e39c915fbb08d29b0cf4",
     "plugins/molmind_core/scientific/evidence_facade/bundle.py": "abb31365d07ea0077ac2b46c237351598887e5f35128648b301601021a3453bc",
@@ -129,5 +129,10 @@
     "reason": "Submission CSV exposed legacy provider statuses and the mechanism PDF repeated ambiguous audit text without showing reproducibility lineage.",
     "scope": "Export canonical_status plus raw_status, add submission scope and evidence limitation fields, flag structure-level identity review, de-duplicate provider narrative, tier citations, and show run/input/config/selection hashes in the PDF. Ranking formulas, eligibility thresholds, and selected IDs are unchanged.",
     "regression_test": "tests/unit/test_export.py; tests/unit/test_mechanism_html_narrative.py"
+  },
+  "reserve_submission_contract_change": {
+    "reason": "赛事允许在正式主榜候选不可采购、无法配制或身份复核失败时按预提交候补顺延。",
+    "scope": "同一次冻结运行额外导出 reserve CSV、独立 reserve_selection_sha256 和 manifest 顺延规则；不改变排名公式、资格阈值、主榜席位或既有科学声明边界。",
+    "regression_test": "tests/unit/test_export.py::test_primary_and_reserve_exports_keep_frozen_lineage_and_bom; tests/unit/test_agent_mvp.py::test_agent_exports_frozen_reserve_and_submission_bundle; tests/unit/test_api.py::test_screen_download_reserve_has_stable_name_and_bom"
   }
 }

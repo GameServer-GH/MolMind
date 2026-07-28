@@ -84,6 +84,253 @@ def why_nominated(mol: ScoreRecord) -> str:
     return _clip("，".join(bits), 72)
 
 
+def format_ranking_explanation(
+    result: Any | None,
+    *,
+    molecule_id: str | None = None,
+    rank_limit: int | None = None,
+    rank_positions: tuple[int, ...] = (),
+    rank_position_subject: bool = False,
+) -> str | None:
+    """Explain a frozen ranking without invoking or mutating ranking tools."""
+    if result is None:
+        return None
+
+    top: list[ScoreRecord] = list(getattr(result, "top_molecules", None) or [])
+    reserve: list[ScoreRecord] = list(
+        getattr(result, "reserve_molecules", None) or []
+    )
+    scored: list[ScoreRecord] = list(
+        getattr(result, "scored_molecules", None) or []
+    )
+    records: list[ScoreRecord] = []
+    seen: set[str] = set()
+    for mol in [*top, *reserve, *scored]:
+        key = str(getattr(mol, "molecule_id", "") or "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            records.append(mol)
+    if not records:
+        return None
+
+    requested_positions: list[int] = []
+    for raw_rank in rank_positions:
+        try:
+            rank = int(raw_rank)
+        except (TypeError, ValueError):
+            continue
+        if rank > 0 and rank not in requested_positions:
+            requested_positions.append(rank)
+
+    # “介绍一下排名 Top5 的分子” names a single frozen record. Resolve that
+    # record first so it cannot be turned into an overview of ranks 1–5.
+    if (
+        not molecule_id
+        and rank_position_subject
+        and len(requested_positions) == 1
+        and requested_positions[0] <= len(top)
+    ):
+        molecule_id = str(top[requested_positions[0] - 1].molecule_id)
+
+    # A request such as “解释 Top4 和 Top5” names two ranking subjects.  Do
+    # not reinterpret its first number as “show the first four rows”: present
+    # the two actual frozen records and the small score difference between
+    # them, without mutating the frozen result.
+    if not molecule_id and len(requested_positions) > 1:
+        available = len(top)
+        selected = [
+            (rank, top[rank - 1])
+            for rank in requested_positions
+            if rank <= available
+        ]
+        missing = [rank for rank in requested_positions if rank > available]
+        if not selected:
+            return None
+
+        run_id = str(getattr(result, "run_id", "") or "").strip()
+        run_bit = f"（run `{run_id}`）" if run_id else ""
+        rows = [
+            "| 名次 | 分子 | 组合排序分 | 降脂代理 | 毒性风险 | 新颖性 |",
+            "| ---: | --- | ---: | ---: | ---: | ---: |",
+        ]
+        detail_lines: list[str] = []
+        for rank, mol in selected:
+            score = (
+                float(mol.selection_score)
+                if mol.competition_scoring_version != "unassigned"
+                else float(mol.final_score)
+            )
+            rows.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"Top {rank}",
+                        _md_cell(mol.molecule_id),
+                        _fmt_score(score),
+                        _fmt_score(mol.lipid_score),
+                        _fmt_score(mol.tox_risk),
+                        _fmt_score(mol.novelty_score),
+                    ]
+                )
+                + " |"
+            )
+            detail_lines.append(
+                f"- Top {rank} `{mol.molecule_id}`：{why_nominated(mol)}。"
+            )
+
+        comparison = ""
+        if len(selected) >= 2:
+            first_rank, first = selected[0]
+            second_rank, second = selected[1]
+            first_score = (
+                float(first.selection_score)
+                if first.competition_scoring_version != "unassigned"
+                else float(first.final_score)
+            )
+            second_score = (
+                float(second.selection_score)
+                if second.competition_scoring_version != "unassigned"
+                else float(second.final_score)
+            )
+            comparison = (
+                f"Top {first_rank} 与 Top {second_rank} 的组合排序分相差 "
+                f"{_fmt_score(abs(first_score - second_score))}"
+                f"（{_fmt_score(first_score)} vs {_fmt_score(second_score)}）。"
+            )
+
+        missing_note = (
+            "；" + "、".join(f"Top {rank}" for rank in missing) + "不在这轮冻结主榜中"
+            if missing
+            else ""
+        )
+        rank_label = "、".join(f"Top {rank}" for rank in requested_positions)
+        rows_text = "\n".join(rows)
+        details_text = "\n".join(detail_lines)
+        return (
+            f"上一轮冻结结果{run_bit}中，你点名的是"
+            f"{rank_label}"
+            f"{missing_note}。这次只读取冻结结果，不会重新筛选、导出或修改排名。\n\n"
+            f"{rows_text}\n\n"
+            f"{details_text}\n\n"
+            f"{comparison}排序先经过资格与风险硬门控，再综合相对效应、新颖性和"
+            "骨架/相似性多样性约束；因此不能把单一分项当成唯一决定因素。"
+            "这些是计算优先级，仍需按验证方案进行实验确认。"
+        )
+
+    # “解释 Top15” is a request about the frozen shortlist as a whole, not an
+    # instruction to make a new Top15 (and not an alias for explaining Top1).
+    # Keep this path read-only and make the actual frozen count explicit so a
+    # stale earlier Top10 turn cannot leak into the answer.
+    requested_limit = int(rank_limit or 0)
+    if not molecule_id and requested_limit > 1:
+        available = len(top)
+        shown = min(requested_limit, available)
+        run_id = str(getattr(result, "run_id", "") or "").strip()
+        run_bit = f"（run `{run_id}`）" if run_id else ""
+        if available == 0:
+            return None
+        count_note = (
+            f"这轮实际冻结了 Top {available}；"
+            if requested_limit != available
+            else ""
+        )
+        return (
+            f"上一轮冻结结果{run_bit}{count_note}以下是其中 Top {shown} 的排名概览。"
+            "这次只读取冻结结果，不会重新筛选、导出或修改排名。\n\n"
+            f"{nomination_markdown_table(top[:shown])}\n\n"
+            "排序先经过资格与风险硬门控，再综合相对效应、新颖性和骨架/相似性多样性约束。"
+            "这些是计算优先级，仍需按验证方案进行实验确认。"
+        )
+
+    target: ScoreRecord | None = None
+    wanted = str(molecule_id or "").strip().lower()
+    if wanted:
+        target = next(
+            (
+                mol
+                for mol in records
+                if str(getattr(mol, "molecule_id", "") or "").strip().lower()
+                == wanted
+            ),
+            None,
+        )
+    elif top:
+        target = top[0]
+    if target is None:
+        return None
+
+    target_id = str(target.molecule_id)
+    top_rank = next(
+        (
+            index
+            for index, mol in enumerate(top, start=1)
+            if str(mol.molecule_id).lower() == target_id.lower()
+        ),
+        None,
+    )
+    run_id = str(getattr(result, "run_id", "") or "").strip()
+    run_bit = f"（run `{run_id}`）" if run_id else ""
+    if top_rank is not None:
+        opening = (
+            f"{target_id} 是上一轮冻结结果{run_bit}里的 Top {top_rank}，"
+            "这次解释不会重新筛选，也不会生成新的 Top1。"
+        )
+    else:
+        opening = (
+            f"{target_id} 能在上一轮冻结结果{run_bit}中找到，"
+            "这次只解释已有结果，不会重新筛选。"
+        )
+
+    selection_score = (
+        float(target.selection_score)
+        if target.competition_scoring_version != "unassigned"
+        else float(target.final_score)
+    )
+    score_bits = [
+        f"组合排序分 {_fmt_score(selection_score)}",
+        f"降脂代理 {_fmt_score(target.lipid_score)}",
+        f"毒性风险 {_fmt_score(target.tox_risk)}（越低越有利于通过风险门控）",
+        f"新颖性 {_fmt_score(target.novelty_score)}",
+    ]
+    if target.effect_rank is not None:
+        score_bits.append(f"效应相对名次 {target.effect_rank}")
+    if target.novelty_rank is not None:
+        score_bits.append(f"新颖性相对名次 {target.novelty_rank}")
+
+    if target.competition_scoring_version != "unassigned":
+        logic = (
+            "它先通过资格与风险硬门控，再按同一运行内的相对效应代理和"
+            "相对新颖性代理计算组合优先级，随后接受骨架/相似性多样性约束。"
+        )
+    else:
+        logic = (
+            "它先通过资格与风险硬门控，再按本轮综合分排序，"
+            "随后接受骨架/相似性多样性约束。"
+        )
+
+    comparison = ""
+    if top_rank == 1 and len(top) > 1:
+        runner_up = top[1]
+        runner_up_score = (
+            float(runner_up.selection_score)
+            if runner_up.competition_scoring_version != "unassigned"
+            else float(runner_up.final_score)
+        )
+        comparison = (
+            f" 在最终名单里，第二名 {runner_up.molecule_id} 的对应排序分为 "
+            f"{_fmt_score(runner_up_score)}。"
+        )
+
+    rationale = why_nominated(target)
+    return (
+        f"{opening}\n\n"
+        f"关键审计值是：{'；'.join(score_bits)}。{comparison}\n\n"
+        f"{logic}当前记录给出的简要入选理由是：{rationale}。\n\n"
+        "所以 Top1 表示这套配置和这批输入下的计算优先级最高，"
+        "不等于已经证实药效最好或最安全；仍需按报告中的双终点实验验证。"
+    )
+
+
 def _md_cell(text: str) -> str:
     return str(text or "").replace("|", "/").replace("\n", " ").strip()
 
@@ -164,6 +411,8 @@ def format_run_completion(
     *,
     want_csv: bool,
     want_pdf: bool,
+    want_reserve: bool = False,
+    want_bundle: bool = False,
     want_catalog: bool = False,
     result: Any | None,
 ) -> str:
@@ -188,13 +437,37 @@ def format_run_completion(
     elif want_csv:
         parts.append("候选 CSV 已导出；当前没有可展示的入选行，请打开下方文件查看。")
 
+    if want_reserve:
+        reserve = list(getattr(result, "reserve_molecules", None) or [])
+        requested = int(getattr(getattr(result, "config", None), "reserve_n", 20) or 20)
+        if len(reserve) < requested:
+            parts.append(
+                f"候补名单已导出 {len(reserve)} 个合格候选（冻结目标 {requested} 个）。"
+                "数量不足时未临时重跑或补入不合格候选。"
+            )
+        else:
+            parts.append(f"候补名单已导出 {len(reserve)} 个合格候选。")
+        parts.append(
+            "候补仅在候选清单中的分子不可采购、无法配制或身份复核失败时，"
+            "按冻结 reserve_rank 顺序顺延；不参与候选清单并列排序。"
+        )
+
     if want_pdf:
         parts.append(mechanism_pdf_blurb(molecules))
 
     if want_catalog:
         parts.append("另外已附上 Catalog 旁证（只作参考，不改主榜排名）。")
 
-    if want_csv and want_pdf:
+    if want_bundle:
+        parts.append("结果归档包已包含候选清单、候补名单、运行血缘清单与本会话轨迹。")
+
+    if want_bundle:
+        parts.append("下方可下载结果归档包；其中候选清单与候补来自同一次冻结运行。")
+    elif want_csv and want_reserve:
+        parts.append("下方可下载候选分子清单与候补名单。")
+    elif want_reserve:
+        parts.append("下方可下载冻结候补名单 CSV。")
+    elif want_csv and want_pdf:
         parts.append("下方可下载候选 CSV 与机制 PDF。想改 Top N、只重出某一份，或追问某个分子，直接说就行。")
     elif want_csv:
         parts.append("下方可下载候选 CSV。若还需要机制与验证方案 PDF，或想调整 Top N，随时告诉我。")

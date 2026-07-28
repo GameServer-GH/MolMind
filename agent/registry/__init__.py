@@ -49,7 +49,7 @@ TOOL_META: dict[str, dict[str, str]] = {
     },
     "export_submission_bundle": {
         "title": "导出结果包",
-        "description": "打包候选 CSV、证据与机制报告等，生成可复现的结果材料包。",
+        "description": "打包候选清单、冻结候补 CSV、血缘清单、轨迹与可用机制报告，生成可复现的结果归档包。",
     },
     "draft_nomination_review": {
         "title": "起草复核建议",
@@ -182,11 +182,19 @@ class AgentRegistry:
                     description=str(raw.get("description") or ""),
                     tools=list(raw.get("tools") or []),
                     limits=dict(raw.get("limits") or {}),
+                    requires=[str(x) for x in raw.get("requires") or []],
+                    produces=[str(x) for x in raw.get("produces") or []],
                 )
 
         # Tools 从已加载 plugin 声明展开
         # 硬规则：仅 molmind-core.score_and_rank 可写主榜；Catalog 一律 enrichment。
         for plugin in self.plugins.values():
+            raw_plugin = _read_yaml(
+                (plugins_dir / f"{plugin.plugin_id}.yaml")
+                if plugin.plugin_id == "molmind-core"
+                else (catalog_dir / f"{plugin.plugin_id}.yaml")
+            )
+            contracts = raw_plugin.get("tool_contracts") or {}
             for tool_id in plugin.tools:
                 writes = (
                     tool_id == "score_and_rank"
@@ -198,6 +206,7 @@ class AgentRegistry:
                     risk = "R2"
                 title, description = _tool_meta(tool_id)
                 limits = dict(plugin.tool_limits.get(str(tool_id)) or {})
+                contract = dict(contracts.get(str(tool_id)) or {})
                 if not limits and plugin.limits:
                     # 工具未单独声明时继承插件级 limits（仅含 top_n_*）
                     limits = {
@@ -213,6 +222,18 @@ class AgentRegistry:
                     description=description,
                     writes_selection=writes,
                     limits=limits,
+                    input_schema=dict(contract.get("input_schema") or {}),
+                    requires=[str(x) for x in contract.get("requires") or []],
+                    produces=[str(x) for x in contract.get("produces") or []],
+                    idempotent=bool(contract.get("idempotent", False)),
+                    timeout_sec=(
+                        float(contract["timeout_sec"])
+                        if contract.get("timeout_sec") is not None
+                        else None
+                    ),
+                    confirmation_required=bool(
+                        contract.get("confirmation_required", risk == "R2")
+                    ),
                 )
 
     def get_profile(self, profile_id: str = "competition_masld") -> ProfileSpec:
