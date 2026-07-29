@@ -132,6 +132,52 @@ def format_ranking_explanation(
     ):
         molecule_id = str(top[requested_positions[0] - 1].molecule_id)
 
+    # A single named position just outside the primary cutoff (for example
+    # “Top11 为啥没有进榜” after a frozen Top10) refers to the corresponding
+    # frozen reserve record. Explain the cutoff directly instead of falling
+    # through to a Top10 overview or asking the LLM to guess.
+    if not molecule_id and rank_position_subject and len(requested_positions) == 1:
+        requested_rank = requested_positions[0]
+        reserve_rank = requested_rank - len(top)
+        if 1 <= reserve_rank <= len(reserve):
+            target = reserve[reserve_rank - 1]
+            run_id = str(getattr(result, "run_id", "") or "").strip()
+            run_bit = f"（run `{run_id}`）" if run_id else ""
+            target_score = (
+                float(target.selection_score)
+                if target.competition_scoring_version != "unassigned"
+                else float(target.final_score)
+            )
+            cutoff = top[-1] if top else None
+            comparison = ""
+            if cutoff is not None:
+                cutoff_score = (
+                    float(cutoff.selection_score)
+                    if cutoff.competition_scoring_version != "unassigned"
+                    else float(cutoff.final_score)
+                )
+                comparison = (
+                    f"主榜末位 Top {len(top)} `{cutoff.molecule_id}` 的组合排序分为 "
+                    f"{_fmt_score(cutoff_score)}；该候补为 {_fmt_score(target_score)}。"
+                )
+            return (
+                f"`{target.molecule_id}` 是上一轮冻结结果{run_bit}中的整体 Top {requested_rank}，"
+                f"对应候补第 {reserve_rank} 位。它没有进入主榜的直接原因是本轮主榜名额"
+                f"固定为 Top {len(top)}，并不是记录丢失。\n\n"
+                f"{comparison}\n\n"
+                f"冻结记录给出的候选理由是：{why_nominated(target)}。排序还会受到资格与风险"
+                "硬门控及骨架/相似性多样性约束，因此不能只用某一个分项解释名次。"
+                "这次只读取冻结结果，不会重新筛选、导出或修改排名。"
+            )
+        if requested_rank > len(top) + len(reserve):
+            run_id = str(getattr(result, "run_id", "") or "").strip()
+            run_bit = f"（run `{run_id}`）" if run_id else ""
+            return (
+                f"上一轮冻结结果{run_bit}只保存了 Top {len(top)} 主榜和 "
+                f"{len(reserve)} 个候补，无法从冻结证据定位整体 Top {requested_rank}。"
+                "我不会根据聊天上下文编造其分子或落选原因。"
+            )
+
     # A request such as “解释 Top4 和 Top5” names two ranking subjects.  Do
     # not reinterpret its first number as “show the first four rows”: present
     # the two actual frozen records and the small score difference between
@@ -272,8 +318,8 @@ def format_ranking_explanation(
     run_bit = f"（run `{run_id}`）" if run_id else ""
     if top_rank is not None:
         opening = (
-            f"{target_id} 是上一轮冻结结果{run_bit}里的 Top {top_rank}，"
-            "这次解释不会重新筛选，也不会生成新的 Top1。"
+            f"{target_id} 已经进入上一轮冻结主榜{run_bit}，位于 Top {top_rank}。"
+            "这次只解释现有名次，不会重新筛选或生成新排名。"
         )
     else:
         opening = (
@@ -322,11 +368,16 @@ def format_ranking_explanation(
         )
 
     rationale = why_nominated(target)
+    position_conclusion = (
+        f"所以 Top {top_rank} 表示它在这套配置和这批输入中的计算优先级位置，"
+        if top_rank is not None
+        else "所以这个位置只表示它在这套配置和这批输入中的计算优先级，"
+    )
     return (
         f"{opening}\n\n"
         f"关键审计值是：{'；'.join(score_bits)}。{comparison}\n\n"
         f"{logic}当前记录给出的简要入选理由是：{rationale}。\n\n"
-        "所以 Top1 表示这套配置和这批输入下的计算优先级最高，"
+        f"{position_conclusion}"
         "不等于已经证实药效最好或最安全；仍需按报告中的双终点实验验证。"
     )
 

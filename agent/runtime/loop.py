@@ -13,7 +13,9 @@ import threading
 import time
 import uuid
 import zipfile
-from dataclasses import asdict, is_dataclass, replace
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -29,6 +31,12 @@ from agent.memory import STORE, AgentSession, Artifact, FileRunStore
 from agent.policy import claim_ceiling_default
 from agent.registry import get_registry
 from agent.runtime.decide import llm_json_decision
+from agent.runtime.governance import (
+    GovernanceDecision,
+    ToolGovernance,
+    grant_approval,
+)
+from agent.runtime.observation import normalize_tool_end
 from agent.runtime.planning import (
     PlanStep,
     llm_plan_request,
@@ -36,6 +44,8 @@ from agent.runtime.planning import (
     session_capabilities,
 )
 from agent.runtime.reply import format_ranking_explanation, format_run_completion
+from agent.runtime.scheduler import RunBudget, RunController
+from agent.runtime.task_graph import TaskGraph
 from agent.runtime.verification import evidence_correction, verify_assistant_claims
 from plugins.catalog_dispatch import (
     TOOL_HANDLERS,
@@ -64,6 +74,15 @@ _DIRECT_DELIVERABLE_RE = re.compile(
     r"(?:希望|想要|需要|请|给我).{0,28}"
     r"(?:csv|候选|提名|清单|短名单|候补|结果包|top)",
     re.I,
+)
+_PENDING_TOP_N_REPLY_RE = re.compile(r"^\s*(?:top\s*)?(\d{1,3})\s*(?:个|名)?\s*$", re.I)
+_PENDING_AFFIRM_RE = re.compile(r"^\s*(?:需要|要|是|对|可以|好|好的|行|继续|开始|现在呢|现在可以了?)(?:[。！!？?])?\s*$", re.I)
+_PENDING_STATUS_RE = re.compile(r"(?:好了(?:吗|嘛)?|完成了?(?:吗|嘛)?|进度|开始了?(?:吗|嘛)?|还没好|怎么样了)", re.I)
+_PENDING_CANCEL_RE = re.compile(r"^\s*(?:取消|算了|不用了?|不要了?|停止)(?:[。！!])?\s*$", re.I)
+_COMPOUND_MAX_ITERATIONS = 3
+_BRANCH_ASSISTANT_CAPTURE: ContextVar[list[str] | None] = ContextVar(
+    "molmind_branch_assistant_capture",
+    default=None,
 )
 
 
@@ -262,41 +281,49 @@ def _molecule_index_from_result(result: Any) -> dict[str, list[dict[str, Any]]]:
 
 
 def _selection_guard_snapshot(result: Any) -> tuple[dict[str, Any], str]:
-    """Deep-copy and digest the complete mutable selection surface."""
+    """Capture the frozen ordering without deep-copying the scored library.
+
+    ``query_evidence`` receives only ``_ReadOnlyResultSnapshot`` and the
+    identity index, never these ranking objects. A shallow list snapshot is
+    therefore sufficient for restoring accidental list replacement/reorder,
+    while avoiding a multi-minute deepcopy of tens of thousands of records.
+    """
 
     if result is None:
         return {}, content_sha256({})
-    names = (
-        "top_molecules",
-        "reserve_molecules",
-        "scored_molecules",
-        "selection_sha256",
-    )
-    snapshot = {
-        name: copy.deepcopy(getattr(result, name))
-        for name in names
-        if hasattr(result, name)
+    snapshot: dict[str, Any] = {}
+    for name in ("top_molecules", "reserve_molecules", "scored_molecules"):
+        if hasattr(result, name):
+            snapshot[name] = list(getattr(result, name) or [])
+    if hasattr(result, "selection_sha256"):
+        snapshot["selection_sha256"] = str(
+            getattr(result, "selection_sha256", "") or ""
+        )
+
+    def ordering(records: list[Any]) -> list[str]:
+        return [
+            str(
+                record.get("molecule_id", "")
+                if isinstance(record, dict)
+                else getattr(record, "molecule_id", "")
+            )
+            for record in records
+        ]
+
+    digest_surface = {
+        "selection_sha256": snapshot.get("selection_sha256", ""),
+        "top_order": ordering(snapshot.get("top_molecules", [])),
+        "reserve_order": ordering(snapshot.get("reserve_molecules", [])),
+        "scored_order": ordering(snapshot.get("scored_molecules", [])),
     }
-
-    def serializable(value: Any) -> Any:
-        if is_dataclass(value):
-            return serializable(asdict(value))
-        if isinstance(value, dict):
-            return {str(key): serializable(item) for key, item in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [serializable(item) for item in value]
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-        return repr(value)
-
-    return snapshot, content_sha256(serializable(snapshot))
+    return snapshot, content_sha256(digest_surface)
 
 
 def _restore_selection_guard(result: Any, snapshot: dict[str, Any]) -> None:
     if result is None:
         return
     for name, value in snapshot.items():
-        setattr(result, name, copy.deepcopy(value))
+        setattr(result, name, list(value) if isinstance(value, list) else value)
 
 
 class _SelectionMutationAttempt(RuntimeError):
@@ -334,6 +361,16 @@ class AgentRuntime:
         # sessions to use the worker pool concurrently.
         self._session_locks: dict[str, threading.Lock] = {}
         self._session_locks_guard = threading.Lock()
+        # Independent branches within one user turn (for example an R0 lookup
+        # plus a normal question) may overlap. Session mutation remains on the
+        # owning turn thread; workers are used only for read-only LLM replies.
+        self._branch_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="agent-branch",
+        )
+        self._governance = ToolGovernance(self.registry)
+        self._run_controllers: dict[str, RunController] = {}
+        self._run_controllers_guard = threading.Lock()
 
     def create_session(self, *, profile_id: str = "competition_masld") -> AgentSession:
         return self.store.create(profile_id=profile_id)
@@ -403,6 +440,9 @@ class AgentRuntime:
     def delete_session(self, session_id: str) -> bool:
         return self.store.delete_session(session_id)
 
+    def clear_sessions(self) -> int:
+        return self.store.clear_sessions()
+
     def settings_view(self, session: AgentSession | None = None) -> dict[str, Any]:
         installed = set(session.installed_catalog) if session else set()
         profile_id = session.profile_id if session else "competition_masld"
@@ -411,19 +451,216 @@ class AgentRuntime:
             installed_catalog=installed,
         )
 
+    def grant_tool_approval(
+        self,
+        session: AgentSession,
+        *,
+        tool_id: str,
+        args: dict[str, Any],
+        ttl_sec: int = 600,
+    ) -> dict[str, Any]:
+        tool = self.registry.tools.get(tool_id)
+        if tool is None:
+            raise KeyError(f"工具未注册：{tool_id}")
+        profile = self.registry.get_profile(session.profile_id)
+        from agent.runtime.governance import approval_scope
+
+        scope = approval_scope(tool, dict(args or {}), profile.policy)
+        if not scope:
+            raise ValueError(f"工具 {tool_id} 不需要审批")
+        record = grant_approval(
+            session,
+            tool_id=tool_id,
+            args=dict(args or {}),
+            scope=scope,
+            ttl_sec=ttl_sec,
+        )
+        self.store.persist(session)
+        return record
+
+    def _begin_agent_turn(self, session: AgentSession) -> RunController:
+        profile = self.registry.get_profile(session.profile_id)
+        controller = RunController(RunBudget.from_mapping(profile.budgets))
+        with self._run_controllers_guard:
+            self._run_controllers[session.session_id] = controller
+        session.agent_run_state = controller.snapshot()
+        return controller
+
+    def _run_controller(self, session: AgentSession) -> RunController:
+        with self._run_controllers_guard:
+            controller = self._run_controllers.get(session.session_id)
+        if controller is None:
+            controller = self._begin_agent_turn(session)
+        return controller
+
+    def _task_id_for_tool(self, session: AgentSession, tool_id: str) -> str:
+        active = session.active_plan
+        if not isinstance(active, dict):
+            return ""
+        for step in active.get("steps") or []:
+            if step.get("tool") == tool_id and step.get("status") == "pending":
+                return str(step.get("task_id") or "")
+        return ""
+
+    def _authorize_tool_call(
+        self,
+        session: AgentSession,
+        tool_id: str,
+        args: dict[str, Any],
+        *,
+        confirmed_scopes: set[str] | None = None,
+    ):
+        controller = self._run_controller(session)
+        task_id = self._task_id_for_tool(session, tool_id)
+        active = session.active_plan
+        if task_id and isinstance(active, dict):
+            statuses = {
+                str(step.get("task_id") or ""): str(step.get("status") or "")
+                for step in active.get("steps") or []
+            }
+            target = next(
+                (
+                    step
+                    for step in active.get("steps") or []
+                    if str(step.get("task_id") or "") == task_id
+                ),
+                {},
+            )
+            unmet = [
+                str(dep)
+                for dep in target.get("depends_on") or []
+                if statuses.get(str(dep)) not in {"succeeded", "skipped"}
+            ]
+            if unmet:
+                from agent.runtime.scheduler import canonical_args_hash
+
+                return GovernanceDecision(
+                    allowed=False,
+                    code="dependency_not_ready",
+                    message=f"任务依赖尚未成功：{','.join(unmet)}",
+                    args_hash=canonical_args_hash(dict(args or {})),
+                )
+        decision = self._governance.authorize(
+            session=session,
+            tool_id=tool_id,
+            args=dict(args or {}),
+            controller=controller,
+            task_id=task_id,
+            confirmed_scopes=confirmed_scopes,
+        )
+        session.agent_run_state = controller.snapshot()
+        if decision.allowed and decision.approval_scope not in {"", "allow_live"}:
+            # Persist one-shot approval consumption before entering the tool
+            # handler so a process restart cannot replay the same grant.
+            self.store.persist(session)
+        return decision
+
+    def _governance_denied_events(
+        self,
+        session: AgentSession,
+        *,
+        tool_id: str,
+        decision: Any,
+    ) -> Iterator[dict[str, Any]]:
+        yield self._emit(
+            session,
+            {
+                "type": "governance_denied",
+                "tool": tool_id,
+                "code": decision.code,
+                "detail": decision.message,
+                "args_hash": decision.args_hash,
+                "approval_scope": decision.approval_scope or None,
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "tool_end",
+                "tool": tool_id,
+                "ok": False,
+                "status": "denied",
+                "error_code": decision.code,
+                "error": decision.message,
+                "args_hash": decision.args_hash,
+            },
+        )
+
     def _emit(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
+        kind = str(event.get("type") or "")
+        controller = self._run_controller(session)
+        if kind == "agent_plan":
+            raw_steps = event.get("tasks") or event.get("steps") or []
+            within_budget, reason = controller.register_plan(len(raw_steps))
+            event.setdefault("run_id", controller.run_id)
+            event["budget"] = controller.budget.to_dict()
+            if not within_budget:
+                event.setdefault("diagnostics", []).append(reason)
+        elif kind == "tool_start":
+            call = controller.active_call(str(event.get("tool") or ""))
+            event.setdefault("run_id", controller.run_id)
+            event.setdefault("governed", call is not None)
+            if call is not None:
+                event.setdefault("call_id", call.call_id)
+                event.setdefault("task_id", call.task_id)
+                event.setdefault("args_hash", call.args_hash)
+                event.setdefault("timeout_sec", call.timeout_sec)
+                event.setdefault("writes_selection", call.writes_selection)
+        elif kind == "tool_end":
+            tool_id = str(event.get("tool") or "")
+            call = controller.active_call(tool_id)
+            observation = normalize_tool_end(
+                event,
+                call=call,
+                observation_limit=controller.budget.max_observation_chars,
+            )
+            event["observation"] = observation.to_dict()
+            event.setdefault("run_id", controller.run_id)
+            event.setdefault("call_id", call.call_id if call else "")
+            event.setdefault("task_id", observation.task_id)
+            event.setdefault("args_hash", observation.args_hash)
+            controller.finish_call(
+                tool_id,
+                status=observation.status,
+                observation_signature=observation.signature,
+            )
+            session.working_memory.append(
+                {
+                    "turn_id": controller.run_id,
+                    "iteration": 0,
+                    "objective": str(
+                        (session.active_plan or {}).get("goal")
+                        if isinstance(session.active_plan, dict)
+                        else ""
+                    )[:700],
+                    "tasks": [],
+                    "tool_calls": [
+                        {
+                            "tool": tool_id,
+                            "status": (
+                                "succeeded"
+                                if observation.ok
+                                else "failed"
+                            ),
+                            "args_hash": observation.args_hash,
+                            "observation": observation.to_dict(),
+                        }
+                    ],
+                    "decision": "observed",
+                    "reason": observation.status,
+                    "recorded_at_unix": int(time.time()),
+                }
+            )
+            session.working_memory = session.working_memory[-24:]
+            session.agent_run_state = controller.snapshot()
+        elif kind == "done":
+            controller.complete()
+            session.agent_run_state = controller.snapshot()
+            event.setdefault("run", session.agent_run_state)
+
         self._observe_plan_event(session, event)
         if event.get("type") == "assistant" and event.get("text"):
             original = str(event["text"])
-            # Some successful tool paths emit their completion directly. Keep
-            # the durable transcript complete even when the caller did not
-            # manually append the same assistant message first.
-            if not (
-                session.messages
-                and session.messages[-1].get("role") == "assistant"
-                and session.messages[-1].get("text") == original
-            ):
-                session.messages.append({"role": "assistant", "text": original})
             violations = verify_assistant_claims(session, str(event["text"]))
             if violations:
                 event["text"] = evidence_correction(session, violations)
@@ -431,13 +668,40 @@ class AgentRuntime:
                     "ok": False,
                     "violations": [v.code for v in violations],
                 }
-                # Most assistant messages are appended immediately before the
-                # event is emitted. Keep persisted conversation and stream in
-                # agreement when a claim is intercepted.
-                if session.messages and session.messages[-1].get("text") == original:
-                    session.messages[-1]["text"] = event["text"]
+            rendered = str(event["text"])
+            capture = _BRANCH_ASSISTANT_CAPTURE.get()
+            if capture is not None:
+                # A compound turn merges branch answers after all observations
+                # are available. Do not leak a competing partial answer into
+                # the transcript or event log.
+                capture.append(rendered)
+                return {
+                    "type": "branch_observation",
+                    "kind": "assistant",
+                    "text": rendered,
+                    "claim_ceiling": claim_ceiling_default(),
+                }
+            # Some successful tool paths emit their completion directly. Keep
+            # the durable transcript complete even when the caller did not
+            # manually append the same assistant message first.
+            if (
+                session.messages
+                and session.messages[-1].get("role") == "assistant"
+                and session.messages[-1].get("text") == original
+            ):
+                session.messages[-1]["text"] = rendered
+            elif not (
+                session.messages
+                and session.messages[-1].get("role") == "assistant"
+                and session.messages[-1].get("text") == rendered
+            ):
+                session.messages.append({"role": "assistant", "text": rendered})
         event.setdefault("claim_ceiling", claim_ceiling_default())
-        return self.store.append_event(session, event)
+        emitted = self.store.append_event(session, event)
+        if kind == "done":
+            with self._run_controllers_guard:
+                self._run_controllers.pop(session.session_id, None)
+        return emitted
 
     @staticmethod
     def _observe_plan_event(session: AgentSession, event: dict[str, Any]) -> None:
@@ -446,23 +710,21 @@ class AgentRuntime:
         if kind == "agent_plan":
             plan_id = uuid.uuid4().hex[:12]
             event["plan_id"] = plan_id
+            raw_steps = event.get("tasks") or event.get("steps") or []
+            graph = TaskGraph.from_steps(
+                goal=str(event.get("goal") or ""),
+                steps=raw_steps,
+                sequential_default=True,
+            )
             session.active_plan = {
                 "plan_id": plan_id,
+                "run_id": str(event.get("run_id") or ""),
                 "goal": str(event.get("goal") or ""),
                 "action": str(event.get("action") or ""),
                 "expected_artifacts": list(event.get("expected_artifacts") or []),
                 "diagnostics": list(event.get("diagnostics") or []),
                 "status": "running",
-                "steps": [
-                    {
-                        "tool": str(step.get("tool") or ""),
-                        "args": dict(step.get("args") or {}),
-                        "status": "pending",
-                        "observation": {},
-                    }
-                    for step in event.get("steps") or []
-                    if isinstance(step, dict)
-                ],
+                "steps": [task.to_dict() for task in graph.tasks],
             }
             return
 
@@ -472,17 +734,44 @@ class AgentRuntime:
         tool = str(event.get("tool") or "")
         if kind == "tool_start" and tool:
             for step in active.get("steps") or []:
-                if step.get("tool") == tool and step.get("status") == "pending":
+                task_match = (
+                    not event.get("task_id")
+                    or step.get("task_id") == event.get("task_id")
+                )
+                if (
+                    task_match
+                    and step.get("tool") == tool
+                    and step.get("status") == "pending"
+                ):
                     step["status"] = "running"
-                    step["observation"] = {"started": True, "args": event.get("args") or {}}
+                    step["observation"] = {
+                        "started": True,
+                        "args": event.get("args") or {},
+                        "args_hash": event.get("args_hash") or "",
+                        "call_id": event.get("call_id") or "",
+                    }
                     break
             return
         if kind == "tool_end" and tool:
             for step in active.get("steps") or []:
-                if step.get("tool") == tool and step.get("status") in {"pending", "running"}:
+                task_match = (
+                    not event.get("task_id")
+                    or step.get("task_id") == event.get("task_id")
+                )
+                if (
+                    task_match
+                    and step.get("tool") == tool
+                    and step.get("status") in {"pending", "running"}
+                ):
                     ok = bool(event.get("ok"))
-                    step["status"] = "succeeded" if ok else "failed"
-                    step["observation"] = {
+                    observation = dict(event.get("observation") or {})
+                    observation_status = str(observation.get("status") or "")
+                    step["status"] = (
+                        "succeeded"
+                        if ok
+                        else ("denied" if observation_status == "denied" else "failed")
+                    )
+                    step["observation"] = observation or {
                         "ok": ok,
                         "digest": event.get("digest") or {},
                         "error": event.get("error") or "",
@@ -490,6 +779,27 @@ class AgentRuntime:
                     if not ok:
                         active["status"] = "failed"
                     break
+            return
+        if kind == "task_start" and event.get("task_id"):
+            for step in active.get("steps") or []:
+                if (
+                    step.get("task_id") == event.get("task_id")
+                    and step.get("status") == "pending"
+                ):
+                    step["status"] = "running"
+                    step["observation"] = {"started": True}
+                    break
+            return
+        if kind == "task_end" and event.get("task_id"):
+            for step in active.get("steps") or []:
+                if step.get("task_id") != event.get("task_id"):
+                    continue
+                status = str(event.get("status") or "succeeded")
+                step["status"] = status
+                step["observation"] = dict(event.get("observation") or {})
+                if status not in {"succeeded", "skipped"}:
+                    active["status"] = "failed"
+                break
             return
         if kind == "done":
             if active.get("status") != "failed":
@@ -513,6 +823,7 @@ class AgentRuntime:
             session.active_plan = None
 
     def handle_message(self, session: AgentSession, text: str) -> Iterator[dict[str, Any]]:
+        self._begin_agent_turn(session)
         lo, hi = self.registry.resolve_top_n_bounds()
 
         # Pending Top-N over-limit confirmation (same session only).
@@ -573,6 +884,121 @@ class AgentRuntime:
                 return
             # other → drop stale confirm and continue as a fresh request
             session.pending_top_confirm = None
+
+        # Resume an incomplete executable request before classifying this
+        # short reply as standalone chat. This turns “导出 CSV → 需要 → 10”
+        # into one continuous operation and keeps the slots durable across a
+        # process restart.
+        pending_action = session.pending_action
+        if isinstance(pending_action, dict) and pending_action:
+            compact = (text or "").strip()
+            if _PENDING_CANCEL_RE.fullmatch(compact):
+                session.pending_action = None
+                self._prepare_turn(session, text)
+                reply = "好的，已取消尚未启动的筛选/导出请求。"
+                session.messages.append({"role": "assistant", "text": reply})
+                yield self._emit(session, {"type": "assistant", "text": reply})
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
+                return
+
+            number_match = _PENDING_TOP_N_REPLY_RE.fullmatch(compact)
+            if number_match:
+                requested = int(number_match.group(1))
+                pending_action["top_n"] = min(max(requested, lo), hi)
+                pending_action["requested_top_n"] = requested
+
+            missing_sdf = not bool(session.sdf_bytes)
+            missing_top_n = pending_action.get("top_n") is None
+            is_continuation = bool(
+                number_match
+                or _PENDING_AFFIRM_RE.fullmatch(compact)
+                or _PENDING_STATUS_RE.search(compact)
+            )
+            if is_continuation and (missing_sdf or missing_top_n):
+                self._prepare_turn(session, text)
+                if _PENDING_STATUS_RE.search(compact):
+                    prefix = "尚未启动工具调用；"
+                else:
+                    prefix = "已续接你之前的导出请求；"
+                if missing_sdf:
+                    reply = prefix + "目前还缺少 SDF 化合物库，请先上传 .sdf 附件。"
+                else:
+                    reply = prefix + "附件已就绪，还需要你告诉我候选数量，例如回复「10」。"
+                pending_action["missing_slots"] = [
+                    slot
+                    for slot, missing in (("sdf", missing_sdf), ("top_n", missing_top_n))
+                    if missing
+                ]
+                session.messages.append({"role": "assistant", "text": reply})
+                yield self._emit(session, {"type": "assistant", "text": reply})
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
+                return
+
+            if is_continuation and not missing_sdf and not missing_top_n:
+                requested = int(pending_action.get("requested_top_n") or pending_action["top_n"])
+                capped = int(pending_action["top_n"])
+                intent = AgentIntent(
+                    want_csv=bool(pending_action.get("want_csv")),
+                    want_pdf=bool(pending_action.get("want_pdf")),
+                    want_reserve=bool(pending_action.get("want_reserve")),
+                    want_bundle=bool(pending_action.get("want_bundle")),
+                    top_n=capped,
+                    raw_text=text,
+                    reason=f"续接多轮请求并补齐 Top{requested}",
+                    skill_ids=tuple(pending_action.get("skill_ids") or ("masld_nominate",)),
+                    wants_tools=True,
+                    requested_top_n=requested,
+                    top_n_over_limit=requested > hi,
+                    top_n_max=hi,
+                    top_n_min=lo,
+                )
+                session.pending_action = None
+                if not intent.top_n_over_limit:
+                    resumed_steps: list[dict[str, Any]] = [
+                        {"tool": "score_and_rank", "args": {"top_n": capped}}
+                    ]
+                    expected_artifacts: list[str] = []
+                    if intent.want_csv:
+                        resumed_steps.append(
+                            {"tool": "export_nomination", "args": {"tier": "primary"}}
+                        )
+                        expected_artifacts.append("nomination_csv")
+                    if intent.want_reserve:
+                        resumed_steps.append(
+                            {"tool": "export_nomination", "args": {"tier": "reserve"}}
+                        )
+                        expected_artifacts.append("reserve_csv")
+                    if intent.want_pdf:
+                        resumed_steps.append(
+                            {"tool": "start_mechanism_report", "args": {}}
+                        )
+                        expected_artifacts.append("mechanism_pdf")
+                    if intent.want_bundle:
+                        resumed_steps.append(
+                            {"tool": "export_submission_bundle", "args": {}}
+                        )
+                        expected_artifacts.append("submission_bundle")
+                    yield self._emit(
+                        session,
+                        {
+                            "type": "agent_plan",
+                            "goal": str(pending_action.get("source_text") or text),
+                            "action": "execute",
+                            "steps": resumed_steps,
+                            "expected_artifacts": expected_artifacts,
+                            "diagnostics": ["resumed_from_pending_action"],
+                        },
+                    )
+                yield from self._handle_intent(session, text, intent)
+                return
+
+            # A complete, explicit new deliverable supersedes the old one.
+            # Other substantive text is classified normally but does not
+            # silently erase the unfinished request.
+            if _DIRECT_DELIVERABLE_RE.search(compact):
+                session.pending_action = None
 
         # First pass without skill-specific bounds; refine after intent known.
         intent = parse_intent(
@@ -658,6 +1084,9 @@ class AgentRuntime:
                     + f"（{why}）"
                 ),
             )
+        if intent.mentions and intent.companion_text:
+            yield from self._handle_compound_turn(session, text, intent)
+            return
         # Emit the registry-compiled plan before dispatch.  The legacy intent
         # adapter still supplies candidate skills during this migration, while
         # the execution contract—not keyword branches—defines their ordered
@@ -844,13 +1273,496 @@ class AgentRuntime:
             return "other", f"{why};still_over_limit"
         return "other", why
 
-    def _handle_intent(
-        self, session: AgentSession, text: str, intent: Any
+    @staticmethod
+    def _compact_observation(value: object, *, limit: int = 1800) -> str:
+        """Bound a branch observation before memory/context injection."""
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        head = max(1, int(limit * 0.72))
+        tail = max(1, limit - head - 24)
+        return f"{text[:head]}\n…[中间内容已压缩]…\n{text[-tail:]}"
+
+    @staticmethod
+    def _tool_call_memory(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        for event in events:
+            kind = str(event.get("type") or "")
+            tool = str(event.get("tool") or "")
+            if kind == "tool_start" and tool:
+                calls.append(
+                    {
+                        "tool": tool,
+                        "plugin": str(event.get("plugin") or ""),
+                        "args": _safe_query_value(event.get("args") or {}),
+                        "status": "running",
+                    }
+                )
+                continue
+            if kind != "tool_end" or not tool:
+                continue
+            target = next(
+                (
+                    item
+                    for item in reversed(calls)
+                    if item.get("tool") == tool and item.get("status") == "running"
+                ),
+                None,
+            )
+            if target is None:
+                target = {"tool": tool, "args": {}, "status": "running"}
+                calls.append(target)
+            target["status"] = "succeeded" if bool(event.get("ok")) else "failed"
+            target["observation"] = {
+                "digest": _safe_query_value(event.get("digest") or {}),
+                "error": _redact_query_text(event.get("error") or "", limit=400),
+            }
+        return calls[-12:]
+
+    def _decide_loop_after_observations(
+        self,
+        *,
+        objective: str,
+        iteration: int,
+        tool_calls: list[dict[str, Any]],
+        mention_observation: str,
+        chat_observation: str,
+        synthesis_observation: str = "",
+        max_iterations: int = _COMPOUND_MAX_ITERATIONS,
+    ) -> tuple[str, str]:
+        """Choose continue/final/clarify/abort after branch observations."""
+        has_failure = any(call.get("status") == "failed" for call in tool_calls)
+        default = "clarify" if has_failure else "final"
+        if not mention_observation and not tool_calls:
+            default = "continue"
+        if not chat_observation:
+            default = "continue"
+        decision, why = llm_json_decision(
+            system=(
+                "你是 MolMind Agent Loop 的停止条件判定器。只返回 JSON："
+                '{"decision":"continue|final|clarify|abort","reason":"..."}。'
+                "final=本轮多个子任务已有足够结果，可合并输出；"
+                "continue=现有观察足以支持再做一轮内部推理或纠偏，且不需要用户补充；"
+                "clarify=缺少附件、参数、授权或用户选择，必须询问用户；"
+                "abort=安全门禁拒绝或不可恢复错误。"
+                "不要因为存在工具调用就忽略普通问答，也不要在结果已经足够时继续循环。"
+            ),
+            user=(
+                f"目标：{self._compact_observation(objective, limit=700)}\n"
+                f"当前迭代：{iteration}/{max_iterations}\n"
+                f"工具调用：{json.dumps(tool_calls, ensure_ascii=False)[:3500]}\n"
+                f"点选分支观察：{self._compact_observation(mention_observation)}\n"
+                f"对话分支观察：{self._compact_observation(chat_observation)}\n"
+                f"上一轮综合观察：{self._compact_observation(synthesis_observation)}\n"
+                "判断是进入下一轮还是输出。"
+            ),
+            allowed={"continue", "final", "clarify", "abort"},
+            default=default,
+            purpose="agent_chat",
+            max_tokens=180,
+            timeout_sec=8.0,
+        )
+        return decision, why
+
+    def _merge_compound_reply(
+        self,
+        *,
+        objective: str,
+        companion_text: str,
+        mention_observation: str,
+        chat_observation: str,
+        tool_calls: list[dict[str, Any]],
+        decision: str,
+    ) -> str:
+        """Merge parallel branch results without replaying verbose tool output."""
+        mention_short = self._compact_observation(mention_observation, limit=2400)
+        chat_short = self._compact_observation(chat_observation, limit=2400)
+        try:
+            from plugins.molmind_core.scientific.mechanism.llm_client import (
+                chat_completion,
+                resolve_llm_settings,
+            )
+
+            settings = resolve_llm_settings(
+                {"enabled": True, "agent_chat": True},
+                purpose="agent_chat",
+            )
+            if settings.ready:
+                settings = type(settings)(
+                    enabled=settings.enabled,
+                    model=settings.model,
+                    base_url=settings.base_url,
+                    api_key=settings.api_key,
+                    temperature=0.2,
+                    timeout_sec=min(max(settings.timeout_sec, 20.0), 45.0),
+                    max_tokens=min(max(settings.max_tokens, 800), 1600),
+                    cache_dir=settings.cache_dir,
+                    use_cache=False,
+                )
+                system = (
+                    "你是 MolMind 的结果综合器。把同一用户输入的点选工具/技能分支与"
+                    "普通对话分支合并成一条简洁中文答复。保留成功结果、失败/缺参事实和"
+                    "科学声明边界；不要虚构工具结果，不要重复完整日志或大表。"
+                    "工具卡片和下载附件已在界面单独展示，只需在正文概括。"
+                )
+                user = (
+                    f"用户完整目标：{self._compact_observation(objective, limit=900)}\n"
+                    f"普通问答子任务：{companion_text}\n"
+                    f"Loop 决策：{decision}\n"
+                    f"工具调用摘要：{json.dumps(tool_calls, ensure_ascii=False)[:3200]}\n"
+                    f"点选分支结果：{mention_short or '（无文本结果）'}\n"
+                    f"普通对话结果：{chat_short or '（无可用回答）'}\n"
+                    "请输出合并后的最终答复。"
+                )
+                merged = chat_completion(settings, system=system, user=user).strip()
+                if merged:
+                    return self._append_degraded_disclosure(merged, tool_calls)
+        except Exception:  # noqa: BLE001 - optional synthesis model
+            pass
+
+        parts: list[str] = []
+        if mention_short:
+            parts.append(f"点选项处理结果：\n{mention_short}")
+        elif tool_calls:
+            status = "、".join(
+                f"{call.get('tool')}={call.get('status')}" for call in tool_calls
+            )
+            parts.append(f"点选项处理结果：{status}")
+        if chat_short:
+            parts.append(f"关于“{companion_text}”：\n{chat_short}")
+        if decision == "clarify" and not any(
+            marker in "\n".join(parts) for marker in ("请先", "需要", "缺少", "无法")
+        ):
+            parts.append("还缺少继续执行所需的信息，请补充后我再继续。")
+        if decision == "abort":
+            parts.append("本轮已因安全门禁或不可恢复错误停止。")
+        fallback = "\n\n".join(parts) or "本轮没有得到可安全输出的结果。"
+        return self._append_degraded_disclosure(fallback, tool_calls)
+
+    @staticmethod
+    def _append_degraded_disclosure(
+        reply: str,
+        tool_calls: list[dict[str, Any]],
+    ) -> str:
+        """Ensure synthesis cannot hide a Tool's degraded evidence channel."""
+        channels: list[str] = []
+        for call in tool_calls:
+            observation = call.get("observation") or {}
+            digest = observation.get("digest") or {}
+            for channel in [
+                *(observation.get("degraded_channels") or []),
+                *(digest.get("degraded_channels") or []),
+            ]:
+                value = str(channel or "").strip()
+                if value and value not in channels:
+                    channels.append(value)
+        if not channels:
+            return reply
+        if all(channel in reply for channel in channels):
+            return reply
+        descriptions = {
+            "evidence_provenance_incomplete": "部分证据的来源溯源字段不完整",
+        }
+        details = "；".join(
+            f"`{channel}`（{descriptions.get(channel, '该证据通道处于降级状态')}）"
+            for channel in channels
+        )
+        return (
+            f"{reply.rstrip()}\n\n"
+            f"注意：本轮工具报告了降级通道：{details}。"
+            "这不代表没有证据，但解读时应结合证据卡中的来源与审计字段。"
+        )
+
+    def _remember_loop_iteration(
+        self,
+        session: AgentSession,
+        *,
+        turn_id: str,
+        iteration: int,
+        objective: str,
+        intent: AgentIntent,
+        tool_calls: list[dict[str, Any]],
+        mention_observation: str,
+        chat_observation: str,
+        synthesis_observation: str,
+        decision: str,
+        reason: str,
+    ) -> None:
+        session.working_memory.append(
+            {
+                "turn_id": turn_id,
+                "iteration": iteration,
+                "objective": self._compact_observation(objective, limit=700),
+                "tasks": [
+                    {
+                        "kind": "mention",
+                        "targets": [
+                            {"kind": item.kind, "id": item.id}
+                            for item in intent.mentions
+                        ],
+                        "action": intent.mention_action,
+                        "status": (
+                            "failed"
+                            if any(call.get("status") == "failed" for call in tool_calls)
+                            else "completed"
+                        ),
+                    },
+                    {
+                        "kind": "conversation",
+                        "text": self._compact_observation(
+                            intent.companion_text,
+                            limit=500,
+                        ),
+                        "status": "completed" if chat_observation else "failed",
+                    },
+                ],
+                "tool_calls": copy.deepcopy(tool_calls),
+                "observations": {
+                    "mention": self._compact_observation(mention_observation),
+                    "conversation": self._compact_observation(chat_observation),
+                    "synthesis": self._compact_observation(synthesis_observation),
+                },
+                "decision": decision,
+                "reason": self._compact_observation(reason, limit=500),
+                "recorded_at_unix": int(time.time()),
+            }
+        )
+        session.working_memory = session.working_memory[-24:]
+        # Snapshot after every decision so a long/streaming turn can be
+        # inspected or resumed even if the final synthesis is interrupted.
+        self.store.persist(session)
+
+    def _handle_compound_turn(
+        self,
+        session: AgentSession,
+        text: str,
+        intent: AgentIntent,
     ) -> Iterator[dict[str, Any]]:
-        # A Top-N token inside a question is not a new session preference.
-        # Update it only for an actual nomination/report execution intent.
-        if intent.want_csv or intent.want_pdf:
-            session.top_n = intent.top_n
+        """Run mention and conversational tasks concurrently, then close the loop."""
+        self._prepare_turn(session, text)
+        turn_id = uuid.uuid4().hex[:12]
+        yield self._emit(
+            session,
+            {
+                "type": "agent_plan",
+                "goal": text,
+                "action": "execute",
+                "tasks": [
+                    {
+                        "task_id": "mention",
+                        "kind": "mention",
+                        "label": "处理点选工具或技能",
+                        "depends_on": [],
+                    },
+                    {
+                        "task_id": "conversation",
+                        "kind": "conversation",
+                        "label": intent.companion_text,
+                        "depends_on": [],
+                    },
+                    {
+                        "task_id": "synthesis",
+                        "kind": "synthesis",
+                        "label": "合并观察并决定是否结束",
+                        "depends_on": ["mention", "conversation"],
+                    },
+                ],
+                "expected_artifacts": [],
+                "diagnostics": [],
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "plan",
+                "steps": [
+                    "并行处理点选工具/技能与普通问答",
+                    "汇总并压缩各分支 Observation",
+                    "判断继续 Loop、澄清、终止或输出",
+                ],
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "thinking",
+                "text": (
+                    "识别到同一输入包含点选任务和普通对话任务；两部分都会处理，"
+                    "完成后由 Agent Loop 基于观察结果统一决策。"
+                ),
+            },
+        )
+
+        yield self._emit(session, {"type": "task_start", "task_id": "mention"})
+        yield self._emit(session, {"type": "task_start", "task_id": "conversation"})
+        chat_future = self._branch_executor.submit(
+            self._llm_chat_reply,
+            session,
+            intent.companion_text,
+        )
+        captured_assistant: list[str] = []
+        branch_events: list[dict[str, Any]] = []
+        capture_token = _BRANCH_ASSISTANT_CAPTURE.set(captured_assistant)
+        try:
+            for event in self._handle_mentions(
+                session,
+                intent,
+                finalize=False,
+                compound=True,
+            ):
+                if event.get("type") == "branch_observation":
+                    continue
+                branch_events.append(event)
+                yield event
+        finally:
+            _BRANCH_ASSISTANT_CAPTURE.reset(capture_token)
+
+        try:
+            # The conversational client defaults to a 60s network timeout;
+            # allow a small scheduling margin before treating the branch as a
+            # failed observation.
+            chat_observation = str(chat_future.result(timeout=70.0) or "").strip()
+        except Exception as exc:  # noqa: BLE001 - branch failure becomes observation
+            chat_observation = ""
+            branch_events.append(
+                {
+                    "type": "branch_error",
+                    "branch": "conversation",
+                    "error": type(exc).__name__,
+                }
+            )
+
+        mention_observation = "\n\n".join(
+            block for block in captured_assistant if str(block).strip()
+        )
+        tool_calls = self._tool_call_memory(branch_events)
+        mention_failed = any(call.get("status") == "failed" for call in tool_calls)
+        yield self._emit(
+            session,
+            {
+                "type": "task_end",
+                "task_id": "mention",
+                "status": "failed" if mention_failed else "succeeded",
+                "observation": {
+                    "summary": self._compact_observation(mention_observation),
+                    "tool_calls": tool_calls,
+                },
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "task_end",
+                "task_id": "conversation",
+                "status": "succeeded" if chat_observation else "failed",
+                "observation": {
+                    "summary": self._compact_observation(chat_observation),
+                },
+            },
+        )
+        yield self._emit(session, {"type": "task_start", "task_id": "synthesis"})
+        synthesis_observation = ""
+        seen_continue_signatures: set[str] = set()
+        decision = "final"
+        reason = "bounded_loop_default"
+        loop_limit = min(
+            _COMPOUND_MAX_ITERATIONS,
+            self._run_controller(session).budget.max_iterations,
+        )
+
+        for iteration in range(1, loop_limit + 1):
+            decision, reason = self._decide_loop_after_observations(
+                objective=text,
+                iteration=iteration,
+                tool_calls=tool_calls,
+                mention_observation=mention_observation,
+                chat_observation=chat_observation,
+                synthesis_observation=synthesis_observation,
+                max_iterations=loop_limit,
+            )
+            signature = content_sha256(
+                json.dumps(
+                    {
+                        "decision": decision,
+                        "tools": tool_calls,
+                        "mention": self._compact_observation(mention_observation),
+                        "chat": self._compact_observation(chat_observation),
+                        "synthesis": self._compact_observation(synthesis_observation),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            if decision == "continue" and signature in seen_continue_signatures:
+                decision = "final"
+                reason = f"{reason};loop_stalled"
+            elif decision == "continue":
+                seen_continue_signatures.add(signature)
+            if decision == "continue" and iteration >= loop_limit:
+                decision = "final"
+                reason = f"{reason};max_iterations_reached"
+
+            self._remember_loop_iteration(
+                session,
+                turn_id=turn_id,
+                iteration=iteration,
+                objective=text,
+                intent=intent,
+                tool_calls=tool_calls,
+                mention_observation=mention_observation,
+                chat_observation=chat_observation,
+                synthesis_observation=synthesis_observation,
+                decision=decision,
+                reason=reason,
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "loop_decision",
+                    "turn_id": turn_id,
+                    "iteration": iteration,
+                    "decision": decision,
+                    "reason": self._compact_observation(reason, limit=500),
+                    "max_iterations": loop_limit,
+                },
+            )
+            if decision != "continue":
+                break
+            synthesis_observation = self._merge_compound_reply(
+                objective=text,
+                companion_text=intent.companion_text,
+                mention_observation=mention_observation,
+                chat_observation=chat_observation,
+                tool_calls=tool_calls,
+                decision="continue",
+            )
+
+        reply = synthesis_observation or self._merge_compound_reply(
+            objective=text,
+            companion_text=intent.companion_text,
+            mention_observation=mention_observation,
+            chat_observation=chat_observation,
+            tool_calls=tool_calls,
+            decision=decision,
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "task_end",
+                "task_id": "synthesis",
+                "status": "succeeded",
+                "observation": {
+                    "decision": decision,
+                    "reason": self._compact_observation(reason, limit=500),
+                },
+            },
+        )
+        yield self._emit(session, {"type": "assistant", "text": reply})
+        yield self._emit(session, {"type": "done"})
+        self.store.persist(session)
+
+    def _prepare_turn(self, session: AgentSession, text: str) -> None:
+        """Append one user message and consume any pending UI-only attachment."""
         # Consume pending UI attachment into this turn (same-session SDF bytes stay).
         turn_attachments: list[dict[str, str]] = []
         if session.sdf_ui_pending and session.sdf_filename and session.sdf_bytes:
@@ -870,6 +1782,15 @@ class AgentRuntime:
         else:
             self.store.persist(session)
 
+    def _handle_intent(
+        self, session: AgentSession, text: str, intent: Any
+    ) -> Iterator[dict[str, Any]]:
+        # A Top-N token inside a question is not a new session preference.
+        # Update it only for an actual nomination/report execution intent.
+        if intent.want_csv or intent.want_pdf:
+            session.top_n = intent.top_n
+        self._prepare_turn(session, text)
+
         def out(ev: dict[str, Any]) -> dict[str, Any]:
             return self._emit(session, ev)
 
@@ -878,11 +1799,68 @@ class AgentRuntime:
 
         # / @ 点选：单独介绍或试用，不联动整条筛选流水线
         if intent.mentions and intent.mention_action:
-            yield from self._handle_mentions(session, intent)
+            yield out(
+                {
+                    "type": "agent_plan",
+                    "goal": text,
+                    "action": (
+                        "execute" if intent.mention_action == "invoke" else "explain"
+                    ),
+                    "tasks": [
+                        {
+                            "task_id": "mention",
+                            "kind": "mention",
+                            "label": "处理点选工具、技能或插件",
+                            "depends_on": [],
+                        }
+                    ],
+                    "expected_artifacts": [],
+                    "diagnostics": [],
+                }
+            )
+            yield out({"type": "task_start", "task_id": "mention"})
+            failed = False
+            for event in self._handle_mentions(session, intent, finalize=False):
+                if event.get("type") == "tool_end" and not event.get("ok"):
+                    failed = True
+                yield event
+            yield out(
+                {
+                    "type": "task_end",
+                    "task_id": "mention",
+                    "status": "failed" if failed else "succeeded",
+                    "observation": {
+                        "summary": (
+                            "点选调用未完成" if failed else "点选任务已处理"
+                        )
+                    },
+                }
+            )
+            yield out({"type": "done"})
+            self.store.persist(session)
             return
 
         # 自然语言证据查询是独立只读 Tool，不触发筛选、导出或 Catalog。
         if intent.query_evidence:
+            if not isinstance(session.active_plan, dict):
+                yield out(
+                    {
+                        "type": "agent_plan",
+                        "goal": text,
+                        "action": "execute",
+                        "steps": [
+                            {
+                                "task_id": "query-evidence",
+                                "kind": "tool",
+                                "tool": "query_evidence",
+                                "args": {},
+                                "depends_on": [],
+                            }
+                        ],
+                        "expected_artifacts": ["evidence_card"],
+                        "diagnostics": [],
+                    }
+                )
             yield from self._run_query_evidence(session, intent)
             yield out({"type": "done"})
             self.store.persist(session)
@@ -921,6 +1899,24 @@ class AgentRuntime:
         if not intent.wants_tools:
             yield out(
                 {
+                    "type": "agent_plan",
+                    "goal": text,
+                    "action": "chat",
+                    "tasks": [
+                        {
+                            "task_id": "conversation",
+                            "kind": "conversation",
+                            "label": "生成对话回复",
+                            "depends_on": [],
+                        }
+                    ],
+                    "expected_artifacts": [],
+                    "diagnostics": [],
+                }
+            )
+            yield out({"type": "task_start", "task_id": "conversation"})
+            yield out(
+                {
                     "type": "plan",
                     "steps": ["理解问题", "生成对话回复"],
                 }
@@ -947,6 +1943,16 @@ class AgentRuntime:
             if not reply:
                 reply = self._llm_chat_reply(session, text)
             session.messages.append({"role": "assistant", "text": reply})
+            yield out(
+                {
+                    "type": "task_end",
+                    "task_id": "conversation",
+                    "status": "succeeded",
+                    "observation": {
+                        "summary": self._compact_observation(reply, limit=1200)
+                    },
+                }
+            )
             yield out({"type": "assistant", "text": reply})
             yield out({"type": "done"})
             self.store.persist(session)
@@ -1044,15 +2050,38 @@ class AgentRuntime:
             )
         )
         if need_screen and not has_sdf:
+            session.pending_action = {
+                "kind": "deliverable",
+                "status": "awaiting_slots",
+                "want_csv": bool(intent.want_csv),
+                "want_pdf": bool(intent.want_pdf),
+                "want_reserve": bool(intent.want_reserve),
+                "want_bundle": bool(intent.want_bundle),
+                "top_n": (
+                    int(intent.top_n) if intent.requested_top_n is not None else None
+                ),
+                "requested_top_n": intent.requested_top_n,
+                "skill_ids": list(intent.skill_ids or ("masld_nominate",)),
+                "source_text": intent.raw_text,
+                "missing_slots": [
+                    "sdf",
+                    *([] if intent.requested_top_n is not None else ["top_n"]),
+                ],
+            }
             yield out(
                 {
                     "type": "assistant",
                     "text": (
                         "这个需求需要化合物库才能跑筛选。"
-                        "请先在输入区上传 .sdf 附件，上传后直接再说一次你的需求"
-                        f"（例如：生成 top{intent.top_n} 候选清单 csv"
+                        "我已记住这次导出请求，请先在输入区上传 .sdf 附件。"
+                        + (
+                            "上传后告诉我候选数量（例如「10」），即可继续执行"
+                            if intent.requested_top_n is None
+                            else "上传后回复「继续」，即可按原请求执行"
+                        )
+                        + f"（目标示例：生成 top{intent.top_n} 候选清单 csv"
                         + ("，并给出机制 pdf" if intent.want_pdf else "")
-                        + "），我会自动调用对应技能与插件。"
+                        + "）。"
                     ),
                 }
             )
@@ -1061,10 +2090,10 @@ class AgentRuntime:
             return
 
         if need_screen:
-            yield from self._execute_tool_adapter(
+            screen_ok = yield from self._execute_required_tool(
                 session, "score_and_rank", {"top_n": intent.top_n}
             )
-            if isinstance(session.active_plan, dict) and session.active_plan.get("status") == "failed":
+            if not screen_ok:
                 yield out(
                     {
                         "type": "assistant",
@@ -1079,9 +2108,37 @@ class AgentRuntime:
                 return
 
         if intent.want_csv:
-            yield from self._execute_tool_adapter(session, "export_nomination", {"tier": "primary"})
+            export_ok = yield from self._execute_required_tool(
+                session,
+                "export_nomination",
+                {"tier": "primary"},
+            )
+            if not export_ok:
+                yield out(
+                    {
+                        "type": "assistant",
+                        "text": "主候选 CSV 未能生成，已停止依赖它的后续步骤；已有冻结排名未被改动。",
+                    }
+                )
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
         if intent.want_reserve:
-            yield from self._execute_tool_adapter(session, "export_nomination", {"tier": "reserve"})
+            reserve_ok = yield from self._execute_required_tool(
+                session,
+                "export_nomination",
+                {"tier": "reserve"},
+            )
+            if not reserve_ok:
+                yield out(
+                    {
+                        "type": "assistant",
+                        "text": "候补 CSV 未能生成，已停止后续依赖步骤；主榜未被改动。",
+                    }
+                )
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
 
         if intent.want_pdf:
             if session.last_result is None:
@@ -1094,10 +2151,38 @@ class AgentRuntime:
                 yield out({"type": "done"})
                 self.store.persist(session)
                 return
-            yield from self._execute_tool_adapter(session, "start_mechanism_report", {})
+            mechanism_ok = yield from self._execute_required_tool(
+                session,
+                "start_mechanism_report",
+                {},
+            )
+            if not mechanism_ok:
+                yield out(
+                    {
+                        "type": "assistant",
+                        "text": "机制报告未能启动或完成，已保留现有冻结候选和已生成产物。",
+                    }
+                )
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
 
         if intent.want_bundle:
-            yield from self._execute_tool_adapter(session, "export_submission_bundle", {})
+            bundle_ok = yield from self._execute_required_tool(
+                session,
+                "export_submission_bundle",
+                {},
+            )
+            if not bundle_ok:
+                yield out(
+                    {
+                        "type": "assistant",
+                        "text": "结果归档包未能生成；已有冻结结果与单独产物仍保持不变。",
+                    }
+                )
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
 
         # Catalog enrichment：仅在已主动添加时执行；失败降级，不改主榜
         if session.installed_catalog and session.last_result is not None:
@@ -1190,7 +2275,14 @@ class AgentRuntime:
         )
         return "\n".join(x for x in lines if x)
 
-    def _handle_mentions(self, session: AgentSession, intent) -> Iterator[dict[str, Any]]:
+    def _handle_mentions(
+        self,
+        session: AgentSession,
+        intent: Any,
+        *,
+        finalize: bool = True,
+        compound: bool = False,
+    ) -> Iterator[dict[str, Any]]:
         action = intent.mention_action
         yield self._emit(
             session,
@@ -1198,7 +2290,12 @@ class AgentRuntime:
                 "type": "thinking",
                 "text": (
                     f"识别到点选 {', '.join(m.raw for m in intent.mentions)}，"
-                    f"按「{'试用' if action == 'invoke' else '介绍'}」单独处理，不联动其它步骤。"
+                    f"按「{'试用' if action == 'invoke' else '介绍'}」处理"
+                    + (
+                        "；普通对话子任务会并行完成，稍后统一汇总。"
+                        if compound
+                        else "，不联动其它步骤。"
+                    )
                 ),
             },
         )
@@ -1218,8 +2315,9 @@ class AgentRuntime:
                 session,
                 {"type": "assistant", "text": "\n\n".join(blocks)},
             )
-            yield self._emit(session, {"type": "done"})
-            self.store.persist(session)
+            if finalize:
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
             return
 
         # invoke：逐个试用，互不强制联动
@@ -1248,8 +2346,9 @@ class AgentRuntime:
                     ),
                 },
             )
-        yield self._emit(session, {"type": "done"})
-        self.store.persist(session)
+        if finalize:
+            yield self._emit(session, {"type": "done"})
+            self.store.persist(session)
 
     def _invoke_mention(
         self,
@@ -1283,7 +2382,11 @@ class AgentRuntime:
                     },
                 )
                 return
-            yield from self._export_submission_bundle(session)
+            yield from self._execute_tool_adapter(
+                session,
+                "export_submission_bundle",
+                {},
+            )
             return
 
         # 技能 / 核心工具：可单独跑对应段
@@ -1303,7 +2406,11 @@ class AgentRuntime:
                         },
                     )
                     return
-                yield from self._export_nomination_only(session)
+                yield from self._execute_tool_adapter(
+                    session,
+                    "export_nomination",
+                    {"tier": "primary"},
+                )
                 return
             if not session.sdf_bytes:
                 yield self._emit(
@@ -1324,7 +2431,24 @@ class AgentRuntime:
                     "steps": [f"单独试用 {mention.raw}：生成 Top{session.top_n} 候选清单"],
                 },
             )
-            yield from self._run_nominate(session, top_n=session.top_n)
+            score_ok = False
+            for event in self._execute_tool_adapter(
+                session,
+                "score_and_rank",
+                {"top_n": session.top_n},
+            ):
+                if (
+                    event.get("type") == "tool_end"
+                    and event.get("tool") == "score_and_rank"
+                ):
+                    score_ok = bool(event.get("ok"))
+                yield event
+            if score_ok:
+                yield from self._execute_tool_adapter(
+                    session,
+                    "export_nomination",
+                    {"tier": "primary"},
+                )
             yield self._emit(
                 session,
                 {
@@ -1350,26 +2474,10 @@ class AgentRuntime:
                 )
                 return
             if mid == "get_mechanism_job":
-                job_id = session.last_mechanism_job_id
-                if not job_id:
-                    yield self._emit(
-                        session,
-                        {
-                            "type": "assistant",
-                            "text": "尚无机制任务 id。可先试用 `@tool:start_mechanism_report`。",
-                        },
-                    )
-                    return
-                job = get_job(job_id)
-                yield self._emit(
+                yield from self._execute_tool_adapter(
                     session,
-                    {
-                        "type": "assistant",
-                        "text": (
-                            f"机制任务 `{job_id}` 状态："
-                            f"{getattr(job, 'status', job) if job else 'unknown'}。"
-                        ),
-                    },
+                    "get_mechanism_job",
+                    {},
                 )
                 return
             yield self._emit(
@@ -1379,7 +2487,11 @@ class AgentRuntime:
                     "steps": [f"单独试用 {mention.raw}：生成机制 PDF"],
                 },
             )
-            yield from self._run_mechanism(session)
+            yield from self._execute_tool_adapter(
+                session,
+                "start_mechanism_report",
+                {},
+            )
             yield self._emit(
                 session,
                 {
@@ -1405,21 +2517,33 @@ class AgentRuntime:
                         },
                     )
                     return
+            kwargs: dict[str, Any] = {}
+            if mid.startswith("mcp_"):
+                kwargs["query"] = "trial"
+            elif mid == "predict_pl_fitness":
+                kwargs["smiles_list"] = []
+            decision = self._authorize_tool_call(session, mid, kwargs)
+            if not decision.allowed:
+                yield from self._governance_denied_events(
+                    session,
+                    tool_id=mid,
+                    decision=decision,
+                )
+                return
             yield self._emit(
                 session,
                 {
                     "type": "tool_start",
                     "tool": mid,
                     "plugin": info.get("plugin_id") or "",
-                    "args": {"trial": True, "writes_selection": False},
+                    "args": {
+                        **kwargs,
+                        "trial": True,
+                        "writes_selection": False,
+                    },
                 },
             )
             try:
-                kwargs: dict[str, Any] = {}
-                if mid.startswith("mcp_"):
-                    kwargs["query"] = "trial"
-                elif mid == "predict_pl_fitness":
-                    kwargs["smiles_list"] = []
                 result = dispatch_tool(mid, **kwargs)
                 yield self._emit(
                     session,
@@ -1506,6 +2630,41 @@ class AgentRuntime:
     ) -> Iterator[dict[str, Any]]:
         """Run the canonical local-first evidence Tool without touching selection."""
         molecule_id = intent.evidence_molecule_id
+        rank_reference = re.fullmatch(
+            r"top[\s\-_]*(\d{1,3})",
+            str(molecule_id or "").strip(),
+            re.I,
+        )
+        if rank_reference:
+            requested_rank = int(rank_reference.group(1))
+            frozen_top = list(
+                getattr(session.last_result, "top_molecules", None) or []
+            )
+            if 1 <= requested_rank <= len(frozen_top):
+                molecule_id = str(frozen_top[requested_rank - 1].molecule_id)
+            else:
+                reply = (
+                    f"当前冻结主榜只有 Top {len(frozen_top)}，无法定位 Top {requested_rank} "
+                    "对应的分子，因此没有执行证据查询。"
+                    if frozen_top
+                    else "当前没有可用于解析 Top1 的冻结主榜；请提供具体 molecule_id。"
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "tool_end",
+                        "tool": "query_evidence",
+                        "ok": False,
+                        "error": "ranking_reference_unresolved",
+                        "digest": {
+                            "requested_rank": requested_rank,
+                            "frozen_primary_count": len(frozen_top),
+                            "writes_selection": False,
+                        },
+                    },
+                )
+                yield self._emit(session, {"type": "assistant", "text": reply})
+                return
         inchikey = intent.evidence_inchikey
         cas = intent.evidence_cas
         smiles = intent.evidence_smiles
@@ -1537,6 +2696,46 @@ class AgentRuntime:
                 # The canonical handler remains authoritative and will return
                 # a structured configuration failure if policy loading fails.
                 display_providers = []
+        tool_timeout = self.registry.tools["query_evidence"].timeout_sec or 45.0
+        total_timeout_sec = min(total_timeout_sec, float(tool_timeout))
+        governance_args = {
+            key: value
+            for key, value in {
+                "molecule_id": molecule_id,
+                "inchikey": inchikey,
+                "cas": cas,
+                "smiles": smiles,
+                "providers": list(providers) if providers is not None else None,
+                "query_types": query_types,
+                "allow_live": allow_live,
+                "force_refresh": force_refresh,
+                "total_timeout_sec": total_timeout_sec,
+            }.items()
+            if value is not None
+        }
+        decision = self._authorize_tool_call(
+            session,
+            "query_evidence",
+            governance_args,
+            confirmed_scopes={"allow_live"} if allow_live else set(),
+        )
+        if not decision.allowed:
+            yield from self._governance_denied_events(
+                session,
+                tool_id="query_evidence",
+                decision=decision,
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "assistant",
+                    "text": (
+                        "证据查询未执行："
+                        f"{decision.message}。这不表示候选无效、无毒或没有证据。"
+                    ),
+                },
+            )
+            return
         selection_before = str(session.last_selection_sha256 or "")
         result_selection_before = str(
             getattr(session.last_result, "selection_sha256", "") or ""
@@ -1772,7 +2971,6 @@ class AgentRuntime:
                 "证据查询未完成（query_failed）。这表示查询通道失败，不代表该候选无效、"
                 "无毒或没有证据；主榜未被修改。"
             )
-            session.messages.append({"role": "assistant", "text": reply})
             yield self._emit(session, {"type": "assistant", "text": reply})
             return
 
@@ -1896,7 +3094,6 @@ class AgentRuntime:
                 "card": card_payload,
             },
         )
-        session.messages.append({"role": "assistant", "text": message})
         yield self._emit(session, {"type": "assistant", "text": message})
 
     @staticmethod
@@ -2254,6 +3451,13 @@ class AgentRuntime:
                 if role in {"user", "assistant"} and body:
                     hist_lines.append(f"{role}: {body[:400]}")
             history = "\n".join(hist_lines) if hist_lines else "（无）"
+            working_context = self._compact_observation(
+                json.dumps(
+                    session.working_memory[-4:],
+                    ensure_ascii=False,
+                ),
+                limit=2200,
+            ) or "（无）"
 
             system = (
                 "你是 MolMind Agent，面向 MASLD 低毒降脂分子筛选的能力助手。"
@@ -2261,6 +3465,8 @@ class AgentRuntime:
                 "不要编造具体筛选排名或虚构实验数据。"
                 "若用户追问已有排名，只解释最近对话中的冻结结果，"
                 "不要声称重新筛选或重新导出。"
+                "普通对话回复不得声称工具已经启动、即将立即启动或已经完成；"
+                "只有本轮真实工具事件才能支持这些执行状态。"
                 "若本轮属于普通对话但提到了已有筛选结果，只能使用下方提供的"
                 "冻结结果数量；不得沿用较早轮次的 TopN，也不得声称该结果不存在。"
                 "若用户其实想导出候选 CSV / 机制 PDF，可提示他们用自然语言描述产物；"
@@ -2276,6 +3482,7 @@ class AgentRuntime:
             )
             user = (
                 f"最近对话：\n{history}\n\n"
+                f"会话工作记忆（最近的调用、观察与 Loop 决策）：\n{working_context}\n\n"
                 f"用户本轮：{text}\n\n"
                 "请直接回答本轮问题。"
             )
@@ -2300,22 +3507,56 @@ class AgentRuntime:
     def _execute_tool_adapter(
         self, session: AgentSession, tool_id: str, args: dict[str, Any]
     ) -> Iterator[dict[str, Any]]:
-        """Dispatch an approved plan tool through a uniform runtime adapter."""
+        """Validate, budget and dispatch one Registry-backed tool call."""
         tool = self.registry.tools.get(tool_id)
         if tool is None:
-            yield self._emit(
+            decision = self._authorize_tool_call(session, tool_id, args)
+            yield from self._governance_denied_events(
                 session,
-                {"type": "error", "detail": f"计划引用了未注册工具：{tool_id}"},
+                tool_id=tool_id,
+                decision=decision,
+            )
+            return
+        decision = self._authorize_tool_call(session, tool_id, args)
+        if not decision.allowed:
+            yield from self._governance_denied_events(
+                session,
+                tool_id=tool_id,
+                decision=decision,
             )
             return
         method = getattr(self, f"_execute_{tool_id}", None)
         if not callable(method):
-            yield self._emit(
+            yield from self._governance_denied_events(
                 session,
-                {"type": "error", "detail": f"工具 {tool_id} 尚无运行时适配器"},
+                tool_id=tool_id,
+                decision=type(decision)(
+                    allowed=False,
+                    code="adapter_missing",
+                    message=f"工具 {tool_id} 尚无运行时适配器",
+                    args_hash=decision.args_hash,
+                    call=None,
+                    approval_scope=decision.approval_scope,
+                ),
             )
             return
         yield from method(session, **args)
+
+    def _execute_required_tool(
+        self,
+        session: AgentSession,
+        tool_id: str,
+        args: dict[str, Any],
+    ) -> Iterator[dict[str, Any]]:
+        """Yield one tool stream and return whether its terminal event succeeded."""
+        succeeded = False
+        saw_terminal = False
+        for event in self._execute_tool_adapter(session, tool_id, args):
+            if event.get("type") == "tool_end" and event.get("tool") == tool_id:
+                saw_terminal = True
+                succeeded = bool(event.get("ok"))
+            yield event
+        return saw_terminal and succeeded
 
     def _execute_score_and_rank(
         self, session: AgentSession, *, top_n: int
@@ -2334,6 +3575,59 @@ class AgentRuntime:
         self, session: AgentSession
     ) -> Iterator[dict[str, Any]]:
         yield from self._run_mechanism(session)
+
+    def _execute_get_mechanism_job(
+        self, session: AgentSession
+    ) -> Iterator[dict[str, Any]]:
+        job_id = session.last_mechanism_job_id
+        if not job_id:
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_end",
+                    "tool": "get_mechanism_job",
+                    "ok": False,
+                    "error_code": "missing_precondition",
+                    "error": "尚无机制任务 id",
+                },
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "assistant",
+                    "text": "尚无机制任务 id。可先试用 `@tool:start_mechanism_report`。",
+                },
+            )
+            return
+        yield self._emit(
+            session,
+            {
+                "type": "tool_start",
+                "tool": "get_mechanism_job",
+                "plugin": "molmind-core",
+                "args": {"job_id": job_id},
+            },
+        )
+        job = get_job(job_id)
+        status = str(job.get("status") or "unknown") if isinstance(job, dict) else "unknown"
+        yield self._emit(
+            session,
+            {
+                "type": "tool_end",
+                "tool": "get_mechanism_job",
+                "ok": job is not None,
+                "error_code": "" if job is not None else "mechanism_job_missing",
+                "error": "" if job is not None else "机制任务不存在",
+                "digest": {"job_id": job_id, "status": status},
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "assistant",
+                "text": f"机制任务 `{job_id}` 状态：{status}。",
+            },
+        )
 
     def _execute_export_submission_bundle(
         self, session: AgentSession

@@ -159,6 +159,43 @@ def test_format_ranking_explanation_resolves_named_rank_to_one_molecule() -> Non
         _R(), rank_positions=(5,), rank_position_subject=True
     )
     assert text is not None
-    assert "T5 是上一轮冻结结果" in text
+    assert "T5 已经进入上一轮冻结主榜" in text
     assert "Top 5" in text
+    assert "所以 Top 5 表示" in text
+    assert "所以 Top1" not in text
     assert "Top 1 的排名概览" not in text
+
+
+def test_format_ranking_explanation_resolves_rank_after_cutoff_to_reserve() -> None:
+    top = [
+        _mol(
+            molecule_id=f"T{i}",
+            selection_score=0.60 - i / 100,
+            competition_scoring_version="organizer-relative-effect-novelty-v1",
+        )
+        for i in range(1, 11)
+    ]
+    reserve = [
+        _mol(
+            molecule_id="R11",
+            selection_score=0.489,
+            competition_scoring_version="organizer-relative-effect-novelty-v1",
+        )
+    ]
+
+    class _R:
+        run_id = "mm-top10-reserve"
+        top_molecules = top
+        reserve_molecules = reserve
+        scored_molecules = [*top, *reserve]
+
+    text = format_ranking_explanation(
+        _R(), rank_limit=11, rank_positions=(11,), rank_position_subject=True
+    )
+    assert text is not None
+    assert "`R11`" in text
+    assert "整体 Top 11" in text
+    assert "候补第 1 位" in text
+    assert "主榜名额固定为 Top 10" in text
+    assert "Top 10 `T10`" in text
+    assert "Top 10 的排名概览" not in text

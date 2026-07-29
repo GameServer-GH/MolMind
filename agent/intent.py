@@ -33,6 +33,9 @@ class AgentIntent:
     mentions: tuple[MentionRef, ...] = ()
     #: introduce | invoke | ""
     mention_action: str = ""
+    #: 同一输入中除点选指令外仍需回答的普通对话子任务。
+    #: 点选项不能再把这部分文本短路掉。
+    companion_text: str = ""
     #: 用户原文里写的 Top N（可能超出规范上限）
     requested_top_n: int | None = None
     #: requested_top_n > top_n_max，需先反问再跑工具
@@ -76,8 +79,13 @@ _RANK_POSITION_RE = re.compile(
     re.I,
 )
 _RANK_POSITION_SUBJECT_RE = re.compile(
+    r"(?:"
     r"(?:排名\s*)?(?:(?<![A-Za-z])top[\s\-_]*|第\s*)\d{1,3}"
-    r"(?:\s*(?:名|位))?\s*(?:的)?\s*(?:分子|候选|化合物)",
+    r"(?:\s*(?:名|位))?\s*(?:的)?\s*(?:分子|候选|化合物)"
+    r"|"
+    r"(?:(?<![A-Za-z])top[\s\-_]*|第\s*)\d{1,3}(?:\s*(?:名|位))?"
+    r".{0,12}?(?:没(?:有)?进榜|未进榜|没(?:有)?入选|未入选|没上榜|未上榜|落选)"
+    r")",
     re.I,
 )
 _RANKING_EXPLANATION_RE = re.compile(
@@ -101,6 +109,33 @@ _MOLECULE_ID_RE = re.compile(
 # 例：@skill:masld_nominate  /tool:score_and_rank
 _MENTION_RE = re.compile(
     r"(?:(?<=^)|(?<=\s))[@/](plugin|skill|tool):([A-Za-z0-9][\w.\-]*)",
+    re.I,
+)
+_COMPOUND_SPLIT_RE = re.compile(
+    r"[，,；;。！？!?]+|"
+    r"(?:并且|同时|另外|顺便|然后|以及|并)"
+    r"(?=(?:请|帮|告诉|解释|回答|说明|介绍|总结|什么|为什么|为何|如何|"
+    r"能否|是否|我|这|该))",
+    re.I,
+)
+_MENTION_CONTROL_RE = re.compile(
+    r"^(?:(?:我(?:是)?(?:要|想)?|请|帮我|麻烦|现在|先|再)\s*)*"
+    r"(?:(?:试用|调用|运行|执行|使用|介绍|查看|看看|查询|检索)\s*)+"
+    r"(?:(?:一下|这个|该|工具|插件|技能|功能)\s*)*",
+    re.I,
+)
+_TOOL_ARG_TOKEN_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z][A-Za-z0-9_.-]*\d[A-Za-z0-9_.-]*|"
+    r"[A-Za-z_][\w.-]*\s*=\s*[^\s]+|"
+    r"\d+(?:\.\d+)?"
+    r")\s*",
+    re.I,
+)
+_CONTROL_ONLY_RE = re.compile(
+    r"^(?:(?:我(?:是)?(?:要|想)?|请|帮我|麻烦|现在|先|再)\s*)*"
+    r"(?:(?:试用|调用|运行|执行|使用|介绍|查看|看看|查询|检索)\s*)*"
+    r"(?:(?:一下|这个|该|工具|插件|技能|功能)\s*)*$",
     re.I,
 )
 
@@ -348,6 +383,37 @@ def extract_mentions(text: str) -> tuple[MentionRef, ...]:
     return tuple(out)
 
 
+def extract_companion_text(text: str) -> str:
+    """Extract non-mention work from a turn that explicitly selects a capability.
+
+    Mention syntax is a routing hint, not an instruction to discard the rest
+    of the user's sentence.  Tool identifiers and common argument tokens are
+    removed conservatively; meaningful clauses remain available to the
+    conversational branch of the turn.
+    """
+    raw = (text or "").strip()
+    if not raw or not _MENTION_RE.search(raw):
+        return ""
+    residual = _MENTION_RE.sub(" ", raw)
+    clauses: list[str] = []
+    for raw_clause in _COMPOUND_SPLIT_RE.split(residual):
+        clause = str(raw_clause or "").strip(" \t\r\n、:：-")
+        if not clause:
+            continue
+        clause = _MENTION_CONTROL_RE.sub("", clause).strip(" \t\r\n、:：-")
+        # Explicit invocation arguments belong to the mention branch.  Strip
+        # only leading, structurally obvious tokens so normal prose survives.
+        previous = None
+        while clause and clause != previous:
+            previous = clause
+            clause = _TOOL_ARG_TOKEN_RE.sub("", clause).strip()
+        clause = re.sub(r"^(?:并且|同时|另外|顺便|然后|以及|并)\s*", "", clause)
+        if not clause or _CONTROL_ONLY_RE.fullmatch(clause):
+            continue
+        clauses.append(clause)
+    return "；".join(dict.fromkeys(clauses))
+
+
 def _mention_action(_text: str, mentions: tuple[MentionRef, ...]) -> str:
     """Structural default only.
 
@@ -428,6 +494,7 @@ def parse_intent(
     )
     mentions = extract_mentions(raw)
     mention_action = _mention_action(raw, mentions)
+    companion_text = extract_companion_text(raw)
     evidence_args = _extract_evidence_args(raw)
     evidence_mention = any(m.id in _EVIDENCE_MENTION_IDS for m in mentions)
     wants_evidence_query = evidence_mention or _looks_like_evidence_query(raw)
@@ -447,6 +514,7 @@ def parse_intent(
             wants_tools=False,
             mentions=mentions,
             mention_action=mention_action,
+            companion_text=companion_text,
             requested_top_n=requested_top_n,
             top_n_over_limit=False,
             top_n_max=int(top_n_max),

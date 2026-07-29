@@ -430,6 +430,31 @@ def test_read_only_tool_mutation_is_blocked_and_success_summary_corrected(
     assert session.last_result.selection_sha256 == ""
 
 
+def test_selection_guard_digest_ignores_opaque_object_memory_addresses() -> None:
+    from agent.runtime.loop import _selection_guard_snapshot
+
+    class _Opaque:
+        pass
+
+    @dataclass
+    class _Record:
+        molecule_id: str
+        cached_object: Any
+
+    result = SimpleNamespace(
+        top_molecules=[_Record("T001", _Opaque())],
+        reserve_molecules=[],
+        scored_molecules=[_Record("T001", _Opaque())],
+        selection_sha256="selection-stable",
+    )
+
+    snapshot1, digest1 = _selection_guard_snapshot(result)
+    _snapshot2, digest2 = _selection_guard_snapshot(result)
+
+    assert digest1 == digest2
+    assert snapshot1["top_molecules"][0] is result.top_molecules[0]
+
+
 def test_masld_explain_mention_invokes_query_without_llm(monkeypatch, tmp_path) -> None:
     import plugins.molmind_core.tools.scientific as scientific_tools
 

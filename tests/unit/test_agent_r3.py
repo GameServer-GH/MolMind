@@ -115,3 +115,26 @@ def test_rename_and_delete_session(client: TestClient) -> None:
     listed2 = client.get("/api/agent/sessions").json()
     assert all(s["session_id"] != sid for s in listed2["sessions"])
     assert client.get(f"/api/agent/sessions/{sid}").status_code == 404
+
+
+def test_session_detail_exposes_fresh_summary_timestamps(client: TestClient) -> None:
+    sid = client.post("/api/agent/sessions").json()["session_id"]
+
+    detail = client.get(f"/api/agent/sessions/{sid}").json()
+
+    assert detail["created_at"].endswith("Z")
+    assert detail["updated_at"].endswith("Z")
+    assert detail["event_seq"] == 0
+
+
+def test_clear_sessions_removes_all_persisted_history(client: TestClient) -> None:
+    first = client.post("/api/agent/sessions").json()["session_id"]
+    second = client.post("/api/agent/sessions").json()["session_id"]
+
+    cleared = client.delete("/api/agent/sessions")
+
+    assert cleared.status_code == 200
+    assert cleared.json()["deleted_count"] == 2
+    assert client.get("/api/agent/sessions").json() == {"sessions": [], "count": 0}
+    assert client.get(f"/api/agent/sessions/{first}").status_code == 404
+    assert client.get(f"/api/agent/sessions/{second}").status_code == 404

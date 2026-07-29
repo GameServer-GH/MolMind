@@ -44,7 +44,10 @@ tool_contracts:
       properties:
         tier: { type: string, enum: [primary, reserve] }
   query_evidence:
-    requires: [frozen_result]
+    # Direct identity queries are valid without a frozen ranking. When no
+    # identity is supplied, the canonical tool returns audit_missing instead
+    # of Governance fabricating an empty/negative result.
+    requires: []
     produces: [evidence_card]
     idempotent: true
     timeout_sec: 45

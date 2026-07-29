@@ -2,43 +2,6 @@
 (function (global) {
   const LONG_PRESS_MS = 500;
   const MOVE_TOLERANCE = 20;
-  const LOCAL_HISTORY_KEY = "molmind_agent_history_local_v1";
-  const LOCAL_HISTORY_CACHE_KEY = "molmind_agent_history_cache_v1";
-
-  function readLocalIds() {
-    try {
-      const value = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || "[]");
-      return Array.isArray(value) ? value.filter(Boolean) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function writeLocalIds(ids) {
-    try {
-      localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify([...new Set(ids)]));
-    } catch {
-      /* local storage may be unavailable */
-    }
-  }
-
-  function readCachedSessions() {
-    try {
-      const value = JSON.parse(localStorage.getItem(LOCAL_HISTORY_CACHE_KEY) || "[]");
-      return Array.isArray(value) ? value : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function writeCachedSessions(sessions) {
-    try {
-      localStorage.setItem(LOCAL_HISTORY_CACHE_KEY, JSON.stringify(sessions.slice(0, 50)));
-    } catch {
-      /* local storage may be unavailable */
-    }
-  }
-
   function groupByDay(sessions) {
     const groups = { 今天: [], 昨天: [], 更早: [] };
     const now = new Date();
@@ -72,6 +35,48 @@
     const startYesterday = startToday - 86400000;
     if (t >= startYesterday) return hhmm;
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hhmm}`;
+  }
+
+  function toLocalIso(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(d.getTime())) return "";
+    const pad = (n, width = 2) => String(n).padStart(width, "0");
+    const offsetMinutes = -d.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const absoluteOffset = Math.abs(offsetMinutes);
+    const offset = `${sign}${pad(Math.floor(absoluteOffset / 60))}:${pad(absoluteOffset % 60)}`;
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.` +
+      `${pad(d.getMilliseconds(), 3)}${offset}`
+    );
+  }
+
+  const LOG_TIMESTAMP_KEYS = new Set([
+    "created_at",
+    "updated_at",
+    "started_at",
+    "ended_at",
+    "expires_at",
+    "used_at",
+  ]);
+
+  function localizeLogTimestamps(value) {
+    if (Array.isArray(value)) return value.map(localizeLogTimestamps);
+    if (!value || typeof value !== "object") return value;
+    const localized = {};
+    Object.entries(value).forEach(([key, item]) => {
+      if (LOG_TIMESTAMP_KEYS.has(key) && typeof item === "string") {
+        const localValue = toLocalIso(item);
+        if (localValue) {
+          localized[key] = localValue;
+          localized[`${key}_utc`] = item;
+          return;
+        }
+      }
+      localized[key] = localizeLogTimestamps(item);
+    });
+    return localized;
   }
 
   let menuEl = null;
@@ -203,17 +208,41 @@
 
     const [detail, eventData] = await Promise.all([detailResp.json(), eventsResp.json()]);
     const exportedAt = new Date();
-    const stamp = exportedAt.toISOString().replace(/[:.]/g, "-");
+    const exportedAtLocal = toLocalIso(exportedAt);
+    const stamp = exportedAtLocal.replace(/[:.]/g, "-");
     const title = detail.title || session.title || session.preview || "未命名对话";
+    const latestUserMessage = [...(detail.messages || [])]
+      .reverse()
+      .find((message) => message && message.role === "user" && message.text);
+    const freshSummary = {
+      ...session,
+      session_id: detail.session_id,
+      title: detail.title || session.title || null,
+      preview: latestUserMessage ? String(latestUserMessage.text).slice(0, 120) : session.preview,
+      created_at: detail.created_at || session.created_at,
+      updated_at: detail.updated_at || session.updated_at,
+      sdf_filename: detail.sdf_filename,
+      has_sdf: Boolean(detail.has_sdf),
+      profile_id: detail.profile_id,
+      artifact_count: (detail.artifact_ids || []).length,
+      event_seq: eventData.event_seq,
+    };
     downloadJson(`MolMind_${safeFilename(title)}_${stamp}.json`, {
       format: "molmind-agent-session-log",
-      format_version: 1,
-      exported_at: exportedAt.toISOString(),
-      session_summary: session,
-      conversation: detail,
+      format_version: 2,
+      exported_at: exportedAtLocal,
+      exported_at_utc: exportedAt.toISOString(),
+      time_context: {
+        display_timezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "local-browser-timezone",
+        utc_offset_minutes: -exportedAt.getTimezoneOffset(),
+        storage_timezone: "UTC",
+      },
+      session_summary: localizeLogTimestamps(freshSummary),
+      conversation: localizeLogTimestamps(detail),
       execution: {
         event_seq: eventData.event_seq,
-        events: eventData.events || [],
+        events: localizeLogTimestamps(eventData.events || []),
       },
     });
   }
@@ -445,40 +474,26 @@
 
   const MolMindAgentHistory = {
     async fetchSessions() {
-      const localIds = new Set(readLocalIds());
-      return readCachedSessions().filter((session) => localIds.has(session.session_id));
-    },
-
-    async syncSessions() {
       const resp = await fetch("/api/agent/sessions?limit=50");
       if (!resp.ok) throw new Error("无法加载会话历史");
       const data = await resp.json();
-      const localIds = new Set(readLocalIds());
-      const remote = (data.sessions || []).filter((session) => localIds.has(session.session_id));
-      const merged = new Map(readCachedSessions().map((session) => [session.session_id, session]));
-      remote.forEach((session) => merged.set(session.session_id, session));
-      const sessions = [...merged.values()]
-        .filter((session) => localIds.has(session.session_id))
+      return (data.sessions || [])
         .sort((a, b) => Date.parse(b.updated_at || b.created_at || "") - Date.parse(a.updated_at || a.created_at || ""));
-      writeCachedSessions(sessions);
-      return sessions;
     },
 
-    registerSession(sessionId) {
-      if (!sessionId) return;
-      writeLocalIds([...readLocalIds(), sessionId]);
+    registerSession() {
+      // Sessions are listed from the server on demand; no local index is needed.
     },
 
-    forgetSession(sessionId) {
-      writeLocalIds(readLocalIds().filter((id) => id !== sessionId));
-      writeCachedSessions(readCachedSessions().filter((session) => session.session_id !== sessionId));
+    forgetSession() {
+      // The next on-demand request is the source of truth.
     },
 
-    async clearLocalHistory() {
+    async clearHistory() {
       const ok = await openClearHistoryConfirm();
       if (!ok) return false;
-      writeLocalIds([]);
-      writeCachedSessions([]);
+      const resp = await fetch("/api/agent/sessions", { method: "DELETE" });
+      if (!resp.ok) throw new Error("清空对话历史失败");
       if (refreshCallback) await refreshCallback();
       return true;
     },
@@ -578,7 +593,7 @@
             <span class="mm-icon mm-icon--trash mm-confirm-icon" aria-hidden="true"></span>
             <h3 id="agentClearHistoryConfirmTitle">清空对话历史</h3>
           </div>
-          <div class="mm-confirm-content">确定清空本机浏览器中的全部对话历史吗？云端会话不会被删除。</div>
+          <div class="mm-confirm-content">确定清空全部对话历史吗？此操作会删除当前 MolMind 实例保存的会话，且无法恢复。</div>
           <div class="mm-confirm-footer">
             <button type="button" class="mm-confirm-cancel">取消</button>
             <button type="button" class="mm-confirm-ok">确认清空</button>

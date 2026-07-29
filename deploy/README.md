@@ -1,6 +1,6 @@
 # MolMind 部署与启动指南
 
-命令默认在**仓库根目录**执行。镜像 tag 统一为 `molmind:0.2.0`，Compose 文件为 `deploy/docker-compose.yml`。
+命令默认在**仓库根目录**执行。镜像 tag 统一为 `molmind:0.2.1`，Compose 文件为 `deploy/docker-compose.yml`。
 
 访问：
 
@@ -40,7 +40,7 @@
 仓库地址（HTTP）：
 
 ```text
-8.133.197.65:5001/molmind:0.2.0
+8.133.197.65:5001/molmind:0.2.1
 ```
 
 ### 1. 配置 insecure-registries（一次性）
@@ -59,8 +59,8 @@
 ### 2. 拉取并启动
 
 ```bash
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.0
-docker tag 8.133.197.65:5001/molmind:0.2.0 molmind:0.2.0
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.1
+docker tag 8.133.197.65:5001/molmind:0.2.1 molmind:0.2.1
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 curl http://127.0.0.1:18765/health
@@ -79,8 +79,8 @@ curl http://127.0.0.1:18765/health
 外网畅通时的备选（国内往往较慢）：
 
 ```bash
-docker pull ghcr.io/gameserver-gh/molmind:0.2.0
-docker tag ghcr.io/gameserver-gh/molmind:0.2.0 molmind:0.2.0
+docker pull ghcr.io/gameserver-gh/molmind:0.2.1
+docker tag ghcr.io/gameserver-gh/molmind:0.2.1 molmind:0.2.1
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```
@@ -88,8 +88,8 @@ docker compose -f deploy/docker-compose.yml up -d
 Apple Silicon 若报无 arm64 manifest：
 
 ```bash
-docker pull --platform linux/amd64 ghcr.io/gameserver-gh/molmind:0.2.0
-docker tag ghcr.io/gameserver-gh/molmind:0.2.0 molmind:0.2.0
+docker pull --platform linux/amd64 ghcr.io/gameserver-gh/molmind:0.2.1
+docker tag ghcr.io/gameserver-gh/molmind:0.2.1 molmind:0.2.1
 ```
 
 若包为 Private，需有读权限并先 `docker login ghcr.io`。更多见 [`images/README.md`](images/README.md)。

@@ -764,7 +764,9 @@
       type === "remote_end" ||
       type === "degraded" ||
       type === "identity_conflict" ||
-      type === "query_summary"
+      type === "query_summary" ||
+      type === "loop_decision" ||
+      type === "governance_denied"
     ) {
       const trace = turn.ensureTrace();
       if (type === "thinking") trace.appendThinking(ev.text || "");
@@ -785,6 +787,23 @@
         type === "query_summary"
       ) {
         trace.appendQuery(ev);
+      } else if (type === "loop_decision") {
+        const labels = {
+          continue: "继续下一轮",
+          final: "输出结果",
+          clarify: "请求补充信息",
+          abort: "停止执行",
+        };
+        const label = labels[ev.decision] || ev.decision || "输出结果";
+        trace.appendThinking(
+          `Loop 第 ${ev.iteration || 1} 轮决策：${label}${ev.reason ? `（${ev.reason}）` : ""}`,
+        );
+      } else if (type === "governance_denied") {
+        trace.appendTool(
+          "log",
+          "治理拦截",
+          `${ev.tool || "tool"}：${ev.detail || ev.code || "调用未获准"}`,
+        );
       }
     } else if (type === "card" && ev.card) {
       // 附件始终挂在本轮回答末尾，不结束思考块

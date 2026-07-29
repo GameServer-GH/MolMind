@@ -35,6 +35,7 @@ class Artifact:
 class AgentSession:
     session_id: str
     created_at: str = field(default_factory=_now)
+    updated_at: str = field(default_factory=_now)
     profile_id: str = "competition_masld"
     title: str = ""
     installed_catalog: list[str] = field(default_factory=list)
@@ -46,6 +47,10 @@ class AgentSession:
     top_n: int = 10
     #: Awaiting user confirm to run at capped top_n after over-limit request.
     pending_top_confirm: dict[str, Any] | None = None
+    #: Multi-turn executable request whose required slots are not complete yet.
+    #: This is operational dialogue state (deliverables and missing inputs),
+    #: never a ranking result or a substitute for tool observations.
+    pending_action: dict[str, Any] | None = None
     #: A requested screening configuration that is not executable under the
     #: current tool contract. It must be clarified or explicitly discarded;
     #: later exports must not silently run the default pipeline instead.
@@ -63,6 +68,17 @@ class AgentSession:
     #: restarted runtime can explain what was attempted and observed.
     active_plan: dict[str, Any] | None = None
     plan_history: list[dict[str, Any]] = field(default_factory=list)
+    #: Session-scoped working memory for recent Agent Loop iterations.  It
+    #: stores compact task/call/observation/decision records, never scientific
+    #: ranking objects, and is deleted with the session.
+    working_memory: list[dict[str, Any]] = field(default_factory=list)
+    #: Exact, short-lived HITL grants. Every grant binds one tool, argument
+    #: hash and session; it is consumed once and never authorizes a different
+    #: parameter set.
+    approval_grants: list[dict[str, Any]] = field(default_factory=list)
+    #: Last persisted Agent-turn controller snapshot. This is operational
+    #: state only and must never contain ranking/scoring objects.
+    agent_run_state: dict[str, Any] | None = None
     #: 当前筛选 Run 的最小身份索引；可跨进程恢复，绝不包含评分或排名字段。
     last_molecule_index: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     last_mechanism_job_id: str = ""
@@ -173,6 +189,19 @@ class FileRunStore:
         shutil.rmtree(d, ignore_errors=True)
         return True
 
+    def clear_sessions(self) -> int:
+        """Remove every persisted Agent session and return the number removed."""
+        import shutil
+
+        if not self.root.is_dir():
+            return 0
+        session_dirs = [path for path in self.root.iterdir() if path.is_dir()]
+        with self._lock:
+            self._sessions.clear()
+        for path in session_dirs:
+            shutil.rmtree(path, ignore_errors=True)
+        return len(session_dirs)
+
     def put_artifact(self, session: AgentSession, artifact: Artifact) -> Artifact:
         with self._lock:
             session.artifacts[artifact.artifact_id] = artifact
@@ -213,9 +242,11 @@ class FileRunStore:
     def _persist_meta(self, session: AgentSession) -> None:
         d = self._session_dir(session.session_id)
         d.mkdir(parents=True, exist_ok=True)
+        session.updated_at = _now()
         meta = {
             "session_id": session.session_id,
             "created_at": session.created_at,
+            "updated_at": session.updated_at,
             "profile_id": session.profile_id,
             "title": session.title,
             "installed_catalog": list(session.installed_catalog),
@@ -224,6 +255,7 @@ class FileRunStore:
             "sdf_ui_pending": bool(session.sdf_ui_pending) and bool(session.sdf_filename),
             "top_n": session.top_n,
             "pending_top_confirm": session.pending_top_confirm,
+            "pending_action": session.pending_action,
             "pending_goal": session.pending_goal,
             "last_run_id": session.last_run_id,
             "last_selection_sha256": session.last_selection_sha256,
@@ -232,12 +264,14 @@ class FileRunStore:
             "run_history": session.run_history[-20:],
             "active_plan": session.active_plan,
             "plan_history": session.plan_history[-20:],
+            "working_memory": session.working_memory[-24:],
+            "approval_grants": session.approval_grants[-24:],
+            "agent_run_state": session.agent_run_state,
             "last_molecule_index": session.last_molecule_index,
             "last_mechanism_job_id": session.last_mechanism_job_id,
             "artifact_ids": list(session.artifacts.keys()),
             "messages": session.messages[-50:],
             "event_seq": session.event_seq,
-            "updated_at": _now(),
         }
         (d / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2),
@@ -301,6 +335,9 @@ class FileRunStore:
         session = AgentSession(
             session_id=session_id,
             created_at=str(meta.get("created_at") or _now()),
+            updated_at=str(
+                meta.get("updated_at") or meta.get("created_at") or _now()
+            ),
             profile_id=str(meta.get("profile_id") or "competition_masld"),
             title=str(meta.get("title") or ""),
             installed_catalog=list(meta.get("installed_catalog") or []),
@@ -310,6 +347,11 @@ class FileRunStore:
             pending_top_confirm=(
                 dict(meta["pending_top_confirm"])
                 if isinstance(meta.get("pending_top_confirm"), dict)
+                else None
+            ),
+            pending_action=(
+                dict(meta["pending_action"])
+                if isinstance(meta.get("pending_action"), dict)
                 else None
             ),
             pending_goal=(dict(meta["pending_goal"]) if isinstance(meta.get("pending_goal"), dict) else None),
@@ -328,6 +370,21 @@ class FileRunStore:
                 for item in meta.get("plan_history") or []
                 if isinstance(item, dict)
             ][-20:],
+            working_memory=[
+                dict(item)
+                for item in meta.get("working_memory") or []
+                if isinstance(item, dict)
+            ][-24:],
+            approval_grants=[
+                dict(item)
+                for item in meta.get("approval_grants") or []
+                if isinstance(item, dict)
+            ][-24:],
+            agent_run_state=(
+                dict(meta["agent_run_state"])
+                if isinstance(meta.get("agent_run_state"), dict)
+                else None
+            ),
             last_molecule_index=molecule_index,
             last_mechanism_job_id=str(meta.get("last_mechanism_job_id") or ""),
             messages=list(meta.get("messages") or []),

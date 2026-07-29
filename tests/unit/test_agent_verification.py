@@ -37,6 +37,17 @@ def test_future_topn_guidance_is_not_mistaken_for_completed_topn_claim() -> None
     assert violations == []
 
 
+def test_capability_description_of_existing_frozen_rank_is_not_completion() -> None:
+    session = _session()
+
+    violations = verify_assistant_claims(
+        session,
+        "我可以基于已经冻结的筛选排名生成机制解释 PDF，也可以解释已有结果。",
+    )
+
+    assert violations == []
+
+
 def test_completed_topn_claim_requires_matching_frozen_evidence() -> None:
     session = _session(frozen_count=2)
 

@@ -2426,9 +2426,6 @@
     }
 
     await refreshHistoryList();
-    HistoryUI.syncSessions()
-      .then(() => refreshHistoryList())
-      .catch(() => {});
   }
 
   async function refreshAgentSettings() {
@@ -2590,7 +2587,14 @@
   if (agentHistoryClearBtn) {
     agentHistoryClearBtn.addEventListener("click", async () => {
       try {
-        await HistoryUI.clearLocalHistory();
+        const cleared = await HistoryUI.clearHistory();
+        if (cleared && agentSessionId) {
+          abortSessionStream(agentSessionId);
+          setAgentSessionId(null);
+          resetAgentChatUi({ keepWelcome: true });
+          updateSessionMeta(null);
+          syncAgentBusyUi();
+        }
       } catch (err) {
         alert(err.message || err);
       }
@@ -2618,7 +2622,6 @@
   syncNewChatBtnTitle();
 
   (async () => {
-    if (HistoryUI) HistoryUI.syncSessions().catch(() => {});
     const cachedSid = readCachedAgentSessionId();
     if (cachedSid) {
       try {

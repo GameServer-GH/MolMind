@@ -537,6 +537,20 @@
         return;
       }
 
+      if (type === "governance_denied") {
+        const tool = ev.tool || "tool";
+        upsertItem({
+          kind: "tool",
+          id: tool,
+          label: tool,
+          status: "error",
+        });
+        if (steps[stepIndex]) steps[stepIndex].status = "error";
+        phase = `${humanToolLabel(tool)}已拦截`;
+        paint();
+        return;
+      }
+
       if (type === "query_plan" || type === "remote_start") {
         phase = "证据查询";
         if (!steps.length) seedFromPlan(["证据查询"]);
@@ -557,6 +571,20 @@
           label: "query_evidence",
           status: "done",
         });
+        paint();
+        return;
+      }
+
+      if (type === "loop_decision") {
+        const decision = ev.decision || "final";
+        phase =
+          decision === "continue"
+            ? "继续推理"
+            : decision === "clarify"
+              ? "等待补充信息"
+              : decision === "abort"
+                ? "已停止"
+                : "整理最终答复";
         paint();
         return;
       }

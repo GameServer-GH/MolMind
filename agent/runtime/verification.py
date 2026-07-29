@@ -14,8 +14,13 @@ class ClaimViolation:
 
 
 _COMPLETION_CLAIM_RE = re.compile(
-    r"(?:已|已经)(?:完成|筛出|筛选|冻结|生成|导出)|"
+    r"(?:已|已经)(?:完成|筛出|筛选|冻结|生成|导出)(?!的)|"
     r"(?:筛选|任务|计算)(?:已经)?完成",
+    re.I,
+)
+_EVIDENCE_COMPLETION_CLAIM_RE = re.compile(
+    r"(?:已|已经)(?:完成|查到|找到|返回).{0,12}(?:证据查询|本地证据|证据)|"
+    r"(?:证据查询)(?:已经)?(?:完成|返回)",
     re.I,
 )
 _RUNNING_CLAIM_RE = re.compile(r"(?:正在|已经启动|已启动).{0,12}(?:筛选|运行|计算|生成)", re.I)
@@ -52,6 +57,28 @@ def _frozen_count(session: Any) -> int:
     return len(getattr(result, "top_molecules", None) or []) if result is not None else 0
 
 
+def _has_successful_tool_memory(session: Any, tool_id: str) -> bool:
+    memory = [
+        item
+        for item in (getattr(session, "working_memory", None) or [])
+        if isinstance(item, dict)
+    ]
+    latest_turn_id = str(memory[-1].get("turn_id") or "") if memory else ""
+    for iteration in reversed(memory):
+        if not isinstance(iteration, dict):
+            continue
+        if latest_turn_id and str(iteration.get("turn_id") or "") != latest_turn_id:
+            break
+        for call in iteration.get("tool_calls") or []:
+            if (
+                isinstance(call, dict)
+                and call.get("tool") == tool_id
+                and call.get("status") == "succeeded"
+            ):
+                return True
+    return False
+
+
 def verify_assistant_claims(session: Any, text: str) -> list[ClaimViolation]:
     """Return unsupported user-visible execution claims.
 
@@ -70,7 +97,16 @@ def verify_assistant_claims(session: Any, text: str) -> list[ClaimViolation]:
                 "会话已绑定 SDF，但回复否认本地 score_and_rank 筛选能力",
             )
         )
-    if _COMPLETION_CLAIM_RE.search(body) and frozen_count <= 0 and not artifacts:
+    evidence_completion_supported = (
+        bool(_EVIDENCE_COMPLETION_CLAIM_RE.search(body))
+        and _has_successful_tool_memory(session, "query_evidence")
+    )
+    if (
+        _COMPLETION_CLAIM_RE.search(body)
+        and frozen_count <= 0
+        and not artifacts
+        and not evidence_completion_supported
+    ):
         violations.append(
             ClaimViolation("completion_without_evidence", "没有成功工具结果或冻结结果支持完成声明")
         )

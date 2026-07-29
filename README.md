@@ -288,8 +288,8 @@ PY
 
 ```bash
 # Docker Engine 需一次性配置 insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.0
-docker tag 8.133.197.65:5001/molmind:0.2.0 molmind:0.2.0
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.1
+docker tag 8.133.197.65:5001/molmind:0.2.1 molmind:0.2.1
 mkdir -p output
 docker compose -f deploy/docker-compose.yml up -d
 ```

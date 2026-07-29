@@ -116,6 +116,109 @@ def test_extract_ranking_positions_preserves_each_named_rank() -> None:
     assert extract_ranking_positions("请说明第4名、Top 5、top4") == (4, 5)
     assert ranking_position_subject_fallback("介绍一下排名top5的分子") is True
     assert ranking_position_subject_fallback("介绍一下 Top5") is False
+    assert ranking_position_subject_fallback("top11为啥没有进榜") is True
+
+
+def test_pending_csv_request_resumes_across_short_slot_replies(monkeypatch, tmp_path) -> None:
+    """Regression for the exported “需要 → 10” session that became chat."""
+    from types import SimpleNamespace
+
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime
+
+    def molecule(index: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            molecule_id=f"T{index:05d}",
+            selection_score=0.6 - index / 1000,
+            competition_scoring_version="organizer-relative-effect-novelty-v1",
+            final_score=0.6 - index / 1000,
+            lipid_score=0.4,
+            tox_risk=0.2,
+            novelty_score=0.7,
+            lipid_rationale="药效团: aromatic ring",
+            selection_tier="similarity_strict",
+        )
+
+    def fake_run(_path, *, top_n, **_kwargs):
+        top = [molecule(index) for index in range(1, top_n + 1)]
+        return SimpleNamespace(
+            run_id="mm-pending-top10",
+            output_count=top_n,
+            selection_sha256="selection-pending",
+            reserve_selection_sha256="reserve-pending",
+            config=SimpleNamespace(config_hash="config-pending", reserve_n=20),
+            input_sha256="input-pending",
+            source_filename="library.sdf",
+            top_molecules=top,
+            reserve_molecules=[],
+            scored_molecules=top,
+            to_csv_text=lambda: "molecule_id\n" + "\n".join(m.molecule_id for m in top) + "\n",
+            to_reserve_csv_text=lambda: "molecule_id\n",
+        )
+
+    monkeypatch.setattr("agent.runtime.loop.run_score_and_rank", fake_run)
+    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
+    session = runtime.create_session()
+
+    first = list(runtime.handle_message(session, "导出候选分子列表为 CSV 文件"))
+    assert "tool_start" not in [event.get("type") for event in first]
+    assert session.pending_action is not None
+    assert set(session.pending_action["missing_slots"]) == {"sdf", "top_n"}
+
+    runtime.attach_sdf(session, filename="library.sdf", content=b"fake sdf")
+    now = list(runtime.handle_message(session, "现在呢"))
+    now_reply = next(event["text"] for event in now if event.get("type") == "assistant")
+    assert "还需要你告诉我候选数量" in now_reply
+    assert "tool_start" not in [event.get("type") for event in now]
+
+    affirm = list(runtime.handle_message(session, "需要"))
+    assert "还需要你告诉我候选数量" in next(
+        event["text"] for event in affirm if event.get("type") == "assistant"
+    )
+
+    events = list(runtime.handle_message(session, "10"))
+    starts = [event["tool"] for event in events if event.get("type") == "tool_start"]
+    assert starts == ["score_and_rank", "export_nomination"]
+    plan = next(event for event in events if event.get("type") == "agent_plan")
+    assert plan["diagnostics"] == ["resumed_from_pending_action"]
+    assert plan["steps"] == [
+        {"tool": "score_and_rank", "args": {"top_n": 10}},
+        {"tool": "export_nomination", "args": {"tier": "primary"}},
+    ]
+    assert session.pending_action is None
+    assert session.last_run_id == "mm-pending-top10"
+
+
+def test_pending_action_status_does_not_claim_execution(tmp_path) -> None:
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime
+
+    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
+    session = runtime.create_session()
+    list(runtime.handle_message(session, "导出候选分子列表为 CSV 文件"))
+
+    events = list(runtime.handle_message(session, "好了嘛？"))
+    reply = next(event["text"] for event in events if event.get("type") == "assistant")
+    assert "尚未启动工具调用" in reply
+    assert "缺少 SDF" in reply
+    assert "tool_start" not in [event.get("type") for event in events]
+
+
+def test_pending_action_survives_store_reload(tmp_path) -> None:
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime
+
+    root = tmp_path / "runs"
+    first_store = FileRunStore(root=root)
+    runtime = AgentRuntime(store=first_store)
+    session = runtime.create_session()
+    list(runtime.handle_message(session, "导出候选分子列表为 CSV 文件"))
+
+    reloaded = FileRunStore(root=root).get(session.session_id)
+    assert reloaded is not None
+    assert reloaded.pending_action is not None
+    assert reloaded.pending_action["want_csv"] is True
+    assert set(reloaded.pending_action["missing_slots"]) == {"sdf", "top_n"}
 
 
 def test_runtime_llm_classifies_ranking_followup_before_tools(
@@ -463,7 +566,7 @@ def test_agent_introduces_ranked_molecule_without_export(monkeypatch, tmp_path) 
     assert session.last_result is result
     assert session.top_n == 10
     reply = next(event["text"] for event in events if event.get("type") == "assistant")
-    assert "T5 是上一轮冻结结果" in reply
+    assert "T5 已经进入上一轮冻结主榜" in reply
     assert "Top 5" in reply
     assert "不会重新筛选" in reply
 

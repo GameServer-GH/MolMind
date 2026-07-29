@@ -13,5 +13,10 @@ policy:
   catalog_opt_in_only: true
   claim_ceiling: proxy_priority_only
 budgets:
+  max_iterations: 3
   max_steps: 8
   max_tool_calls: 4
+  max_retries_per_tool: 1
+  max_wall_time_sec: 120
+  max_observation_chars: 8000
+  max_no_progress_rounds: 2

@@ -62,6 +62,12 @@ class SessionPatchBody(BaseModel):
     title: str = Field(..., min_length=1, max_length=80)
 
 
+class ToolApprovalBody(BaseModel):
+    tool_id: str = Field(..., min_length=1)
+    args: dict[str, Any] = Field(default_factory=dict)
+    ttl_sec: int = Field(default=600, ge=30, le=3600)
+
+
 @router.get("/settings")
 def get_settings(session_id: Optional[str] = None) -> dict[str, Any]:
     runtime = get_runtime()
@@ -94,6 +100,13 @@ def list_sessions(limit: int = 50) -> dict[str, Any]:
     return {"sessions": items, "count": len(items)}
 
 
+@router.delete("/sessions")
+def clear_sessions() -> dict[str, Any]:
+    """Clear the persisted conversation history for this MolMind instance."""
+    deleted_count = get_runtime().clear_sessions()
+    return {"deleted_count": deleted_count}
+
+
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
     session = get_runtime().get_session(session_id)
@@ -101,18 +114,39 @@ def get_session(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="会话不存在")
     return {
         "session_id": session.session_id,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
         "profile_id": session.profile_id,
         "title": session.title or None,
         "sdf_filename": session.sdf_filename or None,
         "has_sdf": bool(session.sdf_bytes),
         "sdf_ui_pending": bool(session.sdf_ui_pending) and bool(session.sdf_bytes),
         "top_n": session.top_n,
+        "pending_action": session.pending_action,
         "pending_goal": session.pending_goal,
         "last_run_id": session.last_run_id or None,
         "last_selection_sha256": session.last_selection_sha256 or None,
         "run_history": list(session.run_history),
         "active_plan": session.active_plan,
         "plan_history": list(session.plan_history),
+        "working_memory": list(session.working_memory),
+        "agent_run_state": session.agent_run_state,
+        "approvals": [
+            {
+                key: record.get(key)
+                for key in (
+                    "approval_id",
+                    "tool_id",
+                    "scope",
+                    "args_hash",
+                    "decision",
+                    "expires_at",
+                    "used_at",
+                )
+            }
+            for record in session.approval_grants
+            if isinstance(record, dict)
+        ],
         "artifact_ids": list(session.artifacts.keys()),
         "artifacts": [
             {
@@ -152,6 +186,42 @@ def patch_session(session_id: str, body: SessionPatchBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="会话不存在")
     runtime.rename_session(session, body.title)
     return {"session_id": session_id, "title": session.title}
+
+
+@router.post("/sessions/{session_id}/approvals")
+def approve_tool_call(
+    session_id: str,
+    body: ToolApprovalBody,
+) -> dict[str, Any]:
+    runtime = get_runtime()
+    session = runtime.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    try:
+        approval = runtime.grant_tool_approval(
+            session,
+            tool_id=body.tool_id,
+            args=body.args,
+            ttl_sec=body.ttl_sec,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "session_id": session_id,
+        "approval": {
+            key: approval.get(key)
+            for key in (
+                "approval_id",
+                "tool_id",
+                "scope",
+                "args_hash",
+                "decision",
+                "expires_at",
+            )
+        },
+    }
 
 
 @router.delete("/sessions/{session_id}")
