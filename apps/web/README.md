@@ -10,22 +10,30 @@ Quality-Max 静态入口：沿用 GameGhost 简历页的 glass 卡片 / 文字�
 
 服务端访问：`/` 会重定向到 `/static/index.html`，相对资源路径即可解析。
 
+当前产品版本以根目录 `pyproject.toml` 为准（现为 **0.2.2**），经 `GET /health` 展示，不在前端硬编码。
+
 ## Agent 界面
 
 ### 对话历史
 
-- 对话历史以当前 MolMind 实例保存的会话为准，不依赖浏览器本地缓存。
+- 对话历史以当前 MolMind 实例保存的会话为准，不依赖浏览器本地缓存作真源。
 - 只有打开历史抽屉时，前端才请求 `/api/agent/sessions?limit=50`，并直接渲染接口返回的会话。
-- 历史项标题下方显示最新一条用户问题，长文本使用单行省略号。
+- 历史项标题下方显示最新一条用户问题，长文本使用单行省略号；列表可展示活动 `run_status`。
 - 历史抽屉顶部提供清空按钮。确认后会删除当前 MolMind 实例保存的全部会话。
-- 单条会话仍支持重命名和删除；下次打开或刷新抽屉时会从服务端重新读取列表。
+- 单条会话仍支持重命名和删除；运行中的会话不可删除。下次打开或刷新抽屉时会从服务端重新读取列表。
+
+### 运行态与忙碌门禁
+
+- Session 服务端持久化 `active_run` / `revision`。刷新或切回会话后，可重放底部步骤条与右侧工具清单，并经 `events?after_seq=` 增量跟随。
+- 活动态（`queued/running/cancel_requested`）下，前端禁用发送、改附件、改执行配置、删除与清空；服务端对冲突写操作返回 `409 session_busy`。
+- SDF 上传进行中，上传按钮进入 loading / 禁用态，避免重复提交。
 
 ### Profile 详情
 
 点击顶部 `MolMind · MASLD` Profile 标识可打开详情弹窗，展示：
 
 - 应用名称及研究方向。
-- 从后端 `/health` 自动获取的项目版本和后端构建标识。
+- 从后端 `/health` 自动获取的项目版本和后端构建标识（打开弹窗时刷新）。
 - GitHub 仓库：<https://github.com/GameServer-GH/MolMind>
 - 线上服务：<https://molmind.cn/>
 - 当前部署环境的 API 文档：`/docs`
