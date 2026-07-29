@@ -1459,6 +1459,20 @@
   flex: 1;
 }
 
+.mm-upload-btn--loading {
+  cursor: wait;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.mm-upload-btn--loading .mm-icon--upload {
+  animation: mm-upload-spin 0.9s linear infinite;
+}
+
+@keyframes mm-upload-spin {
+  to { transform: rotate(360deg); }
+}
+
 .mm-attach-chip {
   display: inline-flex;
   align-items: center;

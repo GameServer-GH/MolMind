@@ -1549,6 +1549,7 @@
   /* ——— Agent chat (GameGhost-inspired shell) ——— */
   const modeClassicBtn = document.getElementById("modeClassicBtn");
   const modeAgentBtn = document.getElementById("modeAgentBtn");
+  const agentUploadBtn = document.getElementById("agentUploadBtn");
   const agentFileInput = document.getElementById("agentFileInput");
   const agentFileLabel = document.getElementById("agentFileLabel");
   const agentAttachRail = document.getElementById("agentAttachRail");
@@ -1621,6 +1622,7 @@
   let agentSessionId = null;
   let agentBusy = false;
   let activeTurn = null;
+  let agentUploadInProgress = false;
   /**
    * Per-session in-flight NDJSON streams.
    * Switching chats detaches the UI but keeps the HTTP stream alive so the server
@@ -1812,7 +1814,7 @@
   function setAgentAttachment(filename, { pending } = {}) {
     if (!agentAttachRail) return;
     agentAttachRail.innerHTML = "";
-    if (agentFileLabel) agentFileLabel.textContent = "上传附件";
+    if (agentFileLabel && !agentUploadInProgress) agentFileLabel.textContent = "上传附件";
     // pending===false means session still has SDF but UI already moved it into a turn
     if (pending === false) return;
     if (!filename) return;
@@ -2038,6 +2040,18 @@
     const name = data.sdf_filename || file.name;
     afterAgentSdfAttached(name);
     if (agentFileInput) agentFileInput.value = "";
+  }
+
+  function setAgentUploadState(uploading) {
+    agentUploadInProgress = uploading;
+    if (agentUploadBtn) {
+      agentUploadBtn.classList.toggle("mm-upload-btn--loading", uploading);
+      agentUploadBtn.setAttribute("aria-busy", String(uploading));
+      agentUploadBtn.setAttribute("aria-disabled", String(uploading));
+      agentUploadBtn.title = uploading ? "附件上传中" : "上传附件";
+    }
+    if (agentFileInput) agentFileInput.disabled = uploading;
+    if (agentFileLabel) agentFileLabel.textContent = uploading ? "上传中…" : "上传附件";
   }
 
   const DEMO_SDF_FALLBACK_NAME = "T001 TargetMol现货产品22966.sdf";
@@ -2461,7 +2475,8 @@
   if (agentFileInput) {
     agentFileInput.addEventListener("change", async () => {
       const file = agentFileInput.files && agentFileInput.files[0];
-      if (!file) return;
+      if (!file || agentUploadInProgress) return;
+      setAgentUploadState(true);
       try {
         await uploadAgentSdf(file);
       } catch (err) {
@@ -2471,6 +2486,10 @@
             error: true,
           });
         }
+      } finally {
+        // Let the user select the same file again after a failed upload.
+        if (agentFileInput) agentFileInput.value = "";
+        setAgentUploadState(false);
       }
     });
   }
