@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import io
 import json
 import queue
@@ -44,7 +45,7 @@ from agent.runtime.planning import (
     session_capabilities,
 )
 from agent.runtime.reply import format_ranking_explanation, format_run_completion
-from agent.runtime.scheduler import RunBudget, RunController
+from agent.runtime.scheduler import RunBudget, RunController, utc_now
 from agent.runtime.task_graph import TaskGraph
 from agent.runtime.verification import evidence_correction, verify_assistant_claims
 from plugins.catalog_dispatch import (
@@ -352,6 +353,14 @@ class _ReadOnlyResultSnapshot:
         object.__setattr__(self, name, value)
 
 
+class SessionBusyError(RuntimeError):
+    """Raised when a session-scoped mutation conflicts with an active Run."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = dict(payload)
+        super().__init__(str(payload.get("message") or "当前会话仍在执行"))
+
+
 class AgentRuntime:
     def __init__(self, store: FileRunStore | None = None) -> None:
         self.store = store or STORE
@@ -361,6 +370,9 @@ class AgentRuntime:
         # sessions to use the worker pool concurrently.
         self._session_locks: dict[str, threading.Lock] = {}
         self._session_locks_guard = threading.Lock()
+        # Serializes short Run reservations and session mutations. Long-running
+        # work does not hold this guard, so conflicting HTTP calls fail fast.
+        self._session_state_guard = threading.RLock()
         # Independent branches within one user turn (for example an R0 lookup
         # plus a normal question) may overlap. Session mutation remains on the
         # owning turn thread; workers are used only for read-only LLM replies.
@@ -387,6 +399,122 @@ class AgentRuntime:
         with self._session_locks_guard:
             return self._session_locks.setdefault(session_id, threading.Lock())
 
+    @staticmethod
+    def _run_is_active(run: dict[str, Any] | None) -> bool:
+        return bool(
+            isinstance(run, dict)
+            and str(run.get("status") or "")
+            in {"queued", "running", "cancel_requested"}
+        )
+
+    def session_busy_payload(
+        self,
+        session: AgentSession,
+        *,
+        operation: str,
+    ) -> dict[str, Any] | None:
+        run = session.active_run
+        if not self._run_is_active(run):
+            return None
+        return {
+            "code": "session_busy",
+            "message": "当前会话仍在执行",
+            "session_id": session.session_id,
+            "run_id": str(run.get("run_id") or ""),
+            "run_status": str(run.get("status") or "running"),
+            "blocked_operation": operation,
+            "retryable": True,
+        }
+
+    def reserve_session_run(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        top_n: int | None = None,
+    ) -> dict[str, Any]:
+        """Atomically reserve the one active Run allowed for a Session."""
+        with self._session_state_guard:
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            busy = self.session_busy_payload(session, operation="send_message")
+            if busy:
+                raise SessionBusyError(busy)
+            run_id = f"agent-{uuid.uuid4().hex[:12]}"
+            session.active_run = {
+                "run_id": run_id,
+                "turn_id": run_id,
+                "status": "queued",
+                "started_at": utc_now(),
+                "heartbeat_at": utc_now(),
+                "ended_at": "",
+                "last_event_seq": session.event_seq,
+                "session_revision": session.revision,
+                "input": {
+                    "text": str(text),
+                    "sdf_filename": session.sdf_filename,
+                    "sdf_sha256": (
+                        hashlib.sha256(session.sdf_bytes).hexdigest()
+                        if session.sdf_bytes
+                        else ""
+                    ),
+                    "top_n": int(top_n if top_n is not None else session.top_n),
+                    "profile_id": session.profile_id,
+                    "catalog_ids": list(session.installed_catalog),
+                },
+            }
+            self.store.persist(session)
+            return copy.deepcopy(session.active_run)
+
+    def handle_reserved_session_message(
+        self,
+        session_id: str,
+        run_id: str,
+        text: str,
+        *,
+        top_n: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Execute a previously reserved Run and always persist a terminal state."""
+        with self._session_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            active = session.active_run or {}
+            if str(active.get("run_id") or "") != run_id:
+                raise RuntimeError("活动 Run 已变化")
+            active["status"] = "running"
+            active["heartbeat_at"] = utc_now()
+            session.active_run = active
+            self.store.persist(session)
+            if top_n is not None:
+                session.top_n = top_n
+            saw_done = False
+            try:
+                for event in self.handle_message(session, text, run_id=run_id):
+                    saw_done = saw_done or event.get("type") == "done"
+                    yield event
+            except Exception as exc:  # noqa: BLE001 - turn is closed durably here
+                controller = self._run_controller(session)
+                controller.stop("unhandled_exception", status="failed")
+                yield self._emit(
+                    session,
+                    {"type": "error", "detail": str(exc), "run_id": run_id},
+                )
+                yield self._emit(
+                    session,
+                    {"type": "done", "run_id": run_id, "status": "failed"},
+                )
+                saw_done = True
+            finally:
+                current = session.active_run or {}
+                if str(current.get("run_id") or "") == run_id and self._run_is_active(current):
+                    current["status"] = "interrupted" if not saw_done else "failed"
+                    current["ended_at"] = utc_now()
+                    current["heartbeat_at"] = utc_now()
+                    session.active_run = current
+                    self.store.persist(session)
+
     def handle_session_message(
         self,
         session_id: str,
@@ -402,6 +530,84 @@ class AgentRuntime:
             if top_n is not None:
                 session.top_n = top_n
             yield from self.handle_message(session, text)
+
+    def _mutate_idle_session(
+        self,
+        session_id: str,
+        operation: str,
+        mutation,
+    ):
+        with self._session_state_guard:
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            busy = self.session_busy_payload(session, operation=operation)
+            if busy:
+                raise SessionBusyError(busy)
+            with self._session_lock(session_id):
+                result = mutation(session)
+                session.revision += 1
+                self.store.persist(session)
+                return result if result is not None else session
+
+    def attach_session_sdf(self, session_id: str, *, filename: str, content: bytes) -> AgentSession:
+        return self._mutate_idle_session(
+            session_id,
+            "attach_sdf",
+            lambda session: self.attach_sdf(session, filename=filename, content=content),
+        )
+
+    def detach_session_sdf(self, session_id: str) -> AgentSession:
+        return self._mutate_idle_session(
+            session_id,
+            "detach_sdf",
+            self.detach_sdf,
+        )
+
+    def install_session_catalog(self, session_id: str, plugin_id: str) -> AgentSession:
+        return self._mutate_idle_session(
+            session_id,
+            "catalog_install",
+            lambda session: self.install_catalog_plugin(session, plugin_id),
+        )
+
+    def uninstall_session_catalog(self, session_id: str, plugin_id: str) -> AgentSession:
+        return self._mutate_idle_session(
+            session_id,
+            "catalog_uninstall",
+            lambda session: self.uninstall_catalog_plugin(session, plugin_id),
+        )
+
+    def delete_session_when_idle(self, session_id: str) -> bool:
+        with self._session_state_guard:
+            session = self.get_session(session_id)
+            if session is None:
+                return False
+            busy = self.session_busy_payload(session, operation="delete_session")
+            if busy:
+                raise SessionBusyError(busy)
+            with self._session_lock(session_id):
+                return self.store.delete_session(session_id)
+
+    def clear_sessions_when_idle(self, *, client_id: str) -> int:
+        with self._session_state_guard:
+            sessions = self.store.list_sessions(limit=10_000, client_id=client_id)
+            active: list[dict[str, Any]] = []
+            for item in sessions:
+                session = self.get_session(str(item.get("session_id") or ""))
+                if session and self._run_is_active(session.active_run):
+                    active.append(copy.deepcopy(session.active_run or {}))
+            if active:
+                raise SessionBusyError(
+                    {
+                        "code": "sessions_busy",
+                        "message": f"有 {len(active)} 个任务正在执行",
+                        "blocked_operation": "clear_sessions",
+                        "active_runs": active,
+                        "retryable": True,
+                    }
+                )
+            return self.store.clear_sessions(client_id=client_id)
 
     def attach_sdf(self, session: AgentSession, *, filename: str, content: bytes) -> None:
         session.sdf_bytes = content
@@ -483,9 +689,17 @@ class AgentRuntime:
         self.store.persist(session)
         return record
 
-    def _begin_agent_turn(self, session: AgentSession) -> RunController:
+    def _begin_agent_turn(
+        self,
+        session: AgentSession,
+        *,
+        run_id: str | None = None,
+    ) -> RunController:
         profile = self.registry.get_profile(session.profile_id)
-        controller = RunController(RunBudget.from_mapping(profile.budgets))
+        controller = RunController(
+            RunBudget.from_mapping(profile.budgets),
+            run_id=run_id,
+        )
         with self._run_controllers_guard:
             self._run_controllers[session.session_id] = controller
         session.agent_run_state = controller.snapshot()
@@ -594,6 +808,8 @@ class AgentRuntime:
     def _emit(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
         kind = str(event.get("type") or "")
         controller = self._run_controller(session)
+        event.setdefault("run_id", controller.run_id)
+        event.setdefault("turn_id", controller.run_id)
         if kind == "agent_plan":
             raw_steps = event.get("tasks") or event.get("steps") or []
             within_budget, reason = controller.register_plan(len(raw_steps))
@@ -703,6 +919,21 @@ class AgentRuntime:
                 session.messages.append({"role": "assistant", "text": rendered})
         event.setdefault("claim_ceiling", claim_ceiling_default())
         emitted = self.store.append_event(session, event)
+        active = session.active_run
+        if isinstance(active, dict) and str(active.get("run_id") or "") == controller.run_id:
+            active["last_event_seq"] = int(emitted.get("seq") or session.event_seq)
+            active["heartbeat_at"] = utc_now()
+            if kind == "done":
+                controller_status = str(controller.status or "")
+                requested_status = str(event.get("status") or "")
+                active["status"] = (
+                    requested_status
+                    if requested_status in {"succeeded", "failed", "cancelled", "interrupted"}
+                    else ("succeeded" if controller_status == "completed" else "failed")
+                )
+                active["ended_at"] = utc_now()
+            session.active_run = active
+            self.store.persist(session)
         if kind == "done":
             with self._run_controllers_guard:
                 self._run_controllers.pop(session.session_id, None)
@@ -827,8 +1058,14 @@ class AgentRuntime:
             session.plan_history = session.plan_history[-20:]
             session.active_plan = None
 
-    def handle_message(self, session: AgentSession, text: str) -> Iterator[dict[str, Any]]:
-        self._begin_agent_turn(session)
+    def handle_message(
+        self,
+        session: AgentSession,
+        text: str,
+        *,
+        run_id: str | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        self._begin_agent_turn(session, run_id=run_id)
         lo, hi = self.registry.resolve_top_n_bounds()
 
         # Pending Top-N over-limit confirmation (same session only).

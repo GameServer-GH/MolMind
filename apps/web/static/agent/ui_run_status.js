@@ -81,6 +81,7 @@
     let stepIndex = 0;
     let phase = "准备中";
     let hasPlan = false;
+    let seenSeq = new Set();
 
     function ensureDom(chatMain, bottomSend) {
       if (!inventoryEl && chatMain) {
@@ -438,11 +439,17 @@
       stepIndex = 0;
       phase = "准备中";
       hasPlan = false;
+      seenSeq = new Set();
       paint();
     }
 
     function applyEvent(ev) {
       if (!ev || !ev.type) return;
+      const seq = Number(ev.seq || 0);
+      if (seq > 0) {
+        if (seenSeq.has(seq)) return;
+        seenSeq.add(seq);
+      }
       const type = ev.type;
 
       if (type === "thinking" && ev.text) {
@@ -647,6 +654,27 @@
       setVisible,
       reset,
       applyEvent,
+      restore(events, runSnapshot) {
+        reset();
+        (events || []).forEach((event) => applyEvent(event));
+        const status = String((runSnapshot && runSnapshot.status) || "");
+        if (status === "queued" && !(events || []).length) {
+          applyEvent({ type: "thinking", text: "任务排队中" });
+        } else if (status === "running" && !(events || []).length) {
+          applyEvent({ type: "thinking", text: "任务执行中" });
+        }
+        setVisible(["queued", "running", "cancel_requested"].includes(status));
+      },
+      setReconnectState(reconnecting) {
+        if (reconnecting) {
+          phase = "正在恢复连接";
+          paint();
+          setVisible(true);
+        }
+      },
+      finalize() {
+        setVisible(false);
+      },
       isVisible() {
         return visible;
       },

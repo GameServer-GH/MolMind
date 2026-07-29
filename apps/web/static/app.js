@@ -1599,6 +1599,8 @@
   const agentSettingsCloseBtn = document.getElementById("agentSettingsCloseBtn");
   const agentDrawerScrim = document.getElementById("agentDrawerScrim");
   const agentTurnRailEl = document.getElementById("agentTurnRail");
+  let agentHistoryLoadSeq = 0;
+  let agentSettingsLoadSeq = 0;
 
   const Render = window.MolMindAgentRender;
   const HistoryUI = window.MolMindAgentHistory;
@@ -1630,6 +1632,8 @@
   let agentBusy = false;
   let activeTurn = null;
   let agentUploadInProgress = false;
+  const ACTIVE_AGENT_RUN_STATUSES = new Set(["queued", "running", "cancel_requested"]);
+  const agentRunStateBySession = new Map();
   /**
    * Per-session in-flight NDJSON streams.
    * Switching chats detaches the UI but keeps the HTTP stream alive so the server
@@ -1638,6 +1642,39 @@
    */
   const agentStreams = new Map();
   let agentStreamSeq = 0;
+
+  function apiErrorMessage(body, fallback) {
+    const detail = body && body.detail;
+    if (typeof detail === "string" && detail) return detail;
+    if (detail && typeof detail === "object" && detail.message) return detail.message;
+    if (body && typeof body.message === "string" && body.message) return body.message;
+    return fallback;
+  }
+
+  function isAgentRunActive(run) {
+    return !!run && ACTIVE_AGENT_RUN_STATUSES.has(String(run.status || ""));
+  }
+
+  function setAgentRunSnapshot(sessionId, run) {
+    if (!sessionId) return;
+    if (run) agentRunStateBySession.set(sessionId, run);
+    else agentRunStateBySession.delete(sessionId);
+  }
+
+  function currentAgentRun(sessionId = agentSessionId) {
+    return sessionId ? agentRunStateBySession.get(sessionId) || null : null;
+  }
+
+  function isCurrentAgentSessionBusy() {
+    const local = agentSessionId ? agentStreams.get(agentSessionId) : null;
+    return !!(local && local.running) || isAgentRunActive(currentAgentRun());
+  }
+
+  function assertAgentSessionMutable(message) {
+    if (!isCurrentAgentSessionBusy()) return true;
+    showAgentToast(message || "当前回复完成后再操作");
+    return false;
+  }
 
   function readCachedAgentSessionId() {
     try {
@@ -1671,10 +1708,23 @@
 
   function syncAgentBusyUi() {
     const cur = agentSessionId ? agentStreams.get(agentSessionId) : null;
-    const busy = !!(cur && cur.running);
+    const busy = !!(cur && cur.running) || isAgentRunActive(currentAgentRun());
     agentBusy = busy;
     setStreaming(busy);
     if (agentSendBtn) agentSendBtn.disabled = busy;
+    if (agentFileInput) agentFileInput.disabled = busy || agentUploadInProgress;
+    if (agentUploadBtn) {
+      agentUploadBtn.setAttribute("aria-disabled", String(busy || agentUploadInProgress));
+      agentUploadBtn.title = busy ? "当前回复完成后可上传附件" : agentUploadInProgress ? "附件上传中" : "上传附件";
+    }
+    if (agentNewChatBtn) agentNewChatBtn.disabled = busy;
+    if (agentHistoryClearBtn) agentHistoryClearBtn.disabled = busy;
+    if (agentAttachRail) {
+      agentAttachRail.querySelectorAll(".mm-attach-chip-remove").forEach((button) => {
+        button.disabled = busy;
+        button.title = busy ? "当前回复完成后可移除附件" : "移除附件";
+      });
+    }
     if (RunStatus) {
       if (busy) RunStatus.setVisible(true);
       else RunStatus.setVisible(false);
@@ -1787,6 +1837,42 @@
     }, 2000);
   }
 
+  function renderAgentDrawerLoading(rootEl, kind) {
+    if (!rootEl) return;
+    const catalog = kind === "catalog";
+    rootEl.setAttribute("aria-busy", "true");
+    rootEl.innerHTML = catalog
+      ? `
+        <div class="mm-drawer-loading mm-drawer-loading--catalog" role="status" aria-label="正在加载工具与插件">
+          <div class="mm-drawer-loading-label">正在加载工具与插件…</div>
+          <div class="mm-drawer-loading-toolbar" aria-hidden="true">
+            <span class="mm-drawer-loading-pill"></span>
+            <span class="mm-drawer-loading-pill"></span>
+            <span class="mm-drawer-loading-pill"></span>
+          </div>
+          <div class="mm-drawer-loading-grid" aria-hidden="true">
+            ${'<span class="mm-drawer-loading-card"></span>'.repeat(6)}
+          </div>
+        </div>`
+      : `
+        <div class="mm-drawer-loading mm-drawer-loading--history" role="status" aria-label="正在加载对话历史">
+          <div class="mm-drawer-loading-label">正在加载对话历史…</div>
+          <div aria-hidden="true">
+            ${'<div class="mm-drawer-loading-row"></div>'.repeat(6)}
+          </div>
+        </div>`;
+  }
+
+  function renderAgentDrawerError(rootEl, message) {
+    if (!rootEl) return;
+    rootEl.setAttribute("aria-busy", "false");
+    rootEl.innerHTML = "";
+    const error = document.createElement("p");
+    error.className = "mm-history-empty";
+    error.textContent = message || "加载失败，请稍后重试";
+    rootEl.appendChild(error);
+  }
+
   function setStreaming(on) {
     if (agentStreamBeam) {
       agentStreamBeam.classList.toggle("hidden", !on);
@@ -1871,6 +1957,7 @@
   }
 
   async function removeAgentAttachment() {
+    if (!assertAgentSessionMutable("当前回复完成后可移除附件")) return;
     if (!agentSessionId) {
       setAgentAttachment(null);
       return;
@@ -1880,7 +1967,7 @@
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || "移除失败");
+      throw new Error(apiErrorMessage(err, "移除失败"));
     }
     setAgentAttachment(null);
     if (agentFileInput) agentFileInput.value = "";
@@ -1922,6 +2009,7 @@
 
   async function startNewAgentChat() {
     if (HistoryUI) HistoryUI.closeAll(agentChatRoot);
+    if (!assertAgentSessionMutable("当前回复完成后可新建对话")) return;
     if (isAgentNewConversation()) {
       showAgentToast("已经在新对话中");
       return;
@@ -1940,6 +2028,9 @@
     const evResp = await fetch(`/api/agent/sessions/${sessionId}/events`);
     if (!evResp.ok) throw new Error("无法加载事件");
     const evData = await evResp.json();
+    detail.active_run = evData.active_run || detail.active_run || null;
+    detail._execution_events = evData.events || [];
+    setAgentRunSnapshot(sessionId, detail.active_run);
 
     if (Render && agentMessages) Render.clearMessages(agentMessages);
     const pendingSdf =
@@ -2022,14 +2113,20 @@
 
     setAgentSessionId(sessionId);
     const detail = await renderAgentSessionTranscript(sessionId);
-    await applyCatalogPrefs(sessionId, (detail && detail.installed_catalog) || []);
+    if (!isAgentRunActive(detail && detail.active_run)) {
+      await applyCatalogPrefs(sessionId, (detail && detail.installed_catalog) || []);
+    }
 
     const live = agentStreams.get(sessionId);
     if (live && live.running) {
       if (RunStatus) {
-        RunStatus.reset();
-        RunStatus.applyEvent({ type: "thinking", text: "后台生成中" });
-        RunStatus.applyEvent({ type: "plan", steps: ["继续处理当前任务"] });
+        const liveRunId = String(
+          live.runId || (detail.active_run && detail.active_run.run_id) || ""
+        );
+        const liveEvents = (detail._execution_events || []).filter(
+          (event) => !liveRunId || String(event.run_id || "") === liveRunId
+        );
+        RunStatus.restore(liveEvents, detail.active_run || { status: "running" });
       }
       // Background generation still going: refresh transcript when it finishes.
       live.onComplete = async () => {
@@ -2041,12 +2138,134 @@
         }
         syncAgentBusyUi();
       };
+    } else if (isAgentRunActive(detail && detail.active_run)) {
+      startRecoveredAgentRunFollow(sessionId, detail);
     }
     syncAgentBusyUi();
     if (MentionUI) MentionUI.refresh(sessionId).catch(() => {});
   }
 
+  function waitForAgentPoll(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      const timer = setTimeout(resolve, ms);
+      if (signal) {
+        signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true }
+        );
+      }
+    });
+  }
+
+  function startRecoveredAgentRunFollow(sessionId, detail) {
+    const run = detail && detail.active_run;
+    if (!sessionId || !isAgentRunActive(run)) return;
+    const existing = agentStreams.get(sessionId);
+    if (existing && existing.running) return;
+
+    const entry = startSessionStream(sessionId);
+    entry.recovered = true;
+    entry.runId = String(run.run_id || "");
+    let afterSeq = (detail._execution_events || []).reduce(
+      (max, event) => Math.max(max, Number(event.seq || 0)),
+      0
+    );
+    const initialRunEvents = (detail._execution_events || []).filter(
+      (event) => !entry.runId || String(event.run_id || "") === entry.runId
+    );
+    if (agentSessionId === sessionId && RunStatus) {
+      RunStatus.restore(initialRunEvents, run);
+      RunStatus.setReconnectState(false);
+    }
+    syncAgentBusyUi();
+
+    (async () => {
+      try {
+        while (isStreamEntryActive(sessionId, entry)) {
+          await waitForAgentPoll(800, entry.controller.signal);
+          let resp;
+          try {
+            resp = await fetch(
+              `/api/agent/sessions/${sessionId}/events?after_seq=${afterSeq}`,
+              { signal: entry.controller.signal, cache: "no-store" }
+            );
+          } catch (error) {
+            if (error && error.name === "AbortError") throw error;
+            if (agentSessionId === sessionId && RunStatus) {
+              RunStatus.setReconnectState(true);
+            }
+            await waitForAgentPoll(1600, entry.controller.signal);
+            continue;
+          }
+          if (resp.status === 404) {
+            setAgentRunSnapshot(sessionId, null);
+            break;
+          }
+          if (!resp.ok) {
+            if (agentSessionId === sessionId && RunStatus) {
+              RunStatus.setReconnectState(true);
+            }
+            await waitForAgentPoll(1600, entry.controller.signal);
+            continue;
+          }
+          const data = await resp.json();
+          const events = data.events || [];
+          events.forEach((event) => {
+            afterSeq = Math.max(afterSeq, Number(event.seq || 0));
+            if (
+              agentSessionId === sessionId &&
+              RunStatus &&
+              (!entry.runId || String(event.run_id || "") === entry.runId)
+            ) {
+              RunStatus.applyEvent(event);
+            }
+          });
+          setAgentRunSnapshot(sessionId, data.active_run || null);
+          if (events.length && agentSessionId === sessionId) {
+            const refreshed = await renderAgentSessionTranscript(sessionId);
+            setAgentRunSnapshot(sessionId, refreshed.active_run || null);
+          }
+          syncAgentBusyUi();
+          if (!isAgentRunActive(currentAgentRun(sessionId))) break;
+        }
+      } catch (error) {
+        if (!(error && error.name === "AbortError") && agentSessionId === sessionId) {
+          if (RunStatus) RunStatus.setReconnectState(true);
+          showAgentToast("执行仍在后台，连接恢复后将继续同步");
+        }
+      } finally {
+        if (agentStreams.get(sessionId) === entry) {
+          entry.running = false;
+          agentStreams.delete(sessionId);
+        }
+        if (agentSessionId === sessionId) {
+          try {
+            const refreshed = await renderAgentSessionTranscript(sessionId);
+            setAgentRunSnapshot(sessionId, refreshed.active_run || null);
+            if (isAgentRunActive(refreshed.active_run)) {
+              startRecoveredAgentRunFollow(sessionId, refreshed);
+            } else if (RunStatus) {
+              RunStatus.finalize();
+            }
+          } catch {
+            /* keep the last durable snapshot visible */
+          }
+        }
+        syncAgentBusyUi();
+      }
+    })();
+  }
+
   async function uploadAgentSdf(file) {
+    if (!assertAgentSessionMutable("当前回复完成后可上传附件")) return;
     const sid = await ensureAgentSession();
     const fd = new FormData();
     fd.append("file", file);
@@ -2056,7 +2275,7 @@
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || "上传失败");
+      throw new Error(apiErrorMessage(err, "上传失败"));
     }
     const data = await resp.json();
     const name = data.sdf_filename || file.name;
@@ -2072,7 +2291,7 @@
       agentUploadBtn.setAttribute("aria-disabled", String(uploading));
       agentUploadBtn.title = uploading ? "附件上传中" : "上传附件";
     }
-    if (agentFileInput) agentFileInput.disabled = uploading;
+    if (agentFileInput) agentFileInput.disabled = uploading || isCurrentAgentSessionBusy();
     if (agentFileLabel) agentFileLabel.textContent = uploading ? "上传中…" : "上传附件";
   }
 
@@ -2124,12 +2343,13 @@
   }
 
   async function attachDemoSdfToSession() {
+    if (!assertAgentSessionMutable("当前回复完成后可加入试用库")) return;
     showAgentToast("正在加载试用库…");
     const sid = await ensureAgentSession();
     const resp = await fetch(`/api/agent/sessions/${sid}/demo-sdf`, { method: "POST" });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || "试用库加载失败");
+      throw new Error(apiErrorMessage(err, "试用库加载失败"));
     }
     const data = await resp.json();
     afterAgentSdfAttached(data.sdf_filename || demoSdfName);
@@ -2184,6 +2404,12 @@
       </div>
     `;
     const dialog = mask.querySelector(".mm-demo-pop");
+    const tryBtn = mask.querySelector('[data-action="try"]');
+    if (tryBtn && isCurrentAgentSessionBusy()) {
+      tryBtn.disabled = true;
+      const hint = tryBtn.querySelector(".mm-demo-pop-item-hint");
+      if (hint) hint.textContent = "当前回复完成后可加入";
+    }
     dialog.addEventListener("click", (e) => e.stopPropagation());
     mask.addEventListener("click", () => closeDemoSdfPop());
     mask.querySelector('[data-action="try"]').addEventListener("click", async (e) => {
@@ -2300,7 +2526,10 @@
   async function sendAgentMessage(text) {
     if (!Render) return;
     // Only block if *this* visible session is already streaming.
-    if (agentSessionId && agentStreams.get(agentSessionId)?.running) return;
+    if (isCurrentAgentSessionBusy()) {
+      showAgentToast("当前回复完成后再发送");
+      return;
+    }
 
     const pendingChips = getPendingAgentAttachments();
 
@@ -2345,7 +2574,14 @@
       if (!isStreamEntryActive(streamSid, entry)) return;
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || `请求失败 (${resp.status})`);
+        throw new Error(apiErrorMessage(err, `请求失败 (${resp.status})`));
+      }
+      entry.runId = resp.headers.get("X-MolMind-Run-ID") || "";
+      if (entry.runId) {
+        setAgentRunSnapshot(streamSid, {
+          run_id: entry.runId,
+          status: "running",
+        });
       }
 
       const reader = resp.body.getReader();
@@ -2380,6 +2616,14 @@
             ev = JSON.parse(line);
           } catch {
             continue;
+          }
+          if (ev.run_id && !entry.runId) entry.runId = String(ev.run_id);
+          if (ev.type === "done") {
+            setAgentRunSnapshot(streamSid, {
+              ...(currentAgentRun(streamSid) || {}),
+              run_id: String(ev.run_id || entry.runId || ""),
+              status: String(ev.status || "succeeded"),
+            });
           }
           if (agentSessionId === streamSid && isStreamEntryActive(streamSid, entry) && RunStatus) {
             RunStatus.applyEvent(ev);
@@ -2419,6 +2663,14 @@
         entry.running = false;
         entry.onComplete = null;
         agentStreams.delete(streamSid);
+        if (agentSessionId === streamSid) {
+          try {
+            const refreshed = await renderAgentSessionTranscript(streamSid);
+            setAgentRunSnapshot(streamSid, refreshed.active_run || null);
+          } catch {
+            /* the event stream remains the fallback transcript */
+          }
+        }
         syncAgentBusyUi();
         if (typeof onComplete === "function") {
           try {
@@ -2450,55 +2702,85 @@
     HistoryUI.open(agentChatRoot, agentHistoryPanel);
 
     async function refreshHistoryList() {
-      const sessions = await HistoryUI.fetchSessions();
-      HistoryUI.renderList(agentHistoryList, sessions, async (s) => {
-        HistoryUI.close(agentChatRoot, agentHistoryPanel);
-        try {
-          await loadAgentSession(s.session_id);
-        } catch (err) {
-          alert(err.message || err);
-        }
-      }, {
-        activeId: agentSessionId,
-        countEl: agentHistoryCount,
-        onRefresh: refreshHistoryList,
-        onDeleted: (sid) => {
-          abortSessionStream(sid);
-          if (agentSessionId === sid) {
-            setAgentSessionId(null);
-            resetAgentChatUi({ keepWelcome: true });
-            updateSessionMeta(null);
+      const loadSeq = ++agentHistoryLoadSeq;
+      if (agentHistoryCount) agentHistoryCount.textContent = "";
+      renderAgentDrawerLoading(agentHistoryList, "history");
+      try {
+        const sessions = await HistoryUI.fetchSessions();
+        if (loadSeq !== agentHistoryLoadSeq) return;
+        agentHistoryList.setAttribute("aria-busy", "false");
+        HistoryUI.renderList(agentHistoryList, sessions, async (s) => {
+          HistoryUI.close(agentChatRoot, agentHistoryPanel);
+          try {
+            await loadAgentSession(s.session_id);
+          } catch (err) {
+            alert(err.message || err);
           }
-          syncAgentBusyUi();
-        },
-      });
+        }, {
+          activeId: agentSessionId,
+          countEl: agentHistoryCount,
+          onRefresh: refreshHistoryList,
+          onDeleted: (sid) => {
+            abortSessionStream(sid);
+            if (agentSessionId === sid) {
+              setAgentSessionId(null);
+              resetAgentChatUi({ keepWelcome: true });
+              updateSessionMeta(null);
+            }
+            syncAgentBusyUi();
+          },
+        });
+      } catch (error) {
+        if (loadSeq !== agentHistoryLoadSeq) return;
+        renderAgentDrawerError(agentHistoryList, error.message || "无法加载会话历史");
+        throw error;
+      }
     }
 
-    await refreshHistoryList();
+    try {
+      await refreshHistoryList();
+    } catch {
+      /* error state is rendered inside the history drawer */
+    }
   }
 
-  async function refreshAgentSettings() {
+  async function refreshAgentSettings({ loading = false } = {}) {
     if (!SettingsUI || !agentSettingsBody) return;
-    const settings = await SettingsUI.fetchSettings(agentSessionId);
-    SettingsUI.render(agentSettingsBody, settings, {
-      sessionId: agentSessionId,
-      onChanged: async () => {
-        await refreshAgentSettings();
-        if (MentionUI && agentSessionId) MentionUI.refresh(agentSessionId).catch(() => {});
-      },
-    });
+    const loadSeq = ++agentSettingsLoadSeq;
+    if (loading) renderAgentDrawerLoading(agentSettingsBody, "catalog");
+    try {
+      const settings = await SettingsUI.fetchSettings(agentSessionId);
+      if (loadSeq !== agentSettingsLoadSeq) return;
+      agentSettingsBody.setAttribute("aria-busy", "false");
+      SettingsUI.render(agentSettingsBody, settings, {
+        sessionId: agentSessionId,
+        onChanged: async () => {
+          await refreshAgentSettings();
+          if (MentionUI && agentSessionId) MentionUI.refresh(agentSessionId).catch(() => {});
+        },
+      });
+    } catch (error) {
+      if (loadSeq === agentSettingsLoadSeq) {
+        renderAgentDrawerError(agentSettingsBody, error.message || "无法加载工具与插件");
+      }
+      throw error;
+    }
   }
 
   async function openAgentSettings() {
     if (!SettingsUI) return;
     if (HistoryUI) HistoryUI.close(agentChatRoot, agentHistoryPanel);
     SettingsUI.open(agentChatRoot, agentSettingsPanel);
+    renderAgentDrawerLoading(agentSettingsBody, "catalog");
     try {
       if (!agentSessionId) await ensureAgentSession();
-      await refreshAgentSettings();
-    } catch (err) {
-      if (agentSettingsBody) {
-        agentSettingsBody.innerHTML = `<p class="mm-history-empty">${err.message || err}</p>`;
+      await refreshAgentSettings({ loading: true });
+    } catch (error) {
+      if (agentSettingsBody && agentSettingsBody.getAttribute("aria-busy") === "true") {
+        renderAgentDrawerError(
+          agentSettingsBody,
+          error.message || "无法加载工具与插件"
+        );
       }
     }
   }
@@ -2511,6 +2793,10 @@
     agentFileInput.addEventListener("change", async () => {
       const file = agentFileInput.files && agentFileInput.files[0];
       if (!file || agentUploadInProgress) return;
+      if (!assertAgentSessionMutable("当前回复完成后可上传附件")) {
+        agentFileInput.value = "";
+        return;
+      }
       setAgentUploadState(true);
       try {
         await uploadAgentSdf(file);

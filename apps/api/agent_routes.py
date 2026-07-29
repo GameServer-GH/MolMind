@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent import get_runtime
+from agent.runtime.loop import SessionBusyError
 from apps.api.download_headers import content_disposition_attachment
 from plugins.molmind_core.scientific.pipeline.runner import TOP_N_MAX, TOP_N_MIN
 
@@ -47,6 +48,10 @@ def _owned_session(session_id: str, client_id: str):
     if not session or session.client_id != client_id:
         raise HTTPException(status_code=404, detail="会话不存在")
     return session
+
+
+def _busy_conflict(exc: SessionBusyError) -> HTTPException:
+    return HTTPException(status_code=409, detail=exc.payload)
 
 
 def _resolve_demo_sdf() -> tuple[Path, str]:
@@ -164,7 +169,10 @@ def list_sessions(
 @router.delete("/sessions")
 def clear_sessions(client_id: str = Depends(_require_client_id)) -> dict[str, Any]:
     """Clear only the current browser installation's conversation history."""
-    deleted_count = get_runtime().clear_sessions(client_id=client_id)
+    try:
+        deleted_count = get_runtime().clear_sessions_when_idle(client_id=client_id)
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {"deleted_count": deleted_count}
 
 
@@ -227,6 +235,8 @@ def get_session(
         "messages": session.messages,
         "installed_catalog": list(session.installed_catalog),
         "event_seq": session.event_seq,
+        "active_run": session.active_run,
+        "revision": session.revision,
     }
 
 
@@ -239,7 +249,12 @@ def get_session_events(
     runtime = get_runtime()
     session = _owned_session(session_id, client_id)
     events = runtime.store.read_events(session_id, after_seq=after_seq)
-    return {"session_id": session_id, "events": events, "event_seq": session.event_seq}
+    return {
+        "session_id": session_id,
+        "events": events,
+        "event_seq": session.event_seq,
+        "active_run": session.active_run,
+    }
 
 
 @router.patch("/sessions/{session_id}")
@@ -296,7 +311,10 @@ def delete_session(
 ) -> dict[str, Any]:
     runtime = get_runtime()
     _owned_session(session_id, client_id)
-    ok = runtime.delete_session(session_id)
+    try:
+        ok = runtime.delete_session_when_idle(session_id)
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     if not ok:
         # also treat missing as gone
         if runtime.get_session(session_id):
@@ -318,7 +336,14 @@ async def upload_sdf(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="文件为空")
-    runtime.attach_sdf(session, filename=file.filename, content=content)
+    try:
+        session = runtime.attach_session_sdf(
+            session_id,
+            filename=file.filename,
+            content=content,
+        )
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {
         "session_id": session_id,
         "sdf_filename": session.sdf_filename,
@@ -335,7 +360,10 @@ def clear_sdf(
 ) -> dict[str, Any]:
     runtime = get_runtime()
     session = _owned_session(session_id, client_id)
-    runtime.detach_sdf(session)
+    try:
+        session = runtime.detach_session_sdf(session_id)
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {
         "session_id": session_id,
         "sdf_filename": None,
@@ -382,7 +410,14 @@ def attach_demo_sdf(
     content = path.read_bytes()
     if not content:
         raise HTTPException(status_code=400, detail="试用样例库为空")
-    runtime.attach_sdf(session, filename=path.name, content=content)
+    try:
+        session = runtime.attach_session_sdf(
+            session_id,
+            filename=path.name,
+            content=content,
+        )
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {
         "session_id": session_id,
         "sdf_filename": session.sdf_filename,
@@ -401,9 +436,11 @@ def catalog_install(
     runtime = get_runtime()
     session = _owned_session(session_id, client_id)
     try:
-        runtime.install_catalog_plugin(session, body.plugin_id)
+        session = runtime.install_session_catalog(session_id, body.plugin_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {
         "session_id": session_id,
         "installed_catalog": list(session.installed_catalog),
@@ -419,7 +456,10 @@ def catalog_uninstall(
 ) -> dict[str, Any]:
     runtime = get_runtime()
     session = _owned_session(session_id, client_id)
-    runtime.uninstall_catalog_plugin(session, plugin_id)
+    try:
+        session = runtime.uninstall_session_catalog(session_id, plugin_id)
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
     return {
         "session_id": session_id,
         "installed_catalog": list(session.installed_catalog),
@@ -442,13 +482,24 @@ async def message_stream(
                 detail=f"top_n 须在 {TOP_N_MIN}–{TOP_N_MAX} 之间",
             )
 
+    try:
+        reserved_run = runtime.reserve_session_run(
+            session_id,
+            body.text,
+            top_n=body.top_n,
+        )
+    except SessionBusyError as exc:
+        raise _busy_conflict(exc) from exc
+    run_id = str(reserved_run["run_id"])
+
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
     def run_job() -> None:
         try:
-            for event in runtime.handle_session_message(
+            for event in runtime.handle_reserved_session_message(
                 session_id,
+                run_id,
                 body.text,
                 top_n=body.top_n,
             ):
@@ -462,8 +513,12 @@ async def message_stream(
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
+    # The durable Run owns execution, not the lifetime of the HTTP response.
+    # Submitting before StreamingResponse iteration lets refresh/disconnect
+    # detach the observer without leaving a permanently queued Run.
+    _EXECUTOR.submit(run_job)
+
     async def generate():
-        _EXECUTOR.submit(run_job)
         while True:
             item = await queue.get()
             if item is None:
@@ -478,6 +533,7 @@ async def message_stream(
         headers={
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
+            "X-MolMind-Run-ID": run_id,
         },
     )
 

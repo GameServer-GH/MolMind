@@ -24,6 +24,13 @@
       .replace(/"/g, "&quot;");
   }
 
+  function apiErrorMessage(body, fallback) {
+    const detail = body && body.detail;
+    if (typeof detail === "string" && detail) return detail;
+    if (detail && typeof detail === "object" && detail.message) return detail.message;
+    return fallback;
+  }
+
   function formatSessionTime(iso) {
     const t = Date.parse(iso || "");
     if (!Number.isFinite(t) || !t) return "";
@@ -154,6 +161,9 @@
   }
 
   async function deleteSession(session) {
+    if (["queued", "running", "cancel_requested"].includes(String(session.run_status || ""))) {
+      throw new Error("当前会话仍在执行，完成后才能删除");
+    }
     const name = session.title || session.preview || "未命名对话";
     const ok = await openDeleteConfirm(name);
     if (!ok) return;
@@ -162,7 +172,7 @@
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || "删除失败");
+      throw new Error(apiErrorMessage(err, "删除失败"));
     }
     if (onDeletedActive) onDeletedActive(session.session_id);
     MolMindAgentHistory.forgetSession(session.session_id);
@@ -493,7 +503,10 @@
       const ok = await openClearHistoryConfirm();
       if (!ok) return false;
       const resp = await fetch("/api/agent/sessions", { method: "DELETE" });
-      if (!resp.ok) throw new Error("清空对话历史失败");
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(err, "清空对话历史失败"));
+      }
       if (refreshCallback) await refreshCallback();
       return true;
     },
@@ -524,7 +537,7 @@
             (activeId && s.session_id === activeId ? " mm-history-item--active" : "");
           row.innerHTML = `
             <button type="button" class="mm-history-item-main">
-              <span class="mm-history-item-title">${escapeHtml(s.title || "未命名对话")}</span>
+              <span class="mm-history-item-title">${escapeHtml(s.title || "未命名对话")}${["queued", "running", "cancel_requested"].includes(String(s.run_status || "")) ? " · 运行中" : ""}</span>
               <span class="mm-history-item-preview">${escapeHtml(s.preview || s.sdf_filename || s.session_id.slice(0, 8))}</span>
               <span class="mm-history-item-time">${escapeHtml(formatSessionTime(s.updated_at || s.created_at))}</span>
             </button>
@@ -534,6 +547,9 @@
           `;
           const main = row.querySelector(".mm-history-item-main");
           const more = row.querySelector(".mm-history-item-more");
+          if (["queued", "running", "cancel_requested"].includes(String(s.run_status || ""))) {
+            more.title = "运行中的会话不可删除";
+          }
           main.addEventListener("click", () => {
             if (longPressJustFired) {
               longPressJustFired = false;

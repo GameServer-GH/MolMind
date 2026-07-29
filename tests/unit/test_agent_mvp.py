@@ -613,6 +613,98 @@ def test_handle_session_message_serializes_turns(monkeypatch, tmp_path) -> None:
     assert observed == ["first", "second"]
 
 
+def test_active_run_blocks_session_mutations_and_survives_snapshot(tmp_path) -> None:
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime, SessionBusyError
+
+    root = tmp_path / "runs"
+    runtime = AgentRuntime(store=FileRunStore(root=root))
+    session = runtime.create_session(client_id="browser_test_busy_0001")
+    runtime.attach_session_sdf(session.session_id, filename="before.sdf", content=b"before")
+    reserved = runtime.reserve_session_run(session.session_id, "生成 top10")
+
+    with pytest.raises(SessionBusyError) as upload_error:
+        runtime.attach_session_sdf(
+            session.session_id,
+            filename="after.sdf",
+            content=b"after",
+        )
+    assert upload_error.value.payload["code"] == "session_busy"
+    assert upload_error.value.payload["run_id"] == reserved["run_id"]
+    assert session.sdf_filename == "before.sdf"
+
+    with pytest.raises(SessionBusyError):
+        runtime.delete_session_when_idle(session.session_id)
+    assert root.joinpath(session.session_id, "meta.json").is_file()
+
+
+def test_disk_reload_marks_orphaned_active_run_interrupted(tmp_path) -> None:
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime
+
+    root = tmp_path / "runs"
+    runtime = AgentRuntime(store=FileRunStore(root=root))
+    session = runtime.create_session(client_id="browser_test_restart_0001")
+    reserved = runtime.reserve_session_run(session.session_id, "长任务")
+
+    reloaded_store = FileRunStore(root=root)
+    reloaded = reloaded_store.get(session.session_id)
+    assert reloaded is not None
+    assert reloaded.active_run is not None
+    assert reloaded.active_run["run_id"] == reserved["run_id"]
+    assert reloaded.active_run["status"] == "interrupted"
+    assert reloaded_store.read_events(session.session_id)[-1]["type"] == "run_interrupted"
+
+
+def test_stream_events_expose_durable_run_identity(client: TestClient) -> None:
+    sid = client.post("/api/agent/sessions").json()["session_id"]
+    with client.stream(
+        "POST",
+        f"/api/agent/sessions/{sid}/message/stream",
+        json={"text": "你好"},
+    ) as response:
+        assert response.headers.get("X-MolMind-Run-ID")
+        events = [json.loads(line) for line in response.iter_lines() if line]
+
+    run_ids = {event.get("run_id") for event in events}
+    assert run_ids == {response.headers["X-MolMind-Run-ID"]}
+    detail = client.get(f"/api/agent/sessions/{sid}").json()
+    assert detail["active_run"]["status"] == "succeeded"
+    assert detail["active_run"]["last_event_seq"] == detail["event_seq"]
+
+
+def test_busy_session_api_rejects_upload_delete_and_second_message(client: TestClient) -> None:
+    from agent import get_runtime
+
+    sid = client.post("/api/agent/sessions").json()["session_id"]
+    runtime = get_runtime()
+    reserved = runtime.reserve_session_run(sid, "尚未启动的任务")
+    try:
+        upload = client.post(
+            f"/api/agent/sessions/{sid}/upload",
+            files={"file": ("next.sdf", b"next", "chemical/x-mdl-sdfile")},
+        )
+        deleted = client.delete(f"/api/agent/sessions/{sid}")
+        second = client.post(
+            f"/api/agent/sessions/{sid}/message/stream",
+            json={"text": "第二条消息"},
+        )
+        cleared = client.delete("/api/agent/sessions")
+
+        for response in (upload, deleted, second):
+            assert response.status_code == 409
+            payload = response.json()["detail"]
+            assert payload["code"] == "session_busy"
+            assert payload["run_id"] == reserved["run_id"]
+        assert cleared.status_code == 409
+        assert cleared.json()["detail"]["code"] == "sessions_busy"
+    finally:
+        session = runtime.get_session(sid)
+        assert session is not None and session.active_run is not None
+        session.active_run["status"] = "interrupted"
+        runtime.store.persist(session)
+
+
 def test_agent_reruns_when_requested_top_n_exceeds_frozen_result(
     monkeypatch, tmp_path
 ) -> None:

@@ -1864,6 +1864,135 @@
   color: #999;
 }
 
+/* Shared drawer loading skeleton. A single diagonal light beam crosses the
+   complete placeholder so history and catalog loading feel like one surface. */
+.mm-drawer-loading {
+  position: relative;
+  min-height: 260px;
+  padding: 8px 4px 20px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.mm-drawer-loading::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: -30%;
+  bottom: -30%;
+  left: -65%;
+  width: 42%;
+  pointer-events: none;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(176, 176, 176, 0.08) 28%,
+    rgba(232, 232, 232, 0.42) 45%,
+    rgba(255, 255, 255, 0.86) 50%,
+    rgba(232, 232, 232, 0.42) 55%,
+    rgba(176, 176, 176, 0.08) 72%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  filter: blur(1px);
+  animation: mm-drawer-loading-beam 1.45s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.mm-drawer-loading-label {
+  margin: 2px 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(60, 60, 67, 0.4);
+}
+
+.mm-drawer-loading-row,
+.mm-drawer-loading-pill,
+.mm-drawer-loading-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.mm-drawer-loading-row {
+  height: 66px;
+  margin: 0 4px 8px;
+  border-radius: 14px;
+}
+
+.mm-drawer-loading-row::before,
+.mm-drawer-loading-row::after,
+.mm-drawer-loading-card::before,
+.mm-drawer-loading-card::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(105, 112, 128, 0.12);
+}
+
+.mm-drawer-loading-row::before {
+  top: 17px;
+  width: 48%;
+}
+
+.mm-drawer-loading-row::after {
+  top: 36px;
+  width: 72%;
+  opacity: 0.72;
+}
+
+.mm-drawer-loading-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 0 4px 16px;
+}
+
+.mm-drawer-loading-pill {
+  width: 66px;
+  height: 34px;
+  border-radius: 999px;
+}
+
+.mm-drawer-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.mm-drawer-loading-card {
+  height: 76px;
+  border-radius: 16px;
+}
+
+.mm-drawer-loading-card::before {
+  top: 20px;
+  left: 54px;
+  width: 42%;
+}
+
+.mm-drawer-loading-card::after {
+  top: 40px;
+  left: 54px;
+  width: 58%;
+  opacity: 0.7;
+}
+
+@keyframes mm-drawer-loading-beam {
+  from { left: -65%; }
+  to { left: 135%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-drawer-loading::after {
+    animation-duration: 2.8s;
+  }
+}
+
 /* History context tips (GameGhost-style) */
 .mm-context-menu-overlay {
   position: fixed;

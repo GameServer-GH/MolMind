@@ -88,6 +88,13 @@ class AgentSession:
     artifacts: dict[str, Artifact] = field(default_factory=dict)
     messages: list[dict[str, Any]] = field(default_factory=list)
     event_seq: int = 0
+    #: Durable state for the latest turn. Active statuses are queued/running/
+    #: cancel_requested; terminal snapshots are retained for refresh recovery.
+    active_run: dict[str, Any] | None = None
+    #: Incremented by session-scoped input/config mutations. A Run freezes the
+    #: revision it started from so concurrent writes can never be mistaken for
+    #: part of that Run.
+    revision: int = 0
 
 
 class FileRunStore:
@@ -186,6 +193,15 @@ class FileRunStore:
                     "profile_id": meta.get("profile_id") or "competition_masld",
                     "artifact_count": len(meta.get("artifact_ids") or []),
                     "event_seq": int(meta.get("event_seq") or 0),
+                    "run_status": str(
+                        (meta.get("active_run") or {}).get("status") or ""
+                    ),
+                    "active_run_id": (
+                        str((meta.get("active_run") or {}).get("run_id") or "")
+                        if str((meta.get("active_run") or {}).get("status") or "")
+                        in {"queued", "running", "cancel_requested"}
+                        else ""
+                    ),
                 }
             )
         items.sort(key=lambda x: x.get("updated_at") or x.get("created_at") or "", reverse=True)
@@ -349,11 +365,16 @@ class FileRunStore:
             "artifact_ids": list(session.artifacts.keys()),
             "messages": session.messages[-50:],
             "event_seq": session.event_seq,
+            "active_run": session.active_run,
+            "revision": session.revision,
         }
-        (d / "meta.json").write_text(
+        meta_path = d / "meta.json"
+        tmp_path = d / f".meta.{uuid.uuid4().hex}.tmp"
+        tmp_path.write_text(
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        tmp_path.replace(meta_path)
 
     def _write_artifact(self, session: AgentSession, artifact: Artifact) -> None:
         d = self._session_dir(session.session_id) / "artifacts"
@@ -467,7 +488,36 @@ class FileRunStore:
             last_mechanism_job_id=str(meta.get("last_mechanism_job_id") or ""),
             messages=list(meta.get("messages") or []),
             event_seq=int(meta.get("event_seq") or 0),
+            active_run=(
+                dict(meta["active_run"])
+                if isinstance(meta.get("active_run"), dict)
+                else None
+            ),
+            revision=int(meta.get("revision") or 0),
         )
+        # An active Run loaded from disk cannot still have an owning worker in
+        # this process. Close it explicitly instead of leaving the UI forever
+        # in a false "running" state after an API restart.
+        interrupted_on_load = bool(
+            isinstance(session.active_run, dict)
+            and str(session.active_run.get("status") or "")
+            in {"queued", "running", "cancel_requested"}
+        )
+        if interrupted_on_load:
+            run_id = str(session.active_run.get("run_id") or "")
+            session.active_run["status"] = "interrupted"
+            session.active_run["ended_at"] = _now()
+            session.active_run["heartbeat_at"] = _now()
+            interrupted = self.append_event(
+                session,
+                {
+                    "type": "run_interrupted",
+                    "run_id": run_id,
+                    "turn_id": str(session.active_run.get("turn_id") or run_id),
+                    "detail": "服务进程重启，本轮执行已中断，可重新发送本轮请求。",
+                },
+            )
+            session.active_run["last_event_seq"] = int(interrupted.get("seq") or 0)
         sdf_path = d / "library.sdf"
         if sdf_path.is_file():
             session.sdf_bytes = sdf_path.read_bytes()
@@ -494,6 +544,8 @@ class FileRunStore:
                     created_at=am.get("created_at") or _now(),
                 )
                 session.artifacts[art.artifact_id] = art
+        if interrupted_on_load:
+            self._persist_meta(session)
         return session
 
 

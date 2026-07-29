@@ -848,6 +848,11 @@
       turn.appendAssistant(ev.text || "");
     } else if (type === "error") {
       turn.appendAssistant(`错误：${ev.detail || "unknown"}`, { error: true });
+    } else if (type === "run_interrupted") {
+      turn.appendAssistant(
+        ev.detail || "服务重启导致本轮中断，请重新发送本轮请求。",
+        { error: true }
+      );
     }
     // done：由调用方 waitForStream 后再 finalize（直播打字机完成后收起思考）
   }

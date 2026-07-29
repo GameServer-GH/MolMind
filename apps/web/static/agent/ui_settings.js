@@ -1,5 +1,11 @@
 /* MolMind Agent — settings / catalog drawer (Codex-inspired) */
 (function (global) {
+  function apiErrorMessage(body, fallback) {
+    const detail = body && body.detail;
+    if (typeof detail === "string" && detail) return detail;
+    if (detail && typeof detail === "object" && detail.message) return detail.message;
+    return fallback;
+  }
   /** Browser-local preferred Catalog installs (cross-session). null = never seeded. */
   const LEGACY_CATALOG_PREF_KEY = "molmind:agent_installed_catalog_v1";
   const CLIENT_ID =
@@ -569,7 +575,7 @@
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || "添加失败");
+        throw new Error(apiErrorMessage(err, "添加失败"));
       }
       return resp.json();
     },
@@ -581,7 +587,7 @@
       );
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || "移除失败");
+        throw new Error(apiErrorMessage(err, "移除失败"));
       }
       return resp.json();
     },
