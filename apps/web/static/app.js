@@ -2581,8 +2581,8 @@
     mmProfileBanner.addEventListener("click", () => {
       profileInfoModal.classList.add("mm-profile-info-modal--open");
       profileInfoModal.setAttribute("aria-hidden", "false");
-      if (profileInfoVersion && profileInfoVersion.textContent === "加载中…") {
-        fetch("/health")
+      if (profileInfoVersion) {
+        fetch("/health", { cache: "no-store" })
           .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error("health request failed"))))
           .then((data) => {
             profileInfoVersion.textContent = data.version || "未知";
