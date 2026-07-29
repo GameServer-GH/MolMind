@@ -336,7 +336,7 @@
       overflow: hidden;
     }
   </style>
-  <link href="./agent/agent_chat.css?v=mm-agent-upload-loading-1" rel="stylesheet" />
+  <link href="./agent/agent_chat.css?v=mm-agent-upload-spinner-1" rel="stylesheet" />
   <link href="./agent/agent_icons.css?v=mm-agent-send-1" rel="stylesheet" />
   <link href="./agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
   <link href="./agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
@@ -396,6 +396,7 @@
             <div class="mm-bottom-send-toolbar">
               <label id="agentUploadBtn" class="mm-glass-btn mm-glass-btn-wide cursor-pointer" title="上传附件" aria-label="上传附件">
                 <span class="mm-icon mm-icon--upload mm-icon--md" aria-hidden="true"></span>
+                <span class="mm-upload-spinner" aria-hidden="true"></span>
                 <span id="agentFileLabel">上传附件</span>
                 <input id="agentFileInput" type="file" accept=".sdf" class="hidden" />
               </label>
@@ -871,7 +872,7 @@
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./agent/ui_render.js?v=mm-agent-stream-1"></script>
+  <script src="./agent/ui_render.js?v=mm-agent-thinking-duration-persist-1"></script>
   <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-box-1"></script>
   <script src="./agent/ui_history.js?v=mm-agent-hist-10"></script>
   <script src="./agent/ui_settings.js?v=mm-agent-drawer-2"></script>
@@ -879,6 +880,6 @@
   <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
   <script src="./agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
   <script src="./agent/tour/ui_tour.js?v=mm-agent-send-1"></script>
-  <script src="./app.js?v=mm-agent-upload-loading-1"></script>
+  <script src="./app.js?v=mm-agent-thinking-duration-persist-1"></script>
 </body>
 </html>

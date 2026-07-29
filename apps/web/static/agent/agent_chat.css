@@ -786,6 +786,14 @@
   animation: mm-thinking-pulse 1.2s ease-in-out infinite;
 }
 
+.mm-thinking-duration {
+  color: rgba(60, 60, 67, 0.5);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 @keyframes mm-thinking-pulse {
   0%, 100% { opacity: 0.35; transform: scale(0.85); }
   50% { opacity: 1; transform: scale(1.15); }
@@ -1465,8 +1473,23 @@
   pointer-events: none;
 }
 
+.mm-upload-spinner {
+  display: none;
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(51, 51, 51, 0.25);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: mm-upload-spin 0.75s linear infinite;
+}
+
 .mm-upload-btn--loading .mm-icon--upload {
-  animation: mm-upload-spin 0.9s linear infinite;
+  display: none;
+}
+
+.mm-upload-btn--loading .mm-upload-spinner {
+  display: inline-block;
 }
 
 @keyframes mm-upload-spin {
@@ -1747,7 +1770,7 @@
 
 .mm-history-item:hover,
 .mm-history-item--active {
-  background: rgba(0, 90, 255, 0.06);
+  background: rgb(87 87 87 / 0.06);
 }
 
 .mm-history-item-main {

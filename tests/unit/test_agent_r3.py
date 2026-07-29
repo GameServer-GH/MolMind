@@ -57,6 +57,7 @@ def test_list_sessions_and_events(client: TestClient) -> None:
     assert detail["artifacts"]
 
     events = client.get(f"/api/agent/sessions/{sid}/events").json()
+    assert all(event.get("occurred_at") for event in events["events"])
     types = [e.get("type") for e in events["events"]]
     assert "thinking" in types
     assert "card" in types

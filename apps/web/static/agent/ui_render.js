@@ -601,7 +601,7 @@
     return `证据摘要${status ? " · " + status : ""}${message ? " · " + message : ""}`;
   }
 
-  function createTraceBlock(reveal, { live, onTick } = {}) {
+  function createTraceBlock(reveal, { live, onTick, startedAt, completedAt } = {}) {
     const wrap = document.createElement("div");
     wrap.className = "mm-thinking mm-thinking--active";
     wrap.dataset.open = "1";
@@ -618,12 +618,15 @@
     const pulse = document.createElement("span");
     pulse.className = "mm-thinking-pulse";
     pulse.setAttribute("aria-hidden", "true");
+    const duration = document.createElement("span");
+    duration.className = "mm-thinking-duration";
     const count = document.createElement("span");
     count.className = "mm-thinking-count";
 
     head.appendChild(chev);
     head.appendChild(label);
     head.appendChild(pulse);
+    head.appendChild(duration);
     head.appendChild(count);
 
     const body = document.createElement("div");
@@ -641,6 +644,22 @@
 
     wrap.appendChild(head);
     wrap.appendChild(body);
+
+    const traceStartedAt = Number.isFinite(startedAt) ? startedAt : Date.now();
+    let traceCompletedAt = Number.isFinite(completedAt) ? completedAt : null;
+    const formatDuration = (referenceTime = Date.now()) => {
+      const elapsedSeconds = Math.max(0, Math.floor((referenceTime - traceStartedAt) / 1000));
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+      return `${String(minutes).padStart(2, "0")}:${seconds}`;
+    };
+    const updateDuration = (completed) => {
+      duration.textContent = `${completed ? "对话用时" : "已对话"} ${formatDuration(
+        completed && traceCompletedAt ? traceCompletedAt : Date.now()
+      )}`;
+    };
+    updateDuration(false);
+    const durationTimer = live ? setInterval(() => updateDuration(false), 1000) : null;
 
     const markLatest = () => {
       body.querySelectorAll(".mm-thinking-step--latest").forEach((n) => {
@@ -679,7 +698,10 @@
         if (nextLabel) label.textContent = nextLabel;
         count.textContent = `${n} 步`;
       },
-      finalize() {
+      finalize({ completedAt: nextCompletedAt } = {}) {
+        if (Number.isFinite(nextCompletedAt)) traceCompletedAt = nextCompletedAt;
+        if (durationTimer) clearInterval(durationTimer);
+        updateDuration(true);
         const n = Number(wrap.dataset.steps || "0");
         label.textContent = "思考与执行过程";
         count.textContent = n ? `${n} 步` : "";
@@ -822,7 +844,7 @@
      * answer 内顺序固定：思考过程 → 正文 → 附件（末尾）。
      * live=true 时对思考/回答做打字机渐进揭示；历史回放保持瞬间展示。
      */
-    beginTurn(container, { text, attachments, live, onScroll } = {}) {
+    beginTurn(container, { text, attachments, live, onScroll, startedAt, completedAt } = {}) {
       const turnId =
         "turn-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
       const root = document.createElement("div");
@@ -850,6 +872,7 @@
       container.appendChild(root);
 
       const reveal = live ? createRevealQueue() : null;
+      const turnStartedAt = Number.isFinite(startedAt) ? startedAt : Date.now();
       const tick = () => {
         if (typeof onScroll === "function") onScroll();
       };
@@ -864,7 +887,12 @@
         artifacts,
         ensureTrace() {
           if (!trace) {
-            trace = createTraceBlock(reveal, { live: !!live, onTick: tick });
+            trace = createTraceBlock(reveal, {
+              live: !!live,
+              onTick: tick,
+              startedAt: turnStartedAt,
+              completedAt,
+            });
             answer.insertBefore(trace.root, body);
           }
           return trace;
@@ -910,10 +938,10 @@
         waitForStream() {
           return reveal ? reveal.whenIdle() : Promise.resolve();
         },
-        finalize() {
+        finalize({ completedAt: nextCompletedAt } = {}) {
           if (finalized) return;
           finalized = true;
-          if (trace) trace.finalize();
+          if (trace) trace.finalize({ completedAt: nextCompletedAt });
         },
         abortStream() {
           if (reveal) reveal.flush();
@@ -962,7 +990,10 @@
     /** 将一批事件回放到一个已创建的 turn（一轮只一个思考块） */
     replayEventsIntoTurn(turn, events) {
       (events || []).forEach((ev) => applyEventToTurn(turn, ev));
-      turn.finalize();
+      const eventTimes = (events || [])
+        .map((event) => Date.parse(event && event.occurred_at ? event.occurred_at : ""))
+        .filter(Number.isFinite);
+      turn.finalize({ completedAt: eventTimes.length ? eventTimes[eventTimes.length - 1] : undefined });
     },
 
     replayEvents(container, events, onScroll) {

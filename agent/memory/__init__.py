@@ -212,6 +212,9 @@ class FileRunStore:
     def append_event(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
         session.event_seq += 1
         payload = {"seq": session.event_seq, **event}
+        # Event time is persisted separately from session.updated_at so the
+        # frontend can reconstruct a completed turn's elapsed time on reload.
+        payload.setdefault("occurred_at", _now())
         path = self._session_dir(session.session_id) / "events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as fh:

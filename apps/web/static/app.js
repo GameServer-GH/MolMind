@@ -1949,9 +1949,13 @@
     let needUser = true;
     let batch = [];
     let turn = null;
+    const eventTime = (event) => {
+      const value = Date.parse(event && event.occurred_at ? event.occurred_at : "");
+      return Number.isFinite(value) ? value : undefined;
+    };
     const flush = () => {
       if (!batch.length) return;
-      if (!turn) turn = Render.beginTurn(agentMessages, {});
+      if (!turn) turn = Render.beginTurn(agentMessages, { startedAt: eventTime(batch[0]) });
       Render.replayEventsIntoTurn(turn, batch);
       turn = null;
       batch = [];
@@ -1963,6 +1967,7 @@
         turn = Render.beginTurn(agentMessages, {
           text: um.text || "",
           attachments: um.attachments || [],
+          startedAt: eventTime(ev),
         });
         needUser = false;
       }
@@ -2268,6 +2273,13 @@
     if (agentInput) agentInput.focus();
   }
 
+  function shouldWarnSnapshotFallback(attachments, text) {
+    const hasSdf = (attachments || []).some(
+      (attachment) => attachment && (attachment.kind === "sdf" || /\.sdf$/i.test(attachment.filename || ""))
+    );
+    return hasSdf && /csv|候选清单|提名清单/i.test(String(text || ""));
+  }
+
   async function sendAgentMessage(text) {
     if (!Render) return;
     // Only block if *this* visible session is already streaming.
@@ -2297,6 +2309,12 @@
         onScroll: agentScrollBottom,
       });
       activeTurn = ownedTurn;
+      if (shouldWarnSnapshotFallback(pendingChips, text)) {
+        ownedTurn.appendAssistant(
+          "提示：若附件中的分子未命中本地证据快照，本轮会转入本地补洞与结构计算；生成 CSV 的耗时可能明显增加，请耐心等待。",
+          { instant: true }
+        );
+      }
       if (pendingChips.length) setAgentAttachment(null, { pending: false });
       if (TurnRail) TurnRail.rebuild();
       agentScrollBottom();
