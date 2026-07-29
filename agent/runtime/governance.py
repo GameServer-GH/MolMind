@@ -255,7 +255,31 @@ class ToolGovernance:
             args_hash=args_hash,
             allow_retry=bool(tool.idempotent),
         )
+        post_deadline_finalizer = (
+            not allowed
+            and reason == "max_wall_time_exceeded"
+            and tool_id == "export_nomination"
+            and getattr(session, "last_result", None) is not None
+            and bool(tool.idempotent)
+            and not bool(tool.writes_selection)
+        )
         if not allowed:
+            if post_deadline_finalizer:
+                call = controller.start_post_deadline_finalizer(
+                    tool_id=tool_id,
+                    args_hash=args_hash,
+                    task_id=task_id,
+                    timeout_sec=tool.timeout_sec,
+                    writes_selection=tool.writes_selection,
+                )
+                return GovernanceDecision(
+                    True,
+                    "post_deadline_finalizer",
+                    "筛选已完成；允许进行一次本地 CSV 收尾导出。",
+                    args_hash,
+                    call=call,
+                    approval_scope=required_scope,
+                )
             return GovernanceDecision(
                 False,
                 reason,

@@ -104,6 +104,14 @@
   background: #fff7f7;
 }
 
+.mm-confirm-error {
+  min-height:18px;
+  margin:8px 0 0;
+  color:#b42318;
+  font-size:12px;
+  line-height:1.45;
+}
+
 .mm-confirm-footer {
   display: flex;
   gap: 10px;

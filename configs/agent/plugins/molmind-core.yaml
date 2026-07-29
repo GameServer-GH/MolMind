@@ -29,7 +29,9 @@ tool_contracts:
   score_and_rank:
     requires: [sdf]
     produces: [frozen_result]
-    timeout_sec: 300
+    # TargetMol cold-start runs may build local model/snapshot state and take
+    # about 20 minutes; warm runs usually finish in under one minute.
+    timeout_sec: 1800
     input_schema:
       type: object
       required: [top_n]
@@ -58,8 +60,10 @@ tool_contracts:
         providers: { type: array }
   start_mechanism_report:
     requires: [frozen_result]
-    produces: [mechanism_job]
-    timeout_sec: 120
+    # The runtime adapter starts the background job and waits for the PDF, so
+    # its terminal success means the artifact is actually ready.
+    produces: [mechanism_pdf]
+    timeout_sec: 240
     input_schema: { type: object, properties: {} }
   get_mechanism_job:
     requires: [mechanism_job]

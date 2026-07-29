@@ -1591,6 +1591,8 @@
   const profileInfoModal = document.getElementById("profileInfoModal");
   const profileInfoVersion = document.getElementById("profileInfoVersion");
   const profileInfoBuild = document.getElementById("profileInfoBuild");
+  const profileInfoClientId = document.getElementById("profileInfoClientId");
+  const profileInfoClientEdit = document.getElementById("profileInfoClientEdit");
   const agentHistoryCloseBtn = document.getElementById("agentHistoryCloseBtn");
   const agentSettingsPanel = document.getElementById("agentSettingsPanel");
   const agentSettingsBody = document.getElementById("agentSettingsBody");
@@ -1618,7 +1620,12 @@
     });
   }
 
-  const AGENT_SESSION_KEY = "molmind:agent_active_session_v1";
+  const LEGACY_AGENT_SESSION_KEY = "molmind:agent_active_session_v1";
+  const AGENT_CLIENT_ID =
+    window.MolMindClientIdentity && window.MolMindClientIdentity.clientId
+      ? window.MolMindClientIdentity.clientId
+      : "anonymous";
+  const AGENT_SESSION_KEY = `${LEGACY_AGENT_SESSION_KEY}:${AGENT_CLIENT_ID}`;
   let agentSessionId = null;
   let agentBusy = false;
   let activeTurn = null;
@@ -1634,7 +1641,14 @@
 
   function readCachedAgentSessionId() {
     try {
-      return localStorage.getItem(AGENT_SESSION_KEY) || null;
+      const scoped = localStorage.getItem(AGENT_SESSION_KEY);
+      if (scoped) return scoped;
+      const legacy = localStorage.getItem(LEGACY_AGENT_SESSION_KEY);
+      if (legacy) {
+        localStorage.setItem(AGENT_SESSION_KEY, legacy);
+        localStorage.removeItem(LEGACY_AGENT_SESSION_KEY);
+      }
+      return legacy || null;
     } catch {
       return null;
     }
@@ -1989,7 +2003,10 @@
     const lastTurn = turns.length ? turns[turns.length - 1] : null;
     const artifactsEl = lastTurn && lastTurn.querySelector(".mm-turn-artifacts");
     (detail.artifacts || []).forEach((card) => {
-      const exists = agentMessages.querySelector(`a[href="${card.download_url}"]`);
+      const cardHref = window.MolMindClientIdentity
+        ? window.MolMindClientIdentity.decorateDownloadUrl(card.download_url)
+        : card.download_url;
+      const exists = agentMessages.querySelector(`a[href="${cardHref}"]`);
       if (exists) return;
       Render.appendArtifactCard(artifactsEl || agentMessages, card);
     });
@@ -2592,11 +2609,15 @@
   }
   if (agentHistoryBtn) agentHistoryBtn.addEventListener("click", () => openAgentHistory());
   if (mmProfileBanner && profileInfoModal) {
+    const ClientIdentity = window.MolMindClientIdentity;
     const closeProfileInfo = () => {
       profileInfoModal.classList.remove("mm-profile-info-modal--open");
       profileInfoModal.setAttribute("aria-hidden", "true");
     };
     mmProfileBanner.addEventListener("click", () => {
+      if (profileInfoClientId) {
+        profileInfoClientId.textContent = ClientIdentity ? ClientIdentity.clientId : "不可用";
+      }
       profileInfoModal.classList.add("mm-profile-info-modal--open");
       profileInfoModal.setAttribute("aria-hidden", "false");
       if (profileInfoVersion) {
@@ -2612,6 +2633,113 @@
           });
       }
     });
+    if (profileInfoClientEdit && ClientIdentity) {
+      profileInfoClientEdit.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeProfileInfo();
+
+        const oldMask = document.getElementById("agentClientIdDialog");
+        if (oldMask) oldMask.remove();
+        const mask = document.createElement("div");
+        mask.id = "agentClientIdDialog";
+        mask.className = "mm-confirm-mask";
+        mask.setAttribute("role", "dialog");
+        mask.setAttribute("aria-modal", "true");
+        mask.setAttribute("aria-labelledby", "agentClientIdDialogTitle");
+        mask.innerHTML = `
+          <div class="mm-confirm-dialog">
+            <div class="mm-confirm-header">
+              <span class="mm-icon mm-icon--pencil mm-confirm-icon mm-confirm-icon--neutral" aria-hidden="true"></span>
+              <h3 id="agentClientIdDialogTitle">修改用户 ID</h3>
+            </div>
+            <div class="mm-confirm-content">
+              <label class="mm-confirm-label" for="agentClientIdInput">用户 ID</label>
+              <input id="agentClientIdInput" class="mm-confirm-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" />
+              <p class="mm-confirm-error" aria-live="polite"></p>
+            </div>
+            <div class="mm-confirm-footer">
+              <button type="button" class="mm-confirm-cancel">取消</button>
+              <button type="button" class="mm-confirm-ok mm-confirm-ok--primary">切换</button>
+            </div>
+          </div>
+        `;
+
+        const input = mask.querySelector("#agentClientIdInput");
+        const cancelBtn = mask.querySelector(".mm-confirm-cancel");
+        const submitBtn = mask.querySelector(".mm-confirm-ok");
+        const errorEl = mask.querySelector(".mm-confirm-error");
+        input.value = ClientIdentity.clientId;
+
+        const close = () => {
+          window.removeEventListener("keydown", onDialogKeydown);
+          mask.classList.remove("mm-confirm-mask--open");
+          setTimeout(() => mask.remove(), 220);
+        };
+        const submit = async () => {
+          const target = String(input.value || "").trim();
+          input.classList.remove("mm-confirm-input--invalid");
+          errorEl.textContent = "";
+          if (!target) {
+            input.classList.add("mm-confirm-input--invalid");
+            errorEl.textContent = "请输入用户 ID";
+            input.focus();
+            return;
+          }
+          if (target === ClientIdentity.clientId) {
+            close();
+            return;
+          }
+          submitBtn.disabled = true;
+          submitBtn.textContent = "验证中…";
+          try {
+            const resp = await fetch("/api/agent/clients/validate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ client_id: target }),
+            });
+            if (!resp.ok) {
+              const detail = await resp.json().catch(() => ({}));
+              throw new Error(detail.detail || "未找到该用户记录");
+            }
+            const validated = await resp.json();
+            ClientIdentity.switchClientId(target, validated.latest_session_id);
+            window.location.reload();
+          } catch (error) {
+            input.classList.add("mm-confirm-input--invalid");
+            errorEl.textContent = error.message || "未找到该用户记录";
+            input.focus();
+            submitBtn.disabled = false;
+            submitBtn.textContent = "切换";
+          }
+        };
+        function onDialogKeydown(keyEvent) {
+          if (keyEvent.key === "Escape") {
+            keyEvent.preventDefault();
+            close();
+          } else if (keyEvent.key === "Enter") {
+            keyEvent.preventDefault();
+            submit();
+          }
+        }
+        cancelBtn.addEventListener("click", close);
+        submitBtn.addEventListener("click", submit);
+        input.addEventListener("input", () => {
+          input.classList.remove("mm-confirm-input--invalid");
+          errorEl.textContent = "";
+        });
+        mask.addEventListener("click", (maskEvent) => {
+          if (maskEvent.target === mask) close();
+        });
+        window.addEventListener("keydown", onDialogKeydown);
+        document.body.appendChild(mask);
+        requestAnimationFrame(() => {
+          mask.classList.add("mm-confirm-mask--open");
+          input.focus();
+          input.select();
+        });
+      });
+    }
     profileInfoModal.querySelectorAll("[data-profile-close]").forEach((el) => {
       el.addEventListener("click", closeProfileInfo);
     });

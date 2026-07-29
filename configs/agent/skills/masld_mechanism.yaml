@@ -6,4 +6,3 @@ requires: [frozen_result]
 produces: [mechanism_pdf]
 tools:
   - start_mechanism_report
-  - get_mechanism_job

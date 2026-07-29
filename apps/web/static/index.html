@@ -336,11 +336,11 @@
       overflow: hidden;
     }
   </style>
-  <link href="./agent/agent_chat.css?v=mm-agent-upload-spinner-1" rel="stylesheet" />
+  <link href="./agent/agent_chat.css?v=mm-agent-client-switch-1" rel="stylesheet" />
   <link href="./agent/agent_icons.css?v=mm-agent-send-1" rel="stylesheet" />
   <link href="./agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
   <link href="./agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
-  <link href="./agent/confirm.css?v=mm-agent-hist-4" rel="stylesheet" />
+  <link href="./agent/confirm.css?v=mm-agent-client-switch-1" rel="stylesheet" />
 </head>
 <body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden mm-body-agent">
 
@@ -423,7 +423,7 @@
               <span id="agentHistoryCount" class="mm-history-count"></span>
             </div>
             <div class="mm-history-header-actions">
-              <button id="agentHistoryClearBtn" type="button" class="mm-glass-btn" aria-label="清空对话历史" title="清空本机对话历史">
+              <button id="agentHistoryClearBtn" type="button" class="mm-glass-btn" aria-label="清空对话历史" title="清空当前用户的对话历史">
                 <span class="mm-icon mm-icon--trash mm-icon--md" aria-hidden="true"></span>
               </button>
               <button id="agentHistoryCloseBtn" type="button" class="mm-glass-btn" aria-label="关闭">
@@ -451,6 +451,16 @@
               <div><span>研究方向</span><strong>MASLD</strong></div>
               <div><span>版本</span><strong id="profileInfoVersion">加载中…</strong></div>
               <div><span>后端构建</span><strong id="profileInfoBuild">加载中…</strong></div>
+              <div class="mm-profile-client-card">
+                <span>当前用户 ID</span>
+                <div class="mm-profile-client-row">
+                  <strong id="profileInfoClientId">加载中…</strong>
+                  <button id="profileInfoClientEdit" type="button" class="mm-profile-client-edit" aria-label="修改用户 ID" title="修改用户 ID">
+                    <span class="mm-icon mm-icon--pencil mm-icon--sm" aria-hidden="true"></span>
+                    修改
+                  </button>
+                </div>
+              </div>
               <a class="mm-profile-info-link" href="https://github.com/GameServer-GH/MolMind" target="_blank" rel="noopener noreferrer">
                 <span>GitHub 仓库</span>
                 <strong>GameServer-GH/MolMind</strong>
@@ -872,14 +882,15 @@
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./agent/ui_render.js?v=mm-agent-thinking-duration-persist-1"></script>
+  <script src="./agent/client_identity.js?v=mm-agent-client-switch-2"></script>
+  <script src="./agent/ui_render.js?v=mm-agent-client-switch-1"></script>
   <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-box-1"></script>
-  <script src="./agent/ui_history.js?v=mm-agent-hist-10"></script>
-  <script src="./agent/ui_settings.js?v=mm-agent-drawer-2"></script>
+  <script src="./agent/ui_history.js?v=mm-agent-client-switch-1"></script>
+  <script src="./agent/ui_settings.js?v=mm-agent-client-switch-1"></script>
   <script src="./agent/ui_mention.js?v=mm-agent-mention-4"></script>
   <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
   <script src="./agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
   <script src="./agent/tour/ui_tour.js?v=mm-agent-send-1"></script>
-  <script src="./app.js?v=mm-agent-thinking-duration-persist-1"></script>
+  <script src="./app.js?v=mm-agent-client-switch-1"></script>
 </body>
 </html>

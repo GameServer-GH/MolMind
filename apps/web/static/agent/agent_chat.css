@@ -299,6 +299,31 @@
 .mm-profile-info-grid span, .mm-profile-info-grid strong { display:block; }
 .mm-profile-info-grid span { color:#888; font-size:11px; }
 .mm-profile-info-grid strong { margin-top:4px; color:#333; font-size:14px; }
+.mm-profile-info-grid > .mm-profile-client-card { grid-column:1 / -1; }
+.mm-profile-client-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
+.mm-profile-client-row strong {
+  min-width:0;
+  flex:1;
+  margin-top:0;
+  overflow-wrap:anywhere;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size:12px;
+}
+.mm-profile-client-edit {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  flex:0 0 auto;
+  padding:7px 10px;
+  border:1px solid rgba(82,91,108,.16);
+  border-radius:10px;
+  background:rgba(255,255,255,.7);
+  color:#444;
+  cursor:pointer;
+  font:inherit;
+  font-size:12px;
+}
+.mm-profile-client-edit:hover { background:rgba(255,255,255,.96); }
 
 .mm-profile-banner-name {
   font-size: 13px;

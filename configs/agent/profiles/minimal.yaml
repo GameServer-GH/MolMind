@@ -17,6 +17,7 @@ budgets:
   max_steps: 8
   max_tool_calls: 4
   max_retries_per_tool: 1
-  max_wall_time_sec: 120
+  # Covers one cold score_and_rank run plus local export finalization.
+  max_wall_time_sec: 1900
   max_observation_chars: 8000
   max_no_progress_rounds: 2

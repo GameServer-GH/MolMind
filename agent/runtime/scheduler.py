@@ -193,6 +193,31 @@ class RunController:
         self.calls.append(call)
         return call
 
+    def start_post_deadline_finalizer(
+        self,
+        *,
+        tool_id: str,
+        args_hash: str,
+        task_id: str = "",
+        timeout_sec: float | None = None,
+        writes_selection: bool = False,
+    ) -> ScheduledCall:
+        """Start one deterministic local finalizer after a wall-time overrun."""
+        if self.status != "partial" or self.stop_reason != "max_wall_time_exceeded":
+            raise RuntimeError("post_deadline_finalizer_not_allowed")
+        if any(call.status == "running" for call in self.calls):
+            raise RuntimeError("post_deadline_finalizer_has_active_call")
+        call = ScheduledCall(
+            call_id=uuid.uuid4().hex[:12],
+            tool_id=tool_id,
+            args_hash=args_hash,
+            task_id=task_id,
+            timeout_sec=timeout_sec,
+            writes_selection=writes_selection,
+        )
+        self.calls.append(call)
+        return call
+
     def active_call(self, tool_id: str) -> ScheduledCall | None:
         return next(
             (

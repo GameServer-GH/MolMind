@@ -27,7 +27,9 @@ def client(monkeypatch, tmp_path) -> TestClient:
     loop_mod._RUNTIME = None
     rt = loop_mod.AgentRuntime(store=store)
     loop_mod._RUNTIME = rt
-    return TestClient(app)
+    api_client = TestClient(app)
+    api_client.headers.update({"X-MolMind-Client-ID": "browser_test_r3_0001"})
+    return api_client
 
 
 def test_list_sessions_and_events(client: TestClient) -> None:
@@ -139,3 +141,87 @@ def test_clear_sessions_removes_all_persisted_history(client: TestClient) -> Non
     assert client.get("/api/agent/sessions").json() == {"sessions": [], "count": 0}
     assert client.get(f"/api/agent/sessions/{first}").status_code == 404
     assert client.get(f"/api/agent/sessions/{second}").status_code == 404
+
+
+def test_sessions_are_isolated_by_browser_client_id(client: TestClient) -> None:
+    first_id = "browser_test_owner_a_0001"
+    second_id = "browser_test_owner_b_0001"
+    first_headers = {"X-MolMind-Client-ID": first_id}
+    second_headers = {"X-MolMind-Client-ID": second_id}
+
+    first_session = client.post("/api/agent/sessions", headers=first_headers).json()[
+        "session_id"
+    ]
+    second_session = client.post("/api/agent/sessions", headers=second_headers).json()[
+        "session_id"
+    ]
+
+    first_list = client.get("/api/agent/sessions", headers=first_headers).json()
+    second_list = client.get("/api/agent/sessions", headers=second_headers).json()
+    assert [item["session_id"] for item in first_list["sessions"]] == [first_session]
+    assert [item["session_id"] for item in second_list["sessions"]] == [second_session]
+    assert client.get(
+        f"/api/agent/sessions/{second_session}", headers=first_headers
+    ).status_code == 404
+
+    cleared = client.delete("/api/agent/sessions", headers=first_headers).json()
+    assert cleared["deleted_count"] == 1
+    assert client.get(
+        f"/api/agent/sessions/{second_session}", headers=second_headers
+    ).status_code == 200
+
+
+def test_legacy_unowned_sessions_are_not_visible_to_new_browser(
+    client: TestClient,
+) -> None:
+    from agent.runtime import loop as loop_mod
+
+    legacy = loop_mod._RUNTIME.create_session()
+    listed = client.get("/api/agent/sessions").json()
+
+    assert all(item["session_id"] != legacy.session_id for item in listed["sessions"])
+    assert client.get(f"/api/agent/sessions/{legacy.session_id}").status_code == 404
+
+
+def test_client_identity_validation_requires_existing_user_record(
+    client: TestClient,
+) -> None:
+    target_headers = {"X-MolMind-Client-ID": "browser_switch_target_0001"}
+    target_session = client.post("/api/agent/sessions", headers=target_headers).json()
+
+    found = client.post(
+        "/api/agent/clients/validate",
+        json={"client_id": "browser_switch_target_0001"},
+    )
+    assert found.status_code == 200
+    assert found.json() == {
+        "client_id": "browser_switch_target_0001",
+        "exists": True,
+        "latest_session_id": target_session["session_id"],
+    }
+    assert target_session["session_id"]
+
+    missing = client.post(
+        "/api/agent/clients/validate",
+        json={"client_id": "browser_switch_missing_0001"},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "未找到该用户记录"
+
+
+def test_registered_client_can_be_restored_without_conversations(
+    client: TestClient,
+) -> None:
+    empty_id = "browser_registered_empty_0001"
+    registered = client.post(
+        "/api/agent/clients/register",
+        headers={"X-MolMind-Client-ID": empty_id},
+    )
+    assert registered.status_code == 200
+
+    validated = client.post(
+        "/api/agent/clients/validate",
+        json={"client_id": empty_id},
+    )
+    assert validated.status_code == 200
+    assert validated.json()["latest_session_id"] is None

@@ -1,7 +1,12 @@
 /* MolMind Agent — settings / catalog drawer (Codex-inspired) */
 (function (global) {
   /** Browser-local preferred Catalog installs (cross-session). null = never seeded. */
-  const CATALOG_PREF_KEY = "molmind:agent_installed_catalog_v1";
+  const LEGACY_CATALOG_PREF_KEY = "molmind:agent_installed_catalog_v1";
+  const CLIENT_ID =
+    global.MolMindClientIdentity && global.MolMindClientIdentity.clientId
+      ? global.MolMindClientIdentity.clientId
+      : "anonymous";
+  const CATALOG_PREF_KEY = `${LEGACY_CATALOG_PREF_KEY}:${CLIENT_ID}`;
 
   const TABS = [
     { id: "plugins", label: "插件" },
@@ -174,7 +179,14 @@
   /** @returns {string[]|null} null when preference has never been written */
   function readPreferredCatalog() {
     try {
-      const raw = localStorage.getItem(CATALOG_PREF_KEY);
+      let raw = localStorage.getItem(CATALOG_PREF_KEY);
+      if (raw === null) {
+        raw = localStorage.getItem(LEGACY_CATALOG_PREF_KEY);
+        if (raw !== null) {
+          localStorage.setItem(CATALOG_PREF_KEY, raw);
+          localStorage.removeItem(LEGACY_CATALOG_PREF_KEY);
+        }
+      }
       if (raw === null) return null;
       return normalizeCatalogIds(JSON.parse(raw));
     } catch {

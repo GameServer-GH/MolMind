@@ -34,6 +34,9 @@ class Artifact:
 @dataclass
 class AgentSession:
     session_id: str
+    #: Stable browser installation id. It partitions server-side history so a
+    #: shared NAS deployment does not expose one browser's sessions to another.
+    client_id: str = ""
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     profile_id: str = "competition_masld"
@@ -94,12 +97,39 @@ class FileRunStore:
         self._lock = threading.Lock()
         self._sessions: dict[str, AgentSession] = {}
 
+    def _clients_dir(self) -> Path:
+        return self.root / "_clients"
+
+    def register_client(self, client_id: str) -> None:
+        """Persist a browser identity without creating an empty conversation."""
+        if not client_id:
+            return
+        clients_dir = self._clients_dir()
+        clients_dir.mkdir(parents=True, exist_ok=True)
+        path = clients_dir / f"{client_id}.json"
+        if path.is_file():
+            return
+        path.write_text(
+            json.dumps({"client_id": client_id, "created_at": _now()}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
     def _session_dir(self, session_id: str) -> Path:
         return self.root / session_id
 
-    def create(self, *, profile_id: str = "competition_masld") -> AgentSession:
+    def create(
+        self,
+        *,
+        profile_id: str = "competition_masld",
+        client_id: str = "",
+    ) -> AgentSession:
         sid = uuid.uuid4().hex
-        session = AgentSession(session_id=sid, profile_id=profile_id)
+        session = AgentSession(
+            session_id=sid,
+            profile_id=profile_id,
+            client_id=client_id,
+        )
+        self.register_client(client_id)
         with self._lock:
             self._sessions[sid] = session
         self._persist_meta(session)
@@ -115,13 +145,18 @@ class FileRunStore:
                 self._sessions[session_id] = loaded
         return loaded
 
-    def list_sessions(self, *, limit: int = 50) -> list[dict[str, Any]]:
+    def list_sessions(
+        self,
+        *,
+        limit: int = 50,
+        client_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Scan FileRunStore root for session metas (newest first)."""
         items: list[dict[str, Any]] = []
         if not self.root.is_dir():
             return items
         for path in self.root.iterdir():
-            if not path.is_dir():
+            if not path.is_dir() or path == self._clients_dir():
                 continue
             meta_path = path / "meta.json"
             if not meta_path.is_file():
@@ -129,6 +164,8 @@ class FileRunStore:
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
+                continue
+            if client_id is not None and meta.get("client_id") != client_id:
                 continue
             preview = ""
             messages = meta.get("messages") or []
@@ -153,6 +190,24 @@ class FileRunStore:
             )
         items.sort(key=lambda x: x.get("updated_at") or x.get("created_at") or "", reverse=True)
         return items[: max(1, limit)]
+
+    def client_exists(self, client_id: str) -> bool:
+        """Return whether a browser id is registered or owns persisted sessions."""
+        if not client_id or not self.root.is_dir():
+            return False
+        if (self._clients_dir() / f"{client_id}.json").is_file():
+            return True
+        for path in self.root.iterdir():
+            meta_path = path / "meta.json"
+            if not path.is_dir() or not meta_path.is_file():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if meta.get("client_id") == client_id:
+                return True
+        return False
 
     def read_events(self, session_id: str, *, after_seq: int = 0) -> list[dict[str, Any]]:
         path = self._session_dir(session_id) / "events.jsonl"
@@ -189,15 +244,33 @@ class FileRunStore:
         shutil.rmtree(d, ignore_errors=True)
         return True
 
-    def clear_sessions(self) -> int:
-        """Remove every persisted Agent session and return the number removed."""
+    def clear_sessions(self, *, client_id: str | None = None) -> int:
+        """Remove matching persisted sessions and return the number removed."""
         import shutil
 
         if not self.root.is_dir():
             return 0
-        session_dirs = [path for path in self.root.iterdir() if path.is_dir()]
+        session_dirs: list[Path] = []
+        for path in self.root.iterdir():
+            if not path.is_dir() or path == self._clients_dir():
+                continue
+            if client_id is None:
+                session_dirs.append(path)
+                continue
+            meta_path = path / "meta.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if meta.get("client_id") == client_id:
+                session_dirs.append(path)
         with self._lock:
-            self._sessions.clear()
+            if client_id is None:
+                self._sessions.clear()
+            else:
+                for session_id, session in list(self._sessions.items()):
+                    if session.client_id == client_id:
+                        self._sessions.pop(session_id, None)
         for path in session_dirs:
             shutil.rmtree(path, ignore_errors=True)
         return len(session_dirs)
@@ -248,6 +321,7 @@ class FileRunStore:
         session.updated_at = _now()
         meta = {
             "session_id": session.session_id,
+            "client_id": session.client_id,
             "created_at": session.created_at,
             "updated_at": session.updated_at,
             "profile_id": session.profile_id,
@@ -337,6 +411,7 @@ class FileRunStore:
                     molecule_index[molecule_id] = clean_entries
         session = AgentSession(
             session_id=session_id,
+            client_id=str(meta.get("client_id") or ""),
             created_at=str(meta.get("created_at") or _now()),
             updated_at=str(
                 meta.get("updated_at") or meta.get("created_at") or _now()

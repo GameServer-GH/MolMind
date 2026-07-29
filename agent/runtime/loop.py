@@ -372,8 +372,13 @@ class AgentRuntime:
         self._run_controllers: dict[str, RunController] = {}
         self._run_controllers_guard = threading.Lock()
 
-    def create_session(self, *, profile_id: str = "competition_masld") -> AgentSession:
-        return self.store.create(profile_id=profile_id)
+    def create_session(
+        self,
+        *,
+        profile_id: str = "competition_masld",
+        client_id: str = "",
+    ) -> AgentSession:
+        return self.store.create(profile_id=profile_id, client_id=client_id)
 
     def get_session(self, session_id: str) -> AgentSession | None:
         return self.store.get(session_id)
@@ -440,8 +445,8 @@ class AgentRuntime:
     def delete_session(self, session_id: str) -> bool:
         return self.store.delete_session(session_id)
 
-    def clear_sessions(self) -> int:
-        return self.store.clear_sessions()
+    def clear_sessions(self, *, client_id: str | None = None) -> int:
+        return self.store.clear_sessions(client_id=client_id)
 
     def settings_view(self, session: AgentSession | None = None) -> dict[str, Any]:
         installed = set(session.installed_catalog) if session else set()
@@ -2049,6 +2054,23 @@ class AgentRuntime:
                 and not has_result
             )
         )
+        if not need_screen and has_result:
+            reused_task_id = self._task_id_for_tool(session, "score_and_rank")
+            if reused_task_id:
+                yield out(
+                    {
+                        "type": "task_end",
+                        "task_id": reused_task_id,
+                        "status": "skipped",
+                        "observation": {
+                            "reason": "reused_matching_frozen_result",
+                            "run_id": str(
+                                getattr(session.last_result, "run_id", "") or ""
+                            ),
+                            "top_n": frozen_primary_count,
+                        },
+                    }
+                )
         if need_screen and not has_sdf:
             session.pending_action = {
                 "kind": "deliverable",
@@ -3850,21 +3872,22 @@ class AgentRuntime:
             return
 
         session.last_mechanism_job_id = job_id
-        yield self._emit(
-            session,
-            {
-                "type": "tool_end",
-                "tool": "start_mechanism_report",
-                "ok": True,
-                "digest": {"job_id": job_id},
-            },
-        )
-
         deadline = time.time() + 180.0
         last_status = ""
         while time.time() < deadline:
             job = get_job(job_id)
             if not job:
+                yield self._emit(
+                    session,
+                    {
+                        "type": "tool_end",
+                        "tool": "start_mechanism_report",
+                        "ok": False,
+                        "error_code": "mechanism_job_missing",
+                        "error": "机制任务丢失",
+                        "digest": {"job_id": job_id},
+                    },
+                )
                 yield self._emit(session, {"type": "error", "detail": "机制任务丢失。"})
                 return
             status = str(job.get("status") or "")
@@ -3891,6 +3914,19 @@ class AgentRuntime:
                 yield self._emit(
                     session,
                     {
+                        "type": "tool_end",
+                        "tool": "start_mechanism_report",
+                        "ok": True,
+                        "digest": {
+                            "job_id": job_id,
+                            "status": "ready",
+                            "artifact_id": art.artifact_id,
+                        },
+                    },
+                )
+                yield self._emit(
+                    session,
+                    {
                         "type": "card",
                         "card": {
                             "kind": "pdf",
@@ -3907,16 +3943,39 @@ class AgentRuntime:
                 )
                 return
             if status == "error":
+                error_message = str(job.get("error") or "unknown")
+                yield self._emit(
+                    session,
+                    {
+                        "type": "tool_end",
+                        "tool": "start_mechanism_report",
+                        "ok": False,
+                        "error_code": "mechanism_job_failed",
+                        "error": error_message,
+                        "digest": {"job_id": job_id, "status": status},
+                    },
+                )
                 yield self._emit(
                     session,
                     {
                         "type": "error",
-                        "detail": f"机制 PDF 生成失败：{job.get('error') or 'unknown'}",
+                        "detail": f"机制 PDF 生成失败：{error_message}",
                     },
                 )
                 return
             time.sleep(1.0)
 
+        yield self._emit(
+            session,
+            {
+                "type": "tool_end",
+                "tool": "start_mechanism_report",
+                "ok": False,
+                "error_code": "mechanism_job_timeout",
+                "error": "等待机制 PDF 超时",
+                "digest": {"job_id": job_id, "status": last_status or "unknown"},
+            },
+        )
         yield self._emit(
             session,
             {"type": "error", "detail": "等待机制 PDF 超时；可稍后重试「只要 pdf」。"},

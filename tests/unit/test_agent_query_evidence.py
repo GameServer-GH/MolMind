@@ -504,6 +504,7 @@ def test_agent_api_stream_executes_query_evidence_tool(monkeypatch, tmp_path) ->
     runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "api_agent_runs"))
     monkeypatch.setattr(loop_mod, "_RUNTIME", runtime)
     client = TestClient(app)
+    client.headers.update({"X-MolMind-Client-ID": "browser_test_query_0001"})
     session_id = client.post("/api/agent/sessions").json()["session_id"]
     session = runtime.get_session(session_id)
     assert session is not None

@@ -37,7 +37,7 @@ def test_agent_artifact_download_with_chinese_filename(tmp_path, monkeypatch) ->
     monkeypatch.setattr(loop_mod, "_RUNTIME", loop_mod.AgentRuntime(store=store))
 
     client = TestClient(app)
-    session = store.create()
+    session = store.create(client_id="browser_test_download_0001")
     art = Artifact(
         artifact_id="deadbeef0001",
         kind="pdf",
@@ -50,7 +50,8 @@ def test_agent_artifact_download_with_chinese_filename(tmp_path, monkeypatch) ->
     store.put_artifact(session, art)
 
     resp = client.get(
-        f"/api/agent/sessions/{session.session_id}/artifacts/{art.artifact_id}/download"
+        f"/api/agent/sessions/{session.session_id}/artifacts/{art.artifact_id}/download",
+        headers={"X-MolMind-Client-ID": session.client_id},
     )
     assert resp.status_code == 200
     assert resp.content.startswith(b"%PDF")

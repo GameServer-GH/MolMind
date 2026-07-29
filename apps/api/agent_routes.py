@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,27 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEMO_SDF_FILENAME = "T001 TargetMol现货产品22966.sdf"
 _DEFAULT_DEMO_SDF = _REPO_ROOT / "data" / _DEMO_SDF_FILENAME
+_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+
+
+def _require_client_id(
+    x_molmind_client_id: Optional[str] = Header(default=None),
+    client_id: Optional[str] = Query(default=None),
+) -> str:
+    """Resolve the browser owner id (query fallback is for direct downloads)."""
+    value = (x_molmind_client_id or client_id or "").strip()
+    if not _CLIENT_ID_RE.fullmatch(value):
+        raise HTTPException(status_code=400, detail="缺少或无效的浏览器客户端标识")
+    return value
+
+
+def _owned_session(session_id: str, client_id: str):
+    session = get_runtime().get_session(session_id)
+    # Deliberately return the same result for missing and foreign sessions so
+    # an installation id cannot be used to enumerate another browser's data.
+    if not session or session.client_id != client_id:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return session
 
 
 def _resolve_demo_sdf() -> tuple[Path, str]:
@@ -68,21 +90,31 @@ class ToolApprovalBody(BaseModel):
     ttl_sec: int = Field(default=600, ge=30, le=3600)
 
 
+class ClientIdentityLookupBody(BaseModel):
+    client_id: str = Field(..., min_length=16, max_length=128)
+
+
 @router.get("/settings")
-def get_settings(session_id: Optional[str] = None) -> dict[str, Any]:
+def get_settings(
+    session_id: Optional[str] = None,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id) if session_id else None
+    session = _owned_session(session_id, client_id) if session_id else None
     return runtime.settings_view(session)
 
 
 @router.post("/sessions")
-def create_session(profile_id: str = "competition_masld") -> dict[str, Any]:
+def create_session(
+    profile_id: str = "competition_masld",
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
     try:
         runtime.registry.get_profile(profile_id)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    session = runtime.create_session(profile_id=profile_id)
+    session = runtime.create_session(profile_id=profile_id, client_id=client_id)
     settings = runtime.settings_view(session)
     return {
         "session_id": session.session_id,
@@ -93,25 +125,55 @@ def create_session(profile_id: str = "competition_masld") -> dict[str, Any]:
     }
 
 
+@router.post("/clients/validate")
+def validate_client_identity(
+    body: ClientIdentityLookupBody,
+    _current_client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
+    target = body.client_id.strip()
+    if not _CLIENT_ID_RE.fullmatch(target):
+        raise HTTPException(status_code=400, detail="用户 ID 格式无效")
+    if not get_runtime().store.client_exists(target):
+        raise HTTPException(status_code=404, detail="未找到该用户记录")
+    latest = get_runtime().store.list_sessions(limit=1, client_id=target)
+    return {
+        "client_id": target,
+        "exists": True,
+        "latest_session_id": latest[0]["session_id"] if latest else None,
+    }
+
+
+@router.post("/clients/register")
+def register_client_identity(
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
+    get_runtime().store.register_client(client_id)
+    return {"client_id": client_id, "registered": True}
+
+
 @router.get("/sessions")
-def list_sessions(limit: int = 50) -> dict[str, Any]:
+def list_sessions(
+    limit: int = 50,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    items = runtime.store.list_sessions(limit=limit)
+    items = runtime.store.list_sessions(limit=limit, client_id=client_id)
     return {"sessions": items, "count": len(items)}
 
 
 @router.delete("/sessions")
-def clear_sessions() -> dict[str, Any]:
-    """Clear the persisted conversation history for this MolMind instance."""
-    deleted_count = get_runtime().clear_sessions()
+def clear_sessions(client_id: str = Depends(_require_client_id)) -> dict[str, Any]:
+    """Clear only the current browser installation's conversation history."""
+    deleted_count = get_runtime().clear_sessions(client_id=client_id)
     return {"deleted_count": deleted_count}
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str) -> dict[str, Any]:
-    session = get_runtime().get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+def get_session(
+    session_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
+    session = _owned_session(session_id, client_id)
     return {
         "session_id": session.session_id,
         "created_at": session.created_at,
@@ -169,21 +231,25 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 @router.get("/sessions/{session_id}/events")
-def get_session_events(session_id: str, after_seq: int = 0) -> dict[str, Any]:
+def get_session_events(
+    session_id: str,
+    after_seq: int = 0,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     events = runtime.store.read_events(session_id, after_seq=after_seq)
     return {"session_id": session_id, "events": events, "event_seq": session.event_seq}
 
 
 @router.patch("/sessions/{session_id}")
-def patch_session(session_id: str, body: SessionPatchBody) -> dict[str, Any]:
+def patch_session(
+    session_id: str,
+    body: SessionPatchBody,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     runtime.rename_session(session, body.title)
     return {"session_id": session_id, "title": session.title}
 
@@ -192,11 +258,10 @@ def patch_session(session_id: str, body: SessionPatchBody) -> dict[str, Any]:
 def approve_tool_call(
     session_id: str,
     body: ToolApprovalBody,
+    client_id: str = Depends(_require_client_id),
 ) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     try:
         approval = runtime.grant_tool_approval(
             session,
@@ -225,8 +290,12 @@ def approve_tool_call(
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: str) -> dict[str, Any]:
+def delete_session(
+    session_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
+    _owned_session(session_id, client_id)
     ok = runtime.delete_session(session_id)
     if not ok:
         # also treat missing as gone
@@ -237,11 +306,13 @@ def delete_session(session_id: str) -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/upload")
-async def upload_sdf(session_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_sdf(
+    session_id: str,
+    file: UploadFile = File(...),
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     if not file.filename or not file.filename.lower().endswith(".sdf"):
         raise HTTPException(status_code=400, detail="请上传 .sdf 文件")
     content = await file.read()
@@ -258,11 +329,12 @@ async def upload_sdf(session_id: str, file: UploadFile = File(...)) -> dict[str,
 
 
 @router.delete("/sessions/{session_id}/upload")
-def clear_sdf(session_id: str) -> dict[str, Any]:
+def clear_sdf(
+    session_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     runtime.detach_sdf(session)
     return {
         "session_id": session_id,
@@ -299,12 +371,13 @@ def demo_sdf_info() -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/demo-sdf")
-def attach_demo_sdf(session_id: str) -> dict[str, Any]:
+def attach_demo_sdf(
+    session_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     """将内置试用 SDF 绑定为当前会话附件（服务端拷贝，无需浏览器重传）。"""
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     path = _demo_sdf_path()
     content = path.read_bytes()
     if not content:
@@ -320,11 +393,13 @@ def attach_demo_sdf(session_id: str) -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/catalog/install")
-def catalog_install(session_id: str, body: CatalogBody) -> dict[str, Any]:
+def catalog_install(
+    session_id: str,
+    body: CatalogBody,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     try:
         runtime.install_catalog_plugin(session, body.plugin_id)
     except KeyError as exc:
@@ -337,11 +412,13 @@ def catalog_install(session_id: str, body: CatalogBody) -> dict[str, Any]:
 
 
 @router.delete("/sessions/{session_id}/catalog/{plugin_id}")
-def catalog_uninstall(session_id: str, plugin_id: str) -> dict[str, Any]:
+def catalog_uninstall(
+    session_id: str,
+    plugin_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> dict[str, Any]:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     runtime.uninstall_catalog_plugin(session, plugin_id)
     return {
         "session_id": session_id,
@@ -351,11 +428,13 @@ def catalog_uninstall(session_id: str, plugin_id: str) -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/message/stream")
-async def message_stream(session_id: str, body: MessageBody) -> StreamingResponse:
+async def message_stream(
+    session_id: str,
+    body: MessageBody,
+    client_id: str = Depends(_require_client_id),
+) -> StreamingResponse:
     runtime = get_runtime()
-    session = runtime.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+    session = _owned_session(session_id, client_id)
     if body.top_n is not None:
         if body.top_n < TOP_N_MIN or body.top_n > TOP_N_MAX:
             raise HTTPException(
@@ -404,10 +483,12 @@ async def message_stream(session_id: str, body: MessageBody) -> StreamingRespons
 
 
 @router.get("/sessions/{session_id}/artifacts/{artifact_id}/download")
-def download_artifact(session_id: str, artifact_id: str) -> Response:
-    session = get_runtime().get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
+def download_artifact(
+    session_id: str,
+    artifact_id: str,
+    client_id: str = Depends(_require_client_id),
+) -> Response:
+    session = _owned_session(session_id, client_id)
     art = session.artifacts.get(artifact_id)
     if not art:
         raise HTTPException(status_code=404, detail="产物不存在")

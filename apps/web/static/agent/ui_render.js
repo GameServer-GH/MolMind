@@ -217,7 +217,9 @@
     row.className = "mm-artifact-attach";
 
     const a = document.createElement("a");
-    a.href = card.download_url;
+    a.href = global.MolMindClientIdentity
+      ? global.MolMindClientIdentity.decorateDownloadUrl(card.download_url)
+      : card.download_url;
     a.download = card.filename || "";
     a.className = "mm-artifact-chip";
     a.setAttribute("aria-label", `下载 ${fullTitle}`);
@@ -726,7 +728,14 @@
       appendTool(kind, tool, extra) {
         const el = document.createElement("div");
         el.className = "mm-thinking-step mm-thinking-step--tool";
-        const status = kind === "start" ? "正在执行" : kind === "end" ? "已完成" : "执行";
+        const status =
+          kind === "start"
+            ? "正在执行"
+            : kind === "end"
+              ? "已完成"
+              : kind === "error"
+                ? "执行失败"
+                : "执行";
         body.appendChild(el);
         this.bump();
         // Tool lines stay snappy — short fade via CSS, no typewriter.
@@ -768,6 +777,10 @@
     if (tool === "export_nomination") {
       return kind === "start" ? "正在生成 CSV 文件" : event && event.ok === false ? "CSV 文件生成失败" : "CSV 文件已准备好";
     }
+    if (tool === "start_mechanism_report") {
+      if (kind === "start") return "正在生成机制与验证方案 PDF";
+      return event && event.ok === false ? "机制 PDF 生成失败" : "机制 PDF 已准备好";
+    }
     return tool;
   }
 
@@ -796,7 +809,8 @@
       else if (type === "tool_start") {
         trace.appendTool("start", friendlyToolLine("start", ev.tool, ev));
       } else if (type === "tool_end") {
-        trace.appendTool("end", friendlyToolLine("end", ev.tool, ev));
+        const terminalKind = ev.ok === false ? "error" : "end";
+        trace.appendTool(terminalKind, friendlyToolLine(terminalKind, ev.tool, ev));
       } else if (type === "log" && ev.message) {
         trace.appendTool("log", "进度", friendlyTraceLog(ev.message));
       } else if (
@@ -923,7 +937,9 @@
         },
         appendCard(card) {
           if (!card) return;
-          const href = card.download_url;
+          const href = global.MolMindClientIdentity
+            ? global.MolMindClientIdentity.decorateDownloadUrl(card.download_url)
+            : card.download_url;
           if (href && artifacts.querySelector(`a[href="${href}"]`)) return;
           if (card.kind === "evidence") {
             artifacts.appendChild(buildEvidenceCard(card));

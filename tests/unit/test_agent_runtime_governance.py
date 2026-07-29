@@ -112,6 +112,154 @@ def test_governance_rejects_missing_precondition(tmp_path) -> None:
     assert not any(event.get("type") == "tool_start" for event in events)
 
 
+def test_completed_ranking_can_export_after_wall_time_deadline(tmp_path) -> None:
+    runtime, session = _runtime(tmp_path)
+    session.last_result = object()
+    controller = runtime._run_controller(session)
+    controller._started_monotonic -= controller.budget.max_wall_time_sec + 1
+
+    decision = runtime._authorize_tool_call(
+        session,
+        "export_nomination",
+        {"tier": "primary"},
+    )
+
+    assert decision.allowed is True
+    assert decision.code == "post_deadline_finalizer"
+    assert decision.call is not None
+    assert decision.call.tool_id == "export_nomination"
+
+
+def test_profile_wall_budget_covers_cold_scoring_and_mechanism_timeout(tmp_path) -> None:
+    runtime, _session = _runtime(tmp_path)
+    score_timeout = runtime.registry.tools["score_and_rank"].timeout_sec or 0
+    mechanism_timeout = (
+        runtime.registry.tools["start_mechanism_report"].timeout_sec or 0
+    )
+
+    competition = runtime.registry.get_profile("competition_masld")
+    lab = runtime.registry.get_profile("lab_extensible")
+    minimal = runtime.registry.get_profile("minimal")
+
+    assert competition.budgets["max_wall_time_sec"] >= score_timeout + mechanism_timeout
+    assert lab.budgets["max_wall_time_sec"] >= score_timeout + mechanism_timeout
+    assert minimal.budgets["max_wall_time_sec"] >= score_timeout
+
+
+def test_matching_frozen_result_marks_score_step_skipped_before_export(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    runtime, session = _runtime(tmp_path)
+    session.sdf_bytes = b"sdf"
+    session.sdf_filename = "library.sdf"
+    session.last_result = SimpleNamespace(
+        run_id="mm-reused",
+        top_molecules=[object()] * 10,
+    )
+    session.last_selection_sha256 = "selection-reused"
+
+    def fake_export(target_session):
+        yield runtime._emit(
+            target_session,
+            {
+                "type": "tool_start",
+                "tool": "export_nomination",
+                "args": {"tier": "primary"},
+            },
+        )
+        yield runtime._emit(
+            target_session,
+            {
+                "type": "tool_end",
+                "tool": "export_nomination",
+                "ok": True,
+                "digest": {"run_id": "mm-reused"},
+            },
+        )
+
+    monkeypatch.setattr(runtime, "_export_primary_only", fake_export)
+    monkeypatch.setattr(
+        "agent.runtime.loop.format_run_completion",
+        lambda **_kwargs: "已复用冻结结果并导出 CSV。",
+    )
+
+    events = list(runtime.handle_message(session, "导出 top10 候选 CSV"))
+
+    skipped = next(
+        event
+        for event in events
+        if event.get("type") == "task_end" and event.get("status") == "skipped"
+    )
+    assert skipped["observation"]["reason"] == "reused_matching_frozen_result"
+    assert not any(event.get("tool") == "score_and_rank" for event in events)
+    assert any(
+        event.get("tool") == "export_nomination" and event.get("ok") is True
+        for event in events
+    )
+    assert session.plan_history[-1]["status"] == "completed"
+    assert [step["status"] for step in session.plan_history[-1]["steps"]] == [
+        "skipped",
+        "succeeded",
+    ]
+
+
+def test_mechanism_tool_succeeds_only_after_pdf_artifact_is_ready(
+    monkeypatch, tmp_path
+) -> None:
+    import base64
+    from types import SimpleNamespace
+
+    runtime, session = _runtime(tmp_path)
+    session.last_result = SimpleNamespace(
+        run_id="mm-mechanism",
+        top_molecules=[object()],
+        source_filename="library.sdf",
+        input_sha256="input",
+        selection_sha256="selection",
+        mechanism_graphs={},
+        config=SimpleNamespace(
+            llm={},
+            mark_degraded=True,
+            assumptions=[],
+            config_hash="config",
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.start_mechanism_job",
+        lambda *_args, **_kwargs: "job-ready",
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.get_job",
+        lambda _job_id: {
+            "status": "ready",
+            "mechanism_pdf_base64": base64.b64encode(b"%PDF-test").decode(),
+            "mechanism_pdf_name": "mechanism.pdf",
+        },
+    )
+
+    events = list(
+        runtime._execute_tool_adapter(session, "start_mechanism_report", {})
+    )
+
+    terminal = next(
+        event
+        for event in events
+        if event.get("type") == "tool_end"
+        and event.get("tool") == "start_mechanism_report"
+    )
+    card_index = next(i for i, event in enumerate(events) if event.get("type") == "card")
+    terminal_index = events.index(terminal)
+    assert terminal["ok"] is True
+    assert terminal["digest"]["status"] == "ready"
+    assert terminal["digest"]["artifact_id"] in session.artifacts
+    assert terminal_index < card_index
+    assert runtime.registry.skills["masld_mechanism"].tools == [
+        "start_mechanism_report"
+    ]
+
+
 def test_profile_tool_call_budget_is_a_hard_runtime_limit(tmp_path) -> None:
     runtime, session = _runtime(tmp_path, profile_id="minimal")
     _install_probe_tool(runtime, tool_id="budget_probe")
@@ -286,6 +434,9 @@ def test_approval_api_returns_non_secret_exact_binding(
     )
     monkeypatch.setattr(loop_mod, "_RUNTIME", runtime)
     client = TestClient(app)
+    session.client_id = "browser_test_governance_0001"
+    runtime.store.persist(session)
+    client.headers.update({"X-MolMind-Client-ID": session.client_id})
 
     response = client.post(
         f"/api/agent/sessions/{session.session_id}/approvals",

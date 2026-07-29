@@ -593,7 +593,7 @@
             <span class="mm-icon mm-icon--trash mm-confirm-icon" aria-hidden="true"></span>
             <h3 id="agentClearHistoryConfirmTitle">清空对话历史</h3>
           </div>
-          <div class="mm-confirm-content">确定清空全部对话历史吗？此操作会删除当前 MolMind 实例保存的会话，且无法恢复。</div>
+          <div class="mm-confirm-content">确定清空当前用户的全部对话历史吗？此操作不会影响其他用户 ID，且无法恢复。</div>
           <div class="mm-confirm-footer">
             <button type="button" class="mm-confirm-cancel">取消</button>
             <button type="button" class="mm-confirm-ok">确认清空</button>

@@ -25,7 +25,9 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setenv("MOLMIND_LLM_MECHANISM", "0")
     monkeypatch.setenv("MOLMIND_LLM_NOMINATION_REVIEW", "0")
     monkeypatch.setenv("MOLMIND_LLM_CHAT", "0")
-    return TestClient(app)
+    api_client = TestClient(app)
+    api_client.headers.update({"X-MolMind-Client-ID": "browser_test_mvp_0001"})
+    return api_client
 
 
 def test_parse_intent_csv_only() -> None:
