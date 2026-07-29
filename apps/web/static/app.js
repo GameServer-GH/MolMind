@@ -2650,8 +2650,8 @@
         mask.innerHTML = `
           <div class="mm-confirm-dialog">
             <div class="mm-confirm-header">
-              <span class="mm-icon mm-icon--pencil mm-confirm-icon mm-confirm-icon--neutral" aria-hidden="true"></span>
-              <h3 id="agentClientIdDialogTitle">修改用户 ID</h3>
+              <span class="mm-icon mm-icon--rotate mm-confirm-icon mm-confirm-icon--neutral" aria-hidden="true"></span>
+              <h3 id="agentClientIdDialogTitle">切换用户 ID</h3>
             </div>
             <div class="mm-confirm-content">
               <label class="mm-confirm-label" for="agentClientIdInput">用户 ID</label>
