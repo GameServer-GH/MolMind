@@ -2054,19 +2054,28 @@
     let needUser = true;
     let batch = [];
     let turn = null;
+    const isTurnStart = (event) =>
+      ["thinking", "plan", "assistant", "error", "run_interrupted"].includes(
+        event && event.type
+      );
     const eventTime = (event) => {
       const value = Date.parse(event && event.occurred_at ? event.occurred_at : "");
       return Number.isFinite(value) ? value : undefined;
     };
     const flush = () => {
       if (!batch.length) return;
-      if (!turn) turn = Render.beginTurn(agentMessages, { startedAt: eventTime(batch[0]) });
+      // Some runtime bookkeeping events precede the actual thinking/plan
+      // event. They are not a user turn and must not create an empty box.
+      if (!turn) {
+        batch = [];
+        return;
+      }
       Render.replayEventsIntoTurn(turn, batch);
       turn = null;
       batch = [];
     };
     events.forEach((ev) => {
-      if (needUser && (ev.type === "thinking" || ev.type === "plan") && u < userMsgs.length) {
+      if (needUser && isTurnStart(ev) && u < userMsgs.length) {
         flush();
         const um = userMsgs[u++];
         turn = Render.beginTurn(agentMessages, {

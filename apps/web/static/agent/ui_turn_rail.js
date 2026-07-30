@@ -7,6 +7,22 @@
     return t.slice(0, maxChars - 1) + "…";
   }
 
+  function turnText(el) {
+    return String(
+      el.getAttribute("data-turn-text") ||
+        (el.querySelector(".mm-msg-user-hint") || {}).getAttribute?.("data-turn-text") ||
+        (el.querySelector(".mm-msg-user-text") || {}).textContent ||
+        ""
+    ).trim();
+  }
+
+  function visibleTurnNodes(messagesEl) {
+    if (!messagesEl) return [];
+    // A historical replay can contain orphaned event containers from an older
+    // renderer. They have no user prompt and are not a conversation turn.
+    return Array.from(messagesEl.querySelectorAll(".mm-turn")).filter((el) => turnText(el));
+  }
+
   function MolMindAgentTurnRail() {
     this.scrollEl = null;
     this.messagesEl = null;
@@ -49,7 +65,7 @@
 
     if (typeof MutationObserver !== "undefined") {
       this._mo = new MutationObserver(() => {
-        const n = this.messagesEl.querySelectorAll(".mm-turn").length;
+        const n = visibleTurnNodes(this.messagesEl).length;
         if (n !== this._turns.length) this._scheduleRebuild();
         else this._scheduleSync();
       });
@@ -87,13 +103,9 @@
 
   MolMindAgentTurnRail.prototype.rebuild = function () {
     if (!this.messagesEl || !this.ticksEl || !this.railEl) return;
-    const nodes = Array.from(this.messagesEl.querySelectorAll(".mm-turn"));
+    const nodes = visibleTurnNodes(this.messagesEl);
     this._turns = nodes.map((el, i) => {
-      const full =
-        el.getAttribute("data-turn-text") ||
-        (el.querySelector(".mm-msg-user-hint") || {}).getAttribute?.("data-turn-text") ||
-        (el.querySelector(".mm-msg-user-text") || {}).textContent ||
-        "";
+      const full = turnText(el);
       const id = el.getAttribute("data-turn-id") || `turn-${i}`;
       if (!el.getAttribute("data-turn-id")) el.setAttribute("data-turn-id", id);
       if (!el.getAttribute("data-turn-text") && full) {
