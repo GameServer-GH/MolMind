@@ -4,6 +4,9 @@ builtin: true
 enabled: true
 catalog: false
 description: 内置科学核。解析 SDF、硬过滤、降脂/毒性打分、排序多样性、导出与机制报告。唯一写榜入口 score_and_rank。
+network_policy:
+  default_live: false
+  frozen_actions: [nomination, ranking, export]
 limits:
   top_n_min: 1
   top_n_max: 50

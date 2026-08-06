@@ -179,10 +179,30 @@ def chat_completion(
     *,
     system: str,
     user: str,
+    cancel_event: Any = None,
 ) -> str:
-    """调用 OpenAI 兼容 /chat/completions；命中磁盘缓存则直接返回。"""
+    """调用 OpenAI 兼容 /chat/completions；命中磁盘缓存则直接返回。
+
+    When ``cancel_event`` (or the active cancel ContextVar) is set, the HTTP
+    call is abandoned promptly and late responses are discarded.
+    """
     if not settings.ready:
         raise MechanismLLMError("LLM 未就绪（未启用或缺少 API Key）")
+
+    try:
+        from agent.runtime.cancellable_call import (
+            CallCancelled,
+            resolve_cancel_event,
+            run_cancellable,
+        )
+    except Exception:  # noqa: BLE001 — keep mechanism usable outside agent runtime
+        CallCancelled = RuntimeError  # type: ignore[misc, assignment]
+        resolve_cancel_event = lambda event=None: event  # noqa: E731
+        run_cancellable = None  # type: ignore[assignment]
+
+    event = resolve_cancel_event(cancel_event)
+    if event is not None and event.is_set():
+        raise MechanismLLMError("LLM call cancelled")
 
     key = _cache_key(settings.model, system, user, settings.temperature)
     if settings.use_cache:
@@ -204,34 +224,45 @@ def chat_completion(
         "Authorization": f"Bearer {settings.api_key}",
         "Content-Type": "application/json",
     }
-    try:
-        with httpx.Client(timeout=settings.timeout_sec) as client:
-            resp = client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-    except httpx.HTTPError as exc:
-        raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
-    except (ValueError, TypeError) as exc:
-        raise MechanismLLMError(f"响应解析失败: {exc}") from exc
+
+    def _request_and_parse() -> str:
+        try:
+            with httpx.Client(timeout=settings.timeout_sec) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPError as exc:
+            raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
+        except (ValueError, TypeError) as exc:
+            raise MechanismLLMError(f"响应解析失败: {exc}") from exc
+
+        try:
+            message = data["choices"][0]["message"]
+            content = message.get("content")
+            # deepseek-v4-pro 等推理模型：reasoning 占 completion 额度，max_tokens 过小会得到空 content
+            if not (content or "").strip():
+                reasoning = (message.get("reasoning_content") or "").strip()
+                if reasoning:
+                    raise MechanismLLMError(
+                        "模型仅返回 reasoning_content、content 为空；"
+                        "请增大 llm.max_tokens（推理模型需预留 reasoning 额度）"
+                    )
+        except MechanismLLMError:
+            raise
+        except (KeyError, IndexError, TypeError) as exc:
+            raise MechanismLLMError(f"响应缺少 content: {exc}") from exc
+        text = str(content or "").strip()
+        if not text:
+            raise MechanismLLMError("模型返回空内容")
+        return text
 
     try:
-        message = data["choices"][0]["message"]
-        content = message.get("content")
-        # deepseek-v4-pro 等推理模型：reasoning 占 completion 额度，max_tokens 过小会得到空 content
-        if not (content or "").strip():
-            reasoning = (message.get("reasoning_content") or "").strip()
-            if reasoning:
-                raise MechanismLLMError(
-                    "模型仅返回 reasoning_content、content 为空；"
-                    "请增大 llm.max_tokens（推理模型需预留 reasoning 额度）"
-                )
-    except MechanismLLMError:
-        raise
-    except (KeyError, IndexError, TypeError) as exc:
-        raise MechanismLLMError(f"响应缺少 content: {exc}") from exc
-    text = str(content or "").strip()
-    if not text:
-        raise MechanismLLMError("模型返回空内容")
+        if event is not None and run_cancellable is not None:
+            text = run_cancellable(_request_and_parse, cancel_event=event, poll_sec=0.2)
+        else:
+            text = _request_and_parse()
+    except CallCancelled as exc:
+        raise MechanismLLMError("LLM call cancelled") from exc
 
     if settings.use_cache:
         _write_cache(settings.cache_dir, key, model=settings.model, content=text)

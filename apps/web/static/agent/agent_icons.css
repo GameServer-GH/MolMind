@@ -27,6 +27,7 @@
 .mm-icon--faders { -webkit-mask-image: url("./icons/faders-horizontal.svg"); mask-image: url("./icons/faders-horizontal.svg"); }
 .mm-icon--x { -webkit-mask-image: url("./icons/x.svg"); mask-image: url("./icons/x.svg"); }
 .mm-icon--send { -webkit-mask-image: url("./icons/send.svg"); mask-image: url("./icons/send.svg"); }
+.mm-icon--stop { -webkit-mask-image: url("./icons/player-stop.svg"); mask-image: url("./icons/player-stop.svg"); }
 .mm-icon--upload { -webkit-mask-image: url("./icons/file-upload.svg"); mask-image: url("./icons/file-upload.svg"); }
 .mm-icon--download { -webkit-mask-image: url("./icons/download.svg"); mask-image: url("./icons/download.svg"); }
 .mm-icon--sparkles { -webkit-mask-image: url("./icons/sparkles.svg"); mask-image: url("./icons/sparkles.svg"); }

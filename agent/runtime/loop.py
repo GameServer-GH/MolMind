@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
@@ -28,13 +29,25 @@ from agent.intent import (
     ranking_position_subject_fallback,
     ranking_question_fallback,
 )
-from agent.memory import STORE, AgentSession, Artifact, FileRunStore
+from agent.memory import STORE, AgentSession, Artifact, PostgresRunStore
+from agent.memory.frozen_ranking import (
+    ensure_session_last_result,
+    has_durable_freeze,
+    snapshot_from_result,
+)
 from agent.policy import claim_ceiling_default
 from agent.registry import get_registry
-from agent.runtime.decide import llm_json_decision
+from agent.runtime.decide import llm_json_decision, llm_json_object
+from agent.memory.attachments import (
+    format_attachment_context,
+    summarize_attachment_for_context,
+)
+from agent.runtime.cancellable_call import CallCancelled, cancel_scope, run_cancellable, wait_interruptible
+from agent.runtime.context import build_context_window
 from agent.runtime.governance import (
     GovernanceDecision,
     ToolGovernance,
+    frozen_ranking_mutation_requested,
     grant_approval,
 )
 from agent.runtime.observation import normalize_tool_end
@@ -45,16 +58,21 @@ from agent.runtime.planning import (
     session_capabilities,
 )
 from agent.runtime.reply import format_ranking_explanation, format_run_completion
-from agent.runtime.scheduler import RunBudget, RunController, utc_now
+from agent.runtime.scheduler import RunBudget, RunController, canonical_args_hash, utc_now
 from agent.runtime.task_graph import TaskGraph
+from agent.runtime.task_router import TaskRouter
+from agent.runtime.observation_validator import ObservationValidator
 from agent.runtime.verification import evidence_correction, verify_assistant_claims
 from plugins.catalog_dispatch import (
     TOOL_HANDLERS,
     dispatch_tool,
     iter_installed_enrichment,
 )
-from plugins.molmind_core.tools.scientific import run_score_and_rank, timed_call
-from plugins.molmind_core.scientific.mechanism.jobs import get_job, start_mechanism_job
+from plugins.scp_hub.catalog import SCPCatalog
+from plugins.scp_hub.registry import SCPRegistryManager
+from plugins.scp_hub.jobs import SCPJobManager
+from plugins.molmind_core.tools.scientific import run_score_and_rank
+from plugins.molmind_core.scientific.mechanism.jobs import cancel_job, get_job, start_mechanism_job
 from plugins.molmind_core.scientific.pipeline.export import reserve_shortage_note
 from plugins.molmind_core.scientific.pipeline.run_log import RunLogEntry
 from plugins.molmind_core.scientific.evidence_gateway.contract import content_sha256
@@ -66,14 +84,17 @@ def _aid() -> str:
 
 _EVIDENCE_MENTION_IDS = frozenset({"query_evidence", "masld_explain"})
 _DEFAULT_CONFIG_EXECUTION_RE = re.compile(
-    r"(?:使用|按).{0,12}(?:当前)?默认.{0,20}(?:MASLD|筛选|配置).{0,32}"
+    r"(?:使用|按|用|按照).{0,12}(?:当前)?默认.{0,20}(?:筛选|配置).{0,32}"
     r"(?:生成|导出|筛选|运行|top)",
     re.I,
 )
 _DIRECT_DELIVERABLE_RE = re.compile(
-    r"(?:生成|导出|筛选|运行|重跑|重新跑|开始跑|制作|做一份|出一份)|"
-    r"(?:希望|想要|需要|请|给我).{0,28}"
-    r"(?:csv|候选|提名|清单|短名单|候补|结果包|top)",
+    # Bare「筛选」alone is too weak: it also appears in discuss/defer turns.
+    # Positive deliverable cues stay structural; execution-vs-defer is gated by LLM.
+    r"(?:生成|导出|运行|重跑|重新跑|重新筛选|开始跑|制作|做一份|出一份)|"
+    r"(?:希望|想要|需要|请|给我|帮我).{0,40}"
+    r"(?:csv|候选|提名|清单|短名单|候补|结果包|交卷包|候选包|bundle|top)|"
+    r"(?:默认).{0,24}(?:配置|筛选).{0,24}top",
     re.I,
 )
 _PENDING_TOP_N_REPLY_RE = re.compile(r"^\s*(?:top\s*)?(\d{1,3})\s*(?:个|名)?\s*$", re.I)
@@ -110,10 +131,58 @@ def _is_direct_deliverable_request(intent: AgentIntent, text: str) -> bool:
     is_rank_question, _ = ranking_question_fallback(text)
     if is_rank_question:
         return False
+    if getattr(intent, "force_rescreen", False):
+        return True
+    # Explicit TopN on a CSV/PDF request is structural enough for offline allow
+    # when the execution-gate LLM is unavailable (e.g. 「用默认配置筛选 Top20」).
+    if intent.requested_top_n is not None and (
+        intent.want_csv or intent.want_pdf or intent.want_bundle
+    ):
+        return True
     return bool(
         _DEFAULT_CONFIG_EXECUTION_RE.search(text or "")
         or _DIRECT_DELIVERABLE_RE.search(text or "")
     )
+
+
+_DISCUSS_ACT_RE = re.compile(
+    r"只讨论|先别跑|先别动工具|跳过执行|"
+    r"先不(?:要|必)?(?:跑|执行|筛选)|本轮不(?:要|必)?(?:跑|执行)|"
+    r"先 hold|hold\s*住",
+    re.I,
+)
+_LATER_EXECUTE_ACT_RE = re.compile(
+    r"帮我跑|输出\s*top|生成.{0,12}(?:csv|pdf|清单|报告)|"
+    r"重新筛选|给我候选包|导出.{0,12}(?:csv|bundle|包)",
+    re.I,
+)
+
+
+def _offline_prefer_discuss(text: str) -> bool:
+    """Offline gate bias: discuss/defer cues outrank clarify when LLM is down.
+
+    Used only as a structural fallback for compound turns such as
+    「你好 + 解释 MASLD + 先别跑筛选，只讨论…」. Not a pause-phrase router for
+    the online LLM path. If a later clause clearly requests execution, discuss
+    loses.
+    """
+    raw = str(text or "").strip()
+    if not raw or not _DISCUSS_ACT_RE.search(raw):
+        return False
+    parts = [p.strip() for p in re.split(r"[\n。；;！!？?]+", raw) if p.strip()]
+    if not parts:
+        parts = [raw]
+    last_discuss = -1
+    last_execute = -1
+    for idx, part in enumerate(parts):
+        if _DISCUSS_ACT_RE.search(part):
+            last_discuss = idx
+        if _LATER_EXECUTE_ACT_RE.search(part):
+            last_execute = idx
+    return last_discuss >= 0 and last_discuss >= last_execute
+
+
+_PROFILE_DEFAULT_TOP_N = 10
 
 
 _QUERY_EVENT_TYPES = frozenset(
@@ -361,10 +430,26 @@ class SessionBusyError(RuntimeError):
         super().__init__(str(payload.get("message") or "当前会话仍在执行"))
 
 
+class TurnQueueFullError(RuntimeError):
+    """Raised when the three normal waiting slots are already occupied."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = dict(payload)
+        super().__init__(str(payload.get("message") or "当前会话排队已满"))
+
+
+class RunInterrupted(RuntimeError):
+    """Internal cooperative unwind used after a guidance request."""
+
+
 class AgentRuntime:
-    def __init__(self, store: FileRunStore | None = None) -> None:
+    def __init__(self, store: PostgresRunStore | None = None) -> None:
         self.store = store or STORE
         self.registry = get_registry()
+        self.task_router = TaskRouter(self.registry)
+        self.observation_validator = ObservationValidator(self.registry)
+        self.scp = SCPRegistryManager(self.registry, SCPCatalog())
+        self.scp_jobs = SCPJobManager(max_workers=2)
         # One mutable AgentSession is shared by all HTTP streams for its id.
         # A session lock preserves user-turn order while allowing unrelated
         # sessions to use the worker pool concurrently.
@@ -393,11 +478,22 @@ class AgentRuntime:
         return self.store.create(profile_id=profile_id, client_id=client_id)
 
     def get_session(self, session_id: str) -> AgentSession | None:
-        return self.store.get(session_id)
+        session = self.store.get(session_id)
+        if session is not None:
+            self.scp.restore_session(session)
+            ensure_session_last_result(session)
+        return session
 
     def _session_lock(self, session_id: str) -> threading.Lock:
         with self._session_locks_guard:
             return self._session_locks.setdefault(session_id, threading.Lock())
+
+    @contextmanager
+    def _state_lock(self, session_id: str):
+        """Serialize short session mutations across threads and API processes."""
+        with self._session_state_guard:
+            with self.store.mutation_lock(session_id):
+                yield
 
     @staticmethod
     def _run_is_active(run: dict[str, Any] | None) -> bool:
@@ -426,6 +522,83 @@ class AgentRuntime:
             "retryable": True,
         }
 
+    def request_external_run_interrupt(
+        self,
+        session_id: str,
+        run_id: str,
+        *,
+        reason: str,
+    ) -> bool:
+        """Deliver a distributed cancellation request to the owning worker."""
+        with self._run_controllers_guard:
+            controller = self._run_controllers.get(session_id)
+        if controller is None or controller.run_id != run_id:
+            return False
+        controller.request_interrupt(reason=reason)
+        return True
+
+    def interrupt_session_run(
+        self,
+        session_id: str,
+        run_id: str | None = None,
+        *,
+        reason: str = "user_stop",
+    ) -> dict[str, Any]:
+        """Request hard interrupt of the session's active Run (no guidance turn)."""
+        reason = str(reason or "user_stop").strip() or "user_stop"
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            active = dict(session.active_run or {})
+            if not self._run_is_active(active):
+                raise ValueError("当前没有正在执行的任务")
+            active_run_id = str(active.get("run_id") or "")
+            if run_id and active_run_id and str(run_id) != active_run_id:
+                raise ValueError("run_id 与当前任务不匹配")
+            active["status"] = "cancel_requested"
+            active["interrupt_reason"] = reason
+            active["heartbeat_at"] = utc_now()
+            session.active_run = active
+            controller = None
+            with self._run_controllers_guard:
+                controller = self._run_controllers.get(session.session_id)
+            if controller and (
+                not active_run_id or controller.run_id == active_run_id
+            ):
+                controller.request_interrupt(reason=reason)
+                session.agent_run_state = controller.snapshot()
+            for checkpoint in session.tool_checkpoints:
+                if (
+                    checkpoint.get("run_id") == active_run_id
+                    and checkpoint.get("status") == "running"
+                ):
+                    checkpoint["status"] = "interrupted"
+                    checkpoint["ended_at"] = utc_now()
+                    checkpoint["retryable"] = True
+                    checkpoint["interrupt_reason"] = reason
+            cancelled_jobs = self.scp_jobs.cancel_for_run(
+                session_id=session.session_id,
+                run_id=active_run_id,
+                reason=reason,
+            )
+            mechanism_job_id = str(session.last_mechanism_job_id or "")
+            mechanism_job = get_job(mechanism_job_id) if mechanism_job_id else None
+            if (
+                mechanism_job
+                and mechanism_job.get("agent_run_id") == active_run_id
+                and cancel_job(mechanism_job_id, reason=reason)
+            ):
+                cancelled_jobs.append(mechanism_job_id)
+            self.store.persist(session)
+            return {
+                "interrupted": True,
+                "run_id": active_run_id,
+                "status": "cancel_requested",
+                "reason": reason,
+                "cancelled_background_jobs": cancelled_jobs,
+            }
+
     def reserve_session_run(
         self,
         session_id: str,
@@ -434,17 +607,66 @@ class AgentRuntime:
         top_n: int | None = None,
     ) -> dict[str, Any]:
         """Atomically reserve the one active Run allowed for a Session."""
-        with self._session_state_guard:
+        with self._state_lock(session_id):
             session = self.get_session(session_id)
             if session is None:
                 raise KeyError("会话不存在")
             busy = self.session_busy_payload(session, operation="send_message")
             if busy:
                 raise SessionBusyError(busy)
-            run_id = f"agent-{uuid.uuid4().hex[:12]}"
-            session.active_run = {
+            session.active_run = self._new_active_run(
+                session,
+                text=text,
+                top_n=top_n,
+            )
+            self.store.persist(session)
+            return copy.deepcopy(session.active_run)
+
+    @staticmethod
+    def _summaries_for_attachment_ids(
+        session: AgentSession,
+        attachment_ids: list[str] | None,
+    ) -> list[dict[str, Any]]:
+        """Lightweight filename/kind chips from staged metadata (no blob read)."""
+        summaries: list[dict[str, Any]] = []
+        staged = session.staged_attachments if session else {}
+        for raw_id in attachment_ids or []:
+            attachment_id = str(raw_id or "")
+            if not attachment_id:
+                continue
+            meta = staged.get(attachment_id) if isinstance(staged, dict) else None
+            if not isinstance(meta, dict):
+                continue
+            summaries.append(
+                {
+                    "attachment_id": attachment_id,
+                    "filename": str(meta.get("filename") or ""),
+                    "kind": str(meta.get("kind") or ""),
+                    "size": int(meta.get("size") or 0),
+                    "media_type": str(meta.get("media_type") or ""),
+                }
+            )
+        return summaries
+
+    def _new_active_run(
+        self,
+        session: AgentSession,
+        *,
+        text: str,
+        top_n: int | None = None,
+        turn_id: str = "",
+        kind: str = "message",
+        attachment_ids: list[str] | None = None,
+        parent_run_id: str = "",
+        resume_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        run_id = f"agent-{uuid.uuid4().hex[:12]}"
+        ids = list(attachment_ids or [])
+        active = {
                 "run_id": run_id,
-                "turn_id": run_id,
+                "turn_id": turn_id or run_id,
+                "kind": kind,
+                "parent_run_id": parent_run_id,
                 "status": "queued",
                 "started_at": utc_now(),
                 "heartbeat_at": utc_now(),
@@ -462,10 +684,401 @@ class AgentRuntime:
                     "top_n": int(top_n if top_n is not None else session.top_n),
                     "profile_id": session.profile_id,
                     "catalog_ids": list(session.installed_catalog),
+                    "attachment_ids": ids,
                 },
+                "resume_context": copy.deepcopy(resume_context),
             }
+        # Surface chips immediately so /turns/next and live UI can paint the ask
+        # before the worker loads blob content into rich summaries.
+        summaries = self._summaries_for_attachment_ids(session, ids)
+        if summaries:
+            active["attachment_summaries"] = summaries
+        return active
+
+    @staticmethod
+    def _normal_queue_size(session: AgentSession) -> int:
+        return sum(1 for item in session.pending_turns if item.get("kind") != "guidance")
+
+    def submit_session_turn(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        mode: str = "auto",
+        attachment_ids: list[str] | None = None,
+        idempotency_key: str = "",
+        top_n: int | None = None,
+    ) -> dict[str, Any]:
+        """Start immediately or durably enqueue one immutable user Turn."""
+        clean_text = str(text or "").strip()
+        ids = [str(item) for item in (attachment_ids or []) if str(item)]
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            if idempotency_key:
+                active = session.active_run or {}
+                if active.get("idempotency_key") == idempotency_key:
+                    return {
+                        "disposition": "started",
+                        "duplicate": True,
+                        **copy.deepcopy(active),
+                    }
+                duplicate = next(
+                    (item for item in session.pending_turns if item.get("idempotency_key") == idempotency_key),
+                    None,
+                )
+                if duplicate:
+                    return {
+                        "disposition": "queued",
+                        "duplicate": True,
+                        "queue_position": session.pending_turns.index(duplicate) + 1,
+                        **copy.deepcopy(duplicate),
+                    }
+            for attachment_id in ids:
+                metadata = session.staged_attachments.get(attachment_id)
+                if not isinstance(metadata, dict) or metadata.get("state") != "draft":
+                    raise ValueError(f"暂存附件不存在或不可用：{attachment_id}")
+            if mode == "guidance":
+                return self._request_guidance_locked(
+                    session,
+                    text=clean_text,
+                    attachment_ids=ids,
+                    idempotency_key=idempotency_key,
+                    top_n=top_n,
+                )
+            # mode=queue always enqueues — even when the durable Run is already
+            # terminal. The browser may still be draining the previous turn's
+            # streaming UI and only promotes via POST /turns/next after settle.
+            if mode != "queue" and not self._run_is_active(session.active_run):
+                active = self._new_active_run(
+                    session,
+                    text=clean_text,
+                    top_n=top_n,
+                    attachment_ids=ids,
+                )
+                active["idempotency_key"] = idempotency_key
+                session.active_run = active
+                for attachment_id in ids:
+                    session.staged_attachments[attachment_id]["state"] = "queued"
+                self.store.persist(session)
+                return {"disposition": "started", **copy.deepcopy(active)}
+            if mode == "run_now":
+                busy = self.session_busy_payload(session, operation="send_message") or {}
+                raise SessionBusyError(busy)
+            if self._normal_queue_size(session) >= 3:
+                raise TurnQueueFullError(
+                    {
+                        "code": "turn_queue_full",
+                        "message": "当前会话最多排队 3 轮",
+                        "session_id": session_id,
+                        "queue_limit": 3,
+                    }
+                )
+            turn_id = f"turn-{uuid.uuid4().hex[:12]}"
+            item = {
+                "turn_id": turn_id,
+                "kind": "message",
+                "status": "queued",
+                "text": clean_text,
+                "attachment_ids": ids,
+                "top_n": top_n,
+                "idempotency_key": idempotency_key,
+                "created_at": utc_now(),
+            }
+            session.pending_turns.append(item)
+            for attachment_id in ids:
+                session.staged_attachments[attachment_id]["state"] = "queued"
             self.store.persist(session)
-            return copy.deepcopy(session.active_run)
+            return {
+                "disposition": "queued",
+                "queue_position": self._normal_queue_size(session),
+                **copy.deepcopy(item),
+            }
+
+    def _request_guidance_locked(
+        self,
+        session: AgentSession,
+        *,
+        text: str,
+        attachment_ids: list[str],
+        idempotency_key: str,
+        top_n: int | None,
+    ) -> dict[str, Any]:
+        active = session.active_run or {}
+        if not self._run_is_active(active):
+            replacement = self._new_active_run(
+                session,
+                text=text,
+                top_n=top_n,
+                attachment_ids=attachment_ids,
+            )
+            replacement["idempotency_key"] = idempotency_key
+            session.active_run = replacement
+            self.store.persist(session)
+            return {"disposition": "started", **copy.deepcopy(replacement)}
+        if any(item.get("kind") == "guidance" for item in session.pending_turns):
+            raise SessionBusyError(
+                {
+                    "code": "guidance_pending",
+                    "message": "上一条指引正在等待当前步骤停止",
+                    "session_id": session.session_id,
+                    "run_id": active.get("run_id") or "",
+                    "retryable": True,
+                }
+            )
+        guidance_id = f"guide-{uuid.uuid4().hex[:12]}"
+        controller = None
+        with self._run_controllers_guard:
+            controller = self._run_controllers.get(session.session_id)
+        controller_snapshot = controller.snapshot() if controller else None
+        resume = {
+            "original_goal": str((active.get("input") or {}).get("text") or ""),
+            "latest_guidance": text,
+            "parent_run_id": str(active.get("run_id") or ""),
+            "completed_plan": copy.deepcopy(session.active_plan),
+            "working_memory": copy.deepcopy(session.working_memory[-6:]),
+            "run_controller": controller_snapshot,
+            "artifact_ids": list(session.artifacts.keys()),
+        }
+        session.resume_context = resume
+        active["status"] = "cancel_requested"
+        active["guidance_id"] = guidance_id
+        active["interrupt_reason"] = "user_guidance"
+        active["heartbeat_at"] = utc_now()
+        session.active_run = active
+        if controller:
+            controller.request_interrupt(reason="user_guidance", guidance_id=guidance_id)
+            session.agent_run_state = controller.snapshot()
+        for checkpoint in session.tool_checkpoints:
+            if (
+                checkpoint.get("run_id") == str(active.get("run_id") or "")
+                and checkpoint.get("status") == "running"
+            ):
+                checkpoint["status"] = "interrupted"
+                checkpoint["ended_at"] = utc_now()
+                checkpoint["retryable"] = True
+                checkpoint["interrupt_reason"] = "user_guidance"
+        resume["completed_tool_checkpoints"] = [
+            copy.deepcopy(checkpoint)
+            for checkpoint in session.tool_checkpoints
+            if checkpoint.get("run_id") == str(active.get("run_id") or "")
+            and checkpoint.get("status") == "succeeded"
+        ]
+        resume["pending_tool_checkpoints"] = [
+            copy.deepcopy(checkpoint)
+            for checkpoint in session.tool_checkpoints
+            if checkpoint.get("run_id") == str(active.get("run_id") or "")
+            and checkpoint.get("status") in {"running", "interrupted", "failed"}
+        ]
+        cancelled_jobs = self.scp_jobs.cancel_for_run(
+            session_id=session.session_id,
+            run_id=str(active.get("run_id") or ""),
+            reason="user_guidance",
+        )
+        mechanism_job_id = str(session.last_mechanism_job_id or "")
+        mechanism_job = get_job(mechanism_job_id) if mechanism_job_id else None
+        if (
+            mechanism_job
+            and mechanism_job.get("agent_run_id") == str(active.get("run_id") or "")
+            and cancel_job(mechanism_job_id, reason="user_guidance")
+        ):
+            cancelled_jobs.append(mechanism_job_id)
+        resume["cancelled_background_jobs"] = cancelled_jobs
+        item = {
+            "turn_id": f"turn-{uuid.uuid4().hex[:12]}",
+            "guidance_id": guidance_id,
+            "kind": "guidance",
+            "status": "queued",
+            "text": text,
+            "attachment_ids": attachment_ids,
+            "top_n": top_n,
+            "idempotency_key": idempotency_key,
+            "parent_run_id": str(active.get("run_id") or ""),
+            "resume_context": resume,
+            "created_at": utc_now(),
+        }
+        session.pending_turns.insert(0, item)
+        for attachment_id in attachment_ids:
+            session.staged_attachments[attachment_id]["state"] = "queued"
+        self.store.persist(session)
+        return {
+            "disposition": "guidance",
+            "queue_position": 0,
+            **copy.deepcopy(item),
+        }
+
+    def activate_next_queued_turn(self, session_id: str) -> dict[str, Any] | None:
+        """Atomically promote the queue head after the preceding Run is terminal."""
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None or self._run_is_active(session.active_run):
+                return None
+            if not session.pending_turns:
+                return None
+            item = session.pending_turns.pop(0)
+            resume_context = copy.deepcopy(item.get("resume_context") or {})
+            if item.get("kind") == "guidance":
+                resume_context.update(
+                    {
+                        "completed_plan": copy.deepcopy(session.active_plan),
+                        "working_memory": copy.deepcopy(session.working_memory[-6:]),
+                        "run_controller": copy.deepcopy(session.agent_run_state),
+                        "artifact_ids": list(session.artifacts.keys()),
+                    }
+                )
+                session.resume_context = resume_context
+            original = str(resume_context.get("original_goal") or "").strip()
+            execution_text = str(item.get("text") or "")
+            if item.get("kind") == "guidance" and original:
+                execution_text = f"原任务：{original}\n用户补充指引：{execution_text}"
+            active = self._new_active_run(
+                session,
+                text=execution_text,
+                top_n=item.get("top_n"),
+                turn_id=str(item.get("turn_id") or ""),
+                kind=str(item.get("kind") or "message"),
+                attachment_ids=list(item.get("attachment_ids") or []),
+                parent_run_id=str(item.get("parent_run_id") or ""),
+                resume_context=resume_context,
+            )
+            active["display_text"] = str(item.get("text") or "")
+            active["idempotency_key"] = str(item.get("idempotency_key") or "")
+            if item.get("kind") == "guidance" and item.get("parent_run_id"):
+                active["retry_of_run_id"] = str(item.get("parent_run_id") or "")
+            session.active_run = active
+            self.store.persist(session)
+            return copy.deepcopy(active)
+
+    def cancel_queued_turn(self, session_id: str, turn_id: str) -> bool:
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            index = next(
+                (i for i, item in enumerate(session.pending_turns) if item.get("turn_id") == turn_id),
+                -1,
+            )
+            if index < 0:
+                return False
+            item = session.pending_turns.pop(index)
+            for attachment_id in item.get("attachment_ids") or []:
+                metadata = session.staged_attachments.get(str(attachment_id))
+                if isinstance(metadata, dict):
+                    metadata["state"] = "draft"
+            self.store.persist(session)
+            return True
+
+    def update_queued_turn(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        text: str | None = None,
+        attachment_ids: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Edit a queued Turn without changing the currently executing Run."""
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            item = next(
+                (entry for entry in session.pending_turns if entry.get("turn_id") == turn_id),
+                None,
+            )
+            if item is None:
+                return None
+            if text is not None:
+                clean = str(text).strip()
+                if not clean:
+                    raise ValueError("消息不能为空")
+                item["text"] = clean
+                if item.get("kind") == "guidance":
+                    item.setdefault("resume_context", {})["latest_guidance"] = clean
+                    session.resume_context["latest_guidance"] = clean
+            if attachment_ids is not None:
+                ids = list(dict.fromkeys(str(value) for value in attachment_ids if str(value)))
+                old_ids = {str(value) for value in item.get("attachment_ids") or []}
+                for attachment_id in ids:
+                    metadata = session.staged_attachments.get(attachment_id)
+                    allowed_states = {"draft", "queued"} if attachment_id in old_ids else {"draft"}
+                    if not isinstance(metadata, dict) or metadata.get("state") not in allowed_states:
+                        raise ValueError(f"暂存附件不存在或不可用：{attachment_id}")
+                for attachment_id in old_ids - set(ids):
+                    metadata = session.staged_attachments.get(attachment_id)
+                    if isinstance(metadata, dict):
+                        metadata["state"] = "draft"
+                for attachment_id in ids:
+                    session.staged_attachments[attachment_id]["state"] = "queued"
+                item["attachment_ids"] = ids
+            item["updated_at"] = utc_now()
+            self.store.persist(session)
+            return copy.deepcopy(item)
+
+    def reorder_queued_turns(self, session_id: str, turn_ids: list[str]) -> list[dict[str, Any]]:
+        """Reorder normal Turns while keeping a pending guidance Turn first."""
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            guidance = [item for item in session.pending_turns if item.get("kind") == "guidance"]
+            normal = [item for item in session.pending_turns if item.get("kind") != "guidance"]
+            current_ids = [str(item.get("turn_id") or "") for item in normal]
+            if len(turn_ids) != len(set(turn_ids)) or set(turn_ids) != set(current_ids):
+                raise ValueError("turn_ids 必须完整且不能重复")
+            by_id = {str(item.get("turn_id") or ""): item for item in normal}
+            session.pending_turns = guidance + [by_id[turn_id] for turn_id in turn_ids]
+            self.store.persist(session)
+            return copy.deepcopy(session.pending_turns)
+
+    def retry_session_run(self, session_id: str, run_id: str) -> dict[str, Any]:
+        """Create a new Run linked to a terminal Run and its tool checkpoints."""
+        with self._state_lock(session_id):
+            session = self.get_session(session_id)
+            if session is None:
+                raise KeyError("会话不存在")
+            if self._run_is_active(session.active_run):
+                raise SessionBusyError(
+                    self.session_busy_payload(session, operation="retry_run") or {}
+                )
+            candidates = list(session.agent_run_history)
+            if isinstance(session.active_run, dict):
+                candidates.append(session.active_run)
+            source = next(
+                (item for item in reversed(candidates) if str(item.get("run_id") or "") == run_id),
+                None,
+            )
+            if source is None or str(source.get("status") or "") not in {
+                "succeeded", "failed", "cancelled", "interrupted"
+            }:
+                raise ValueError("只能重试已结束的 Run")
+            source_input = dict(source.get("input") or {})
+            retry = self._new_active_run(
+                session,
+                text=str(source_input.get("text") or ""),
+                top_n=source_input.get("top_n"),
+                kind="retry",
+                attachment_ids=list(source_input.get("attachment_ids") or []),
+                parent_run_id=run_id,
+                resume_context={
+                    "retry_of_run_id": run_id,
+                    "completed_tool_checkpoints": [
+                        copy.deepcopy(item)
+                        for item in session.tool_checkpoints
+                        if item.get("run_id") == run_id and item.get("status") == "succeeded"
+                    ],
+                    "pending_tool_checkpoints": [
+                        copy.deepcopy(item)
+                        for item in session.tool_checkpoints
+                        if item.get("run_id") == run_id
+                        and item.get("status") in {"running", "interrupted", "failed"}
+                    ],
+                },
+            )
+            retry["retry_of_run_id"] = run_id
+            session.active_run = retry
+            self.store.persist(session)
+            return copy.deepcopy(retry)
 
     def handle_reserved_session_message(
         self,
@@ -483,7 +1096,46 @@ class AgentRuntime:
             active = session.active_run or {}
             if str(active.get("run_id") or "") != run_id:
                 raise RuntimeError("活动 Run 已变化")
-            active["status"] = "running"
+            attachment_summaries: list[dict[str, Any]] = []
+            for attachment_id in (active.get("input") or {}).get("attachment_ids") or []:
+                staged = self.store.read_staged_attachment(session, str(attachment_id))
+                if staged is None:
+                    continue
+                metadata, content = staged
+                aid = str(attachment_id)
+                if str(metadata.get("kind") or "") == "sdf" or str(
+                    metadata.get("filename") or ""
+                ).lower().endswith(".sdf"):
+                    session.sdf_bytes = content
+                    session.sdf_filename = str(metadata.get("filename") or "library.sdf")
+                    session.sdf_ui_pending = True
+                    self.store.save_sdf(session)
+                    # Keep SDF on the ask chip rail (previously only non-SDF
+                    # summaries were stored, so queued SDF turns rendered blank).
+                    attachment_summaries.append(
+                        {
+                            "attachment_id": aid,
+                            "filename": session.sdf_filename,
+                            "kind": "sdf",
+                            "size": int(metadata.get("size") or len(content) or 0),
+                            "media_type": str(
+                                metadata.get("media_type") or "chemical/x-mdl-sdfile"
+                            ),
+                            "note": "化合物库 SDF",
+                        }
+                    )
+                else:
+                    summary = summarize_attachment_for_context(metadata, content)
+                    summary["attachment_id"] = aid
+                    attachment_summaries.append(summary)
+                session.staged_attachments[aid]["state"] = "active"
+            if attachment_summaries:
+                active["attachment_summaries"] = attachment_summaries
+            # Guidance may arrive after reservation but before the worker has
+            # created its controller. Preserve that request so the first
+            # checkpoint unwinds instead of accidentally starting the old goal.
+            if str(active.get("status") or "") != "cancel_requested":
+                active["status"] = "running"
             active["heartbeat_at"] = utc_now()
             session.active_run = active
             self.store.persist(session)
@@ -492,8 +1144,73 @@ class AgentRuntime:
             saw_done = False
             try:
                 for event in self.handle_message(session, text, run_id=run_id):
+                    controller = self._run_controller(session)
+                    if controller.interruption_requested and event.get("type") != "tool_end":
+                        raise RunInterrupted(controller.interrupt_reason or "user_guidance")
                     saw_done = saw_done or event.get("type") == "done"
                     yield event
+                    if controller.interruption_requested:
+                        raise RunInterrupted(controller.interrupt_reason or "user_guidance")
+            except RunInterrupted:
+                controller = self._run_controller(session)
+                interrupt_reason = str(
+                    controller.interrupt_reason
+                    or (session.active_run or {}).get("interrupt_reason")
+                    or "user_guidance"
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "run_interrupted",
+                        "detail": (
+                            "已根据用户指引停止当前任务，正在重新规划。"
+                            if interrupt_reason == "user_guidance"
+                            else "已停止当前任务。"
+                        ),
+                        "run_id": run_id,
+                        "guidance_id": controller.guidance_id,
+                        "interrupt_reason": interrupt_reason,
+                    },
+                )
+                yield self._emit(
+                    session,
+                    {"type": "done", "run_id": run_id, "status": "interrupted"},
+                )
+                saw_done = True
+            except CallCancelled as exc:
+                controller = self._run_controller(session)
+                if not controller.interruption_requested:
+                    controller.request_interrupt(
+                        reason=str(
+                            (session.active_run or {}).get("interrupt_reason")
+                            or "user_stop"
+                        )
+                    )
+                interrupt_reason = str(
+                    controller.interrupt_reason
+                    or (session.active_run or {}).get("interrupt_reason")
+                    or "user_stop"
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "run_interrupted",
+                        "detail": (
+                            "已根据用户指引停止当前任务，正在重新规划。"
+                            if interrupt_reason == "user_guidance"
+                            else "已停止当前任务。"
+                        ),
+                        "run_id": run_id,
+                        "guidance_id": controller.guidance_id,
+                        "interrupt_reason": interrupt_reason,
+                    },
+                )
+                yield self._emit(
+                    session,
+                    {"type": "done", "run_id": run_id, "status": "interrupted"},
+                )
+                saw_done = True
+                _ = exc
             except Exception as exc:  # noqa: BLE001 - turn is closed durably here
                 controller = self._run_controller(session)
                 controller.stop("unhandled_exception", status="failed")
@@ -507,12 +1224,29 @@ class AgentRuntime:
                 )
                 saw_done = True
             finally:
+                consumed_changed = False
+                for attachment_id in (active.get("input") or {}).get("attachment_ids") or []:
+                    metadata = session.staged_attachments.get(str(attachment_id))
+                    if isinstance(metadata, dict):
+                        metadata["state"] = "consumed"
+                        metadata["consumed_at"] = utc_now()
+                        consumed_changed = True
                 current = session.active_run or {}
                 if str(current.get("run_id") or "") == run_id and self._run_is_active(current):
-                    current["status"] = "interrupted" if not saw_done else "failed"
+                    # If the turn already emitted done but active_run was not
+                    # closed (run_id mismatch / reload race), do not force
+                    # failed over a completed transcript.
+                    if not saw_done:
+                        current["status"] = "interrupted"
+                    else:
+                        current["status"] = str(current.get("status") or "succeeded")
+                        if current["status"] in {"queued", "running", "cancel_requested"}:
+                            current["status"] = "succeeded"
                     current["ended_at"] = utc_now()
                     current["heartbeat_at"] = utc_now()
                     session.active_run = current
+                    self.store.persist(session)
+                elif consumed_changed:
                     self.store.persist(session)
 
     def handle_session_message(
@@ -537,7 +1271,7 @@ class AgentRuntime:
         operation: str,
         mutation,
     ):
-        with self._session_state_guard:
+        with self._state_lock(session_id):
             session = self.get_session(session_id)
             if session is None:
                 raise KeyError("会话不存在")
@@ -579,7 +1313,7 @@ class AgentRuntime:
         )
 
     def delete_session_when_idle(self, session_id: str) -> bool:
-        with self._session_state_guard:
+        with self._state_lock(session_id):
             session = self.get_session(session_id)
             if session is None:
                 return False
@@ -610,19 +1344,28 @@ class AgentRuntime:
             return self.store.clear_sessions(client_id=client_id)
 
     def attach_sdf(self, session: AgentSession, *, filename: str, content: bytes) -> None:
+        new_sha = hashlib.sha256(content or b"").hexdigest()
+        previous = session.sdf_bytes or b""
+        previous_sha = hashlib.sha256(previous).hexdigest() if previous else ""
+        content_changed = new_sha != previous_sha
         session.sdf_bytes = content
         session.sdf_filename = filename or "library.sdf"
         session.sdf_ui_pending = True
-        session.last_result = None
-        session.last_run_id = ""
-        session.last_selection_sha256 = ""
-        session.last_molecule_index = {}
-        session.last_mechanism_job_id = ""
-        session.active_plan = None
+        # Re-attaching the identical library must not wipe a durable freeze;
+        # only a changed compound library invalidates the ranking snapshot.
+        if content_changed:
+            session.last_result = None
+            session.frozen_ranking = None
+            session.last_run_id = ""
+            session.last_selection_sha256 = ""
+            session.last_molecule_index = {}
+            session.last_mechanism_job_id = ""
+            session.active_plan = None
         self.store.save_sdf(session)
 
     def detach_sdf(self, session: AgentSession) -> None:
         session.last_result = None
+        session.frozen_ranking = None
         session.last_run_id = ""
         session.last_selection_sha256 = ""
         session.last_config_hash = ""
@@ -657,10 +1400,48 @@ class AgentRuntime:
     def settings_view(self, session: AgentSession | None = None) -> dict[str, Any]:
         installed = set(session.installed_catalog) if session else set()
         profile_id = session.profile_id if session else "competition_masld"
-        return self.registry.settings_view(
+        view = self.registry.settings_view(
             profile_id=profile_id,
             installed_catalog=installed,
         )
+        view["scp_skills"] = list((session.installed_scp_skills if session else {}).values())
+        installed_scp = session.installed_scp_skills if session else {}
+        installed_scp_tools = sorted(
+            {
+                str(tool_id)
+                for state in installed_scp.values()
+                for tool_id in state.get("tools", [])
+            }
+        )
+        for plugin in view.get("plugins", []):
+            if plugin.get("plugin_id") == "scp-hub":
+                plugin["tools"] = installed_scp_tools
+        view["scp_catalog"] = [
+            {
+                **item,
+                "id": item.get("skill_id"),
+                "plugin_id": "scp-hub",
+                "installed": item.get("skill_id") in installed_scp,
+                "enabled": bool(installed_scp.get(str(item.get("skill_id")), {}).get("enabled")),
+                "credential_status": installed_scp.get(str(item.get("skill_id")), {}).get("credential_status", "unknown"),
+                "tools": [
+                    str(tool_name)
+                    for server in item.get("servers", [])
+                    for tool_name in server.get("tools", [])
+                ],
+            }
+            for item in self.scp.catalog.list()
+        ]
+        return view
+
+    def install_scp_skill(self, session_id: str, skill_id: str) -> AgentSession:
+        return self._mutate_idle_session(session_id, "scp_install", lambda session: self.scp.install(session, skill_id) and session)
+
+    def set_scp_skill_enabled(self, session_id: str, skill_id: str, enabled: bool) -> AgentSession:
+        return self._mutate_idle_session(session_id, "scp_enable", lambda session: self.scp.set_enabled(session, skill_id, enabled) and session)
+
+    def uninstall_scp_skill(self, session_id: str, skill_id: str) -> AgentSession:
+        return self._mutate_idle_session(session_id, "scp_uninstall", lambda session: self.scp.uninstall(session, skill_id) or session)
 
     def grant_tool_approval(
         self,
@@ -700,6 +1481,15 @@ class AgentRuntime:
             RunBudget.from_mapping(profile.budgets),
             run_id=run_id,
         )
+        active = session.active_run or {}
+        if (
+            str(active.get("run_id") or "") == controller.run_id
+            and str(active.get("status") or "") == "cancel_requested"
+        ):
+            controller.request_interrupt(
+                reason=str(active.get("interrupt_reason") or "user_guidance"),
+                guidance_id=str(active.get("guidance_id") or ""),
+            )
         with self._run_controllers_guard:
             self._run_controllers[session.session_id] = controller
         session.agent_run_state = controller.snapshot()
@@ -808,6 +1598,13 @@ class AgentRuntime:
     def _emit(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
         kind = str(event.get("type") or "")
         controller = self._run_controller(session)
+        if controller.interruption_requested and kind not in {
+            "tool_end",
+            "run_interrupted",
+            "done",
+            "error",
+        }:
+            raise RunInterrupted(controller.interrupt_reason or "user_guidance")
         event.setdefault("run_id", controller.run_id)
         event.setdefault("turn_id", controller.run_id)
         if kind == "agent_plan":
@@ -827,6 +1624,34 @@ class AgentRuntime:
                 event.setdefault("args_hash", call.args_hash)
                 event.setdefault("timeout_sec", call.timeout_sec)
                 event.setdefault("writes_selection", call.writes_selection)
+            args_hash = str(event.get("args_hash") or canonical_args_hash(dict(event.get("args") or {})))
+            event["args_hash"] = args_hash
+            checkpoint = {
+                "checkpoint_id": f"cp-{uuid.uuid4().hex[:12]}",
+                "checkpoint_key": hashlib.sha256(
+                    f"{event.get('tool') or ''}:{args_hash}".encode("utf-8")
+                ).hexdigest(),
+                "run_id": controller.run_id,
+                "retry_of_run_id": str((session.active_run or {}).get("retry_of_run_id") or ""),
+                "call_id": str(event.get("call_id") or ""),
+                "task_id": str(event.get("task_id") or ""),
+                "tool": str(event.get("tool") or ""),
+                "args": copy.deepcopy(event.get("args") or {}),
+                "args_hash": args_hash,
+                "status": "running",
+                "attempt": 1 + sum(
+                    1
+                    for item in session.tool_checkpoints
+                    if item.get("tool") == event.get("tool") and item.get("args_hash") == args_hash
+                ),
+                "started_at": utc_now(),
+                "retryable": True,
+                "reused_from_checkpoint_id": str(event.get("reused_from_checkpoint_id") or ""),
+            }
+            event["checkpoint_id"] = checkpoint["checkpoint_id"]
+            event["checkpoint_key"] = checkpoint["checkpoint_key"]
+            session.tool_checkpoints.append(checkpoint)
+            session.tool_checkpoints = session.tool_checkpoints[-100:]
         elif kind == "tool_end":
             tool_id = str(event.get("tool") or "")
             call = controller.active_call(tool_id)
@@ -874,10 +1699,59 @@ class AgentRuntime:
             )
             session.working_memory = session.working_memory[-24:]
             session.agent_run_state = controller.snapshot()
+            checkpoint = next(
+                (
+                    item
+                    for item in reversed(session.tool_checkpoints)
+                    if item.get("run_id") == controller.run_id
+                    and item.get("tool") == tool_id
+                    and item.get("status") == "running"
+                ),
+                None,
+            )
+            if checkpoint is not None:
+                checkpoint["status"] = "succeeded" if observation.ok else observation.status
+                checkpoint["ended_at"] = utc_now()
+                checkpoint["retryable"] = not observation.ok
+                checkpoint["observation"] = observation.to_dict()
+                checkpoint["terminal_event"] = {
+                    key: copy.deepcopy(event.get(key))
+                    for key in (
+                        "ok", "status", "digest", "error", "error_code", "summary",
+                        "source", "job_id", "participates_in_ranking", "ranking_changed",
+                        "writes_selection",
+                    )
+                    if key in event
+                }
+                event["checkpoint_id"] = checkpoint.get("checkpoint_id")
         elif kind == "done":
-            controller.complete()
+            done_status = str(event.get("status") or "succeeded").strip().lower()
+            if controller.status == "running":
+                if done_status in {"failed", "interrupted", "denied"}:
+                    controller.status = done_status
+                else:
+                    controller.status = "completed"
+            else:
+                controller.complete()
             session.agent_run_state = controller.snapshot()
             event.setdefault("run", session.agent_run_state)
+            active = session.active_run if isinstance(session.active_run, dict) else {}
+            if active and str(active.get("run_id") or "") == controller.run_id:
+                mapped = {
+                    "completed": "succeeded",
+                    "succeeded": "succeeded",
+                    "failed": "failed",
+                    "interrupted": "interrupted",
+                    "denied": "denied",
+                }.get(done_status or controller.status, "succeeded")
+                if controller.status == "completed":
+                    mapped = "succeeded"
+                elif controller.status in {"failed", "interrupted"}:
+                    mapped = controller.status
+                active["status"] = mapped
+                active["ended_at"] = utc_now()
+                active["heartbeat_at"] = utc_now()
+                session.active_run = active
 
         self._observe_plan_event(session, event)
         if event.get("type") == "assistant" and event.get("text"):
@@ -926,12 +1800,29 @@ class AgentRuntime:
             if kind == "done":
                 controller_status = str(controller.status or "")
                 requested_status = str(event.get("status") or "")
-                active["status"] = (
-                    requested_status
-                    if requested_status in {"succeeded", "failed", "cancelled", "interrupted"}
-                    else ("succeeded" if controller_status == "completed" else "failed")
-                )
+                if requested_status not in {"succeeded", "failed", "cancelled", "interrupted"}:
+                    # Bare done: prefer explicit event status; otherwise map
+                    # controller state. partial/running with a completed turn
+                    # still counts as succeeded unless stop_reason says otherwise.
+                    stop_reason = str(getattr(controller, "stop_reason", "") or "")
+                    if controller_status == "completed":
+                        requested_status = "succeeded"
+                    elif controller_status in {"failed", "cancelled", "interrupted"}:
+                        requested_status = controller_status
+                    elif stop_reason:
+                        requested_status = "failed"
+                    else:
+                        requested_status = "succeeded"
+                    event["status"] = requested_status
+                active["status"] = requested_status
                 active["ended_at"] = utc_now()
+                archived = copy.deepcopy(active)
+                if not any(
+                    item.get("run_id") == archived.get("run_id")
+                    for item in session.agent_run_history
+                ):
+                    session.agent_run_history.append(archived)
+                    session.agent_run_history = session.agent_run_history[-30:]
             session.active_run = active
             self.store.persist(session)
         if kind == "done":
@@ -1065,7 +1956,15 @@ class AgentRuntime:
         *,
         run_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
-        self._begin_agent_turn(session, run_id=run_id)
+        controller = self._begin_agent_turn(session, run_id=run_id)
+        with cancel_scope(controller.cancel_event):
+            yield from self._handle_message_body(session, text)
+
+    def _handle_message_body(
+        self,
+        session: AgentSession,
+        text: str,
+    ) -> Iterator[dict[str, Any]]:
         lo, hi = self.registry.resolve_top_n_bounds()
 
         # Pending Top-N over-limit confirmation (same session only).
@@ -1113,7 +2012,14 @@ class AgentRuntime:
                     )
                     session.sdf_ui_pending = False
                 session.messages.append(
-                    {"role": "user", "text": text, "attachments": turn_attachments}
+                    {
+                        "role": "user",
+                        "text": text,
+                        "attachments": turn_attachments,
+                        "created_at": utc_now(),
+                        "run_id": str((session.active_run or {}).get("run_id") or ""),
+                        "turn_id": str((session.active_run or {}).get("turn_id") or ""),
+                    }
                 )
                 reply = (
                     f"好的，已取消。相关技能/工具当前上限是 Top{hi}。"
@@ -1252,16 +2158,33 @@ class AgentRuntime:
         if intent.wants_tools and intent.skill_ids:
             lo2, hi2 = self.registry.resolve_top_n_bounds(skill_ids=intent.skill_ids)
             if (lo2, hi2) != (lo, hi):
+                lo, hi = lo2, hi2
                 intent = parse_intent(
                     text,
                     default_top_n=session.top_n,
-                    top_n_min=lo2,
-                    top_n_max=hi2,
+                    top_n_min=lo,
+                    top_n_max=hi,
                 )
+        # Explicit rescreen without a new TopN must not inherit a stale session
+        # preference left by an aborted Top100→Top50 confirm.
+        if intent.force_rescreen and intent.requested_top_n is None:
+            default_n = self._profile_default_top_n(session)
+            session.top_n = default_n
+            session.pending_top_confirm = None
+            session.pending_goal = None
+            session.pending_action = None
+            intent = parse_intent(
+                text,
+                default_top_n=default_n,
+                top_n_min=lo,
+                top_n_max=hi,
+            )
         # Tool-shaped surface text is still ambiguous: let the conversation
         # model classify the dialog act before executing anything.  The
         # structural parser only supplies candidate parameters and a safe
         # offline fallback; it is not the source of truth for follow-ups.
+        session.turn_execution_gate = None
+        session.turn_execution_dialog_act = None
         if intent.wants_tools and not intent.mentions and not intent.query_evidence:
             is_ranking_followup, ranking_molecule_id = ranking_question_fallback(text)
             if is_ranking_followup:
@@ -1270,10 +2193,61 @@ class AgentRuntime:
                 # before optional LLM planning, which otherwise sees the
                 # tool-shaped “top5” surface and may choose export.
                 action, why = "explain_ranking", "deterministic_frozen_ranking_followup"
-            elif _is_direct_deliverable_request(intent, text):
-                action, why = "execute_tools", "deterministic_direct_deliverable"
             else:
-                action, why = self._classify_request_action(session, text, intent)
+                ranking_molecule_id = None
+                gate, gate_meta = self._classify_execution_gate(session, text, intent)
+                session.turn_execution_gate = gate
+                session.turn_execution_dialog_act = str(
+                    gate_meta.get("dialog_act") or ""
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "thinking",
+                        "text": (
+                            f"执行门控：{gate}"
+                            f"/{gate_meta.get('dialog_act', '')}"
+                            f"（{gate_meta.get('reason', '')}）"
+                        ),
+                    },
+                )
+                if gate == "block":
+                    dialog_act = str(gate_meta.get("dialog_act") or "discuss_only")
+                    if dialog_act in {"cancel_pending", "discuss_only", "defer_execute"}:
+                        session.pending_goal = None
+                        session.pending_action = None
+                        session.pending_top_confirm = None
+                    action, why = (
+                        "chat",
+                        f"execution_gate_block:{dialog_act}:{gate_meta.get('reason', '')}",
+                    )
+                else:
+                    if gate_meta.get("force_rescreen") or intent.force_rescreen:
+                        intent = replace(intent, force_rescreen=True)
+                        session.pending_goal = None
+                        session.pending_action = None
+                        session.pending_top_confirm = None
+                        if intent.requested_top_n is None:
+                            default_n = self._profile_default_top_n(session)
+                            session.top_n = default_n
+                            if intent.top_n != default_n:
+                                old_n = int(intent.top_n)
+                                intent = replace(
+                                    intent,
+                                    top_n=default_n,
+                                    reason=(
+                                        str(intent.reason or "").replace(
+                                            f"Top{old_n}", f"Top{default_n}"
+                                        )
+                                        or f"需要：Top{default_n} 候选 CSV"
+                                    ),
+                                )
+                    if _is_direct_deliverable_request(intent, text):
+                        action, why = "execute_tools", "deterministic_direct_deliverable"
+                    else:
+                        action, why = self._classify_request_action(
+                            session, text, intent
+                        )
             if action != "execute_tools":
                 intent = replace(
                     intent,
@@ -1281,6 +2255,10 @@ class AgentRuntime:
                     want_pdf=False,
                     skill_ids=(),
                     wants_tools=False,
+                    want_reserve=False,
+                    want_bundle=False,
+                    execution_requested=False,
+                    force_rescreen=False,
                     reason=(
                         "询问上一轮候选排名原因，不重新筛选或导出"
                         if action == "explain_ranking"
@@ -1382,6 +2360,110 @@ class AgentRuntime:
             )
         yield from self._handle_intent(session, text, intent)
 
+    def _profile_default_top_n(self, session: AgentSession) -> int:
+        """Profile / session factory default TopN (not the sticky session preference)."""
+        raw = getattr(session, "profile_default_top_n", None)
+        if raw is not None:
+            try:
+                value = int(raw)
+                if value > 0:
+                    return value
+            except (TypeError, ValueError):
+                pass
+        return int(_PROFILE_DEFAULT_TOP_N)
+
+    def _classify_execution_gate(
+        self, session: AgentSession, text: str, intent: AgentIntent
+    ) -> tuple[str, dict[str, Any]]:
+        """LLM gate: whether this turn may call tools.
+
+        Returns ``(allow|block, meta)`` where meta includes dialog_act,
+        force_rescreen, and reason. Prompt describes semantic principles only—
+        not a phrase whitelist for stop/continue/skip.
+        """
+        history_lines: list[str] = []
+        for message in session.messages[-6:]:
+            role = str(message.get("role") or "")
+            body = str(message.get("text") or "").strip()
+            if role in {"user", "assistant"} and body:
+                history_lines.append(f"{role}: {body[:500]}")
+        history = "\n".join(history_lines) if history_lines else "（无）"
+        direct = _is_direct_deliverable_request(intent, text)
+        prefer_discuss = _offline_prefer_discuss(text)
+        if direct and not prefer_discuss:
+            offline_act, offline_gate = "execute_now", "allow"
+        elif prefer_discuss:
+            offline_act, offline_gate = "discuss_only", "block"
+        else:
+            offline_act, offline_gate = "clarify", "block"
+        data, status = llm_json_object(
+            system=(
+                "你是 MolMind 的执行门控分类器。只返回 JSON："
+                '{"dialog_act":"execute_now|defer_execute|discuss_only|cancel_pending|clarify",'
+                '"execution_gate":"allow|block","force_rescreen":true|false,"reason":"..."}。'
+                "任务：判断用户对本轮是否调用工具/推进筛选或导出流水线的意图。"
+                "按语义原则泛化，不要把任何表面用词当成完整规则表或口令白名单；"
+                "同一意图的不同说法应得到同一 dialog_act。"
+                "execution_gate=allow 仅当 dialog_act=execute_now；其余均为 block。"
+                "execute_now：用户要本轮产出结果或推进已声明的交付物（筛选、导出、报告、打包、重跑等）。"
+                "discuss_only：只讨论条件、策略、利弊或配置，本轮不要调用工具。"
+                "defer_execute：明确暂缓本轮执行，稍后再跑。"
+                "cancel_pending：取消排队、进行中或待确认的执行。"
+                "clarify：信息不足，需先问清再决定是否执行。"
+                "force_rescreen=true 仅当用户要丢弃旧条件/旧冻结并重新开跑筛选。"
+                "即使原文出现筛选、Top、CSV、候选等词，若整体是讨论、暂缓、跳过或取消，仍应 block。"
+            ),
+            user=(
+                f"已有筛选结果：{'有' if session.last_result is not None else '无'}；"
+                f"结构解析候选：{intent.reason}；"
+                f"待确认目标：{'有' if isinstance(session.pending_goal, dict) else '无'}；"
+                f"待确认动作：{'有' if isinstance(session.pending_action, dict) else '无'}。\n"
+                f"最近对话：\n{history}\n"
+                f"用户本轮原文：{text}\n"
+                "请判定 dialog_act、execution_gate 与 force_rescreen。"
+            ),
+            default={
+                "dialog_act": offline_act,
+                "execution_gate": offline_gate,
+                "force_rescreen": bool(getattr(intent, "force_rescreen", False)),
+                "reason": "offline_structural_fallback",
+            },
+            purpose="agent_chat",
+            max_tokens=200,
+            timeout_sec=8.0,
+        )
+        acts = {
+            "execute_now",
+            "defer_execute",
+            "discuss_only",
+            "cancel_pending",
+            "clarify",
+        }
+        dialog_act = str(data.get("dialog_act") or offline_act).strip().lower()
+        if dialog_act not in acts:
+            dialog_act = offline_act
+        gate = str(data.get("execution_gate") or "").strip().lower()
+        if gate not in {"allow", "block"}:
+            gate = "allow" if dialog_act == "execute_now" else "block"
+        if dialog_act != "execute_now":
+            gate = "block"
+        else:
+            gate = "allow"
+        force_rescreen = bool(data.get("force_rescreen")) or bool(
+            getattr(intent, "force_rescreen", False)
+        )
+        if gate != "allow":
+            force_rescreen = False
+        reason = str(data.get("reason") or status or "llm").strip() or "llm"
+        if status != "ok":
+            reason = f"{status};{reason}"
+        return gate, {
+            "dialog_act": dialog_act,
+            "force_rescreen": force_rescreen,
+            "reason": reason,
+            "status": status,
+        }
+
     def _classify_mention_action(
         self, text: str, mentions: tuple[MentionRef, ...]
     ) -> tuple[str, str]:
@@ -1400,10 +2482,148 @@ class AgentRuntime:
         )
         return decision, why
 
+    def _scp_skill_catalog_meta(self, skill_id: str) -> dict[str, str]:
+        sid = str(skill_id or "").strip()
+        title = sid or "科研 Skill"
+        description = ""
+        if not sid:
+            return {"skill_id": "", "title": title, "description": description}
+        try:
+            item = self.scp.catalog.get(sid)
+        except Exception:
+            item = None
+        if isinstance(item, dict):
+            title = str(item.get("title") or title).strip() or title
+            description = str(item.get("description") or "").strip()
+        return {"skill_id": sid, "title": title, "description": description}
+
+    def _install_request_event(
+        self,
+        *,
+        skill_ids: list[str] | tuple[str, ...],
+        retry_text: str,
+        label: str = "",
+        capability_id: str = "",
+    ) -> dict[str, Any]:
+        skills: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for raw in skill_ids:
+            sid = str(raw or "").strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            skills.append(self._scp_skill_catalog_meta(sid))
+        titles = "、".join(item["title"] for item in skills) or (label or "对应科研能力")
+        primary = skills[0] if skills else {"skill_id": "", "title": titles, "description": ""}
+        return {
+            "type": "install_request",
+            "kind": "scp_skill",
+            "skills": skills,
+            "skill_id": str(primary.get("skill_id") or ""),
+            "title": str(primary.get("title") or titles),
+            "description": str(primary.get("description") or ""),
+            "label": str(label or titles),
+            "capability_id": str(capability_id or ""),
+            "retry_text": str(retry_text or ""),
+            "summary": f"需要安装「{titles}」后才能继续本轮请求。",
+        }
+
+    def _yield_scp_install_request(
+        self,
+        session: AgentSession,
+        *,
+        skill_ids: list[str] | tuple[str, ...],
+        retry_text: str,
+        label: str = "",
+        capability_id: str = "",
+        out: Any | None = None,
+    ):
+        """Emit floating install-request card; do not fall back to settings guidance."""
+        emit = out or (lambda event: self._emit(session, event))
+        payload = self._install_request_event(
+            skill_ids=skill_ids,
+            retry_text=retry_text,
+            label=label,
+            capability_id=capability_id,
+        )
+        titles = "、".join(
+            str(item.get("title") or item.get("skill_id") or "")
+            for item in (payload.get("skills") or [])
+            if isinstance(item, dict)
+        ) or str(payload.get("label") or "对应科研能力")
+        reply = (
+            f"本轮需要「{titles}」。请在安装请求卡片中确认；"
+            "安装成功后会立即启用并自动重试你的请求。"
+        )
+        session.messages.append({"role": "assistant", "text": reply})
+        yield emit(payload)
+        yield emit({"type": "assistant", "text": reply})
+        yield emit({"type": "done", "status": "succeeded"})
+        self.store.persist(session)
+
+    def _clarify_reply_for_route(self, task_route: Any) -> str:
+        reason = str(getattr(task_route, "reason", "") or "").strip()
+        label = str(getattr(task_route, "label", "") or "").strip()
+        if reason == "ranking_followup_missing_frozen_result":
+            return (
+                "当前会话还没有可用的冻结筛选结果，无法解释排名。"
+                "请先完成一轮筛选，或指明具体分子 ID 后再问。"
+            )
+        if reason.startswith("scp_skill_not_installed:"):
+            skill_id = reason.split(":", 1)[-1].strip() or "对应科研 Skill"
+            meta = self._scp_skill_catalog_meta(skill_id)
+            title = label or meta["title"] or "该科研能力"
+            return (
+                f"本轮需要「{title}」（`{meta['skill_id'] or skill_id}`）。"
+                "请确认安装请求卡片；安装成功后即可立即使用，不会用其它 Skill 代替。"
+            )
+        if reason.startswith("execution_gate_block:clarify") or reason == (
+            "execution_gate_block:clarify"
+        ):
+            return (
+                "还需要确认一下：本轮是要现在执行筛选/导出，还是先只讨论条件？"
+                "请直接说明目标（例如「用默认配置筛选 Top20」或「先别跑，只讨论」）。"
+            )
+        if reason.startswith("execution_gate_block:"):
+            return (
+                "本轮先不调用筛选或导出工具。"
+                "若要继续讨论条件，直接说；若要执行，请明确提出筛选/导出请求。"
+            )
+        if reason and not reason.startswith(
+            ("structured_", "frozen_", "ranking_", "no_", "tool_", "execution_gate_", "scp_")
+        ):
+            return reason
+        if label:
+            return f"{label}。请补充相关信息后再试。"
+        return "还需要补充一些信息才能继续，请说得更具体一些。"
+
+    def _deny_reply_for_route(self, task_route: Any) -> str:
+        reason = str(getattr(task_route, "reason", "") or "").strip()
+        label = str(getattr(task_route, "label", "") or "").strip()
+        if reason == "frozen_ranking_boundary_scp_cannot_rewrite_selection":
+            return (
+                "冻结候选的排序只能由 MolMind Core 的筛选路径改写；"
+                "补充资料（含 SCP）不能重算或改写主榜。若要重筛，请明确请求 Core 筛选/导出。"
+            )
+        if label and reason:
+            return f"{label}：{reason}"
+        if reason:
+            return f"该请求未被执行：{reason}"
+        if label:
+            return f"该请求被拒绝：{label}"
+        return "该请求被科研治理边界拒绝，未执行。"
+
     def _classify_request_action(
         self, session: AgentSession, text: str, intent: AgentIntent
     ) -> tuple[str, str]:
         """Classify execute-vs-chat before a tool-shaped request is dispatched."""
+        if frozen_ranking_mutation_requested(text):
+            return "chat", "frozen_ranking_boundary_scp_cannot_rewrite_selection"
+        # Ranking follow-ups are structurally read-only and must not depend on
+        # optional LLM planners. Keep the audit reason stable for TaskRouter.
+        is_ranking_question, _ = ranking_question_fallback(text)
+        if is_ranking_question:
+            return "explain_ranking", "deterministic_frozen_ranking_followup"
         # Online path: the LLM plans against the live registry rather than a
         # fixed action prompt. Its output is schema- and precondition-checked
         # inside ``llm_plan_request``. The legacy classifier below is retained
@@ -1415,6 +2635,7 @@ class AgentRuntime:
             skills=self.registry.skills,
             capabilities=session_capabilities(session),
             default_top_n=session.top_n,
+            attachment_context=self._attachment_context_text(session),
         )
         if planned is not None:
             if planned.action == "execute":
@@ -2005,20 +3226,40 @@ class AgentRuntime:
 
     def _prepare_turn(self, session: AgentSession, text: str) -> None:
         """Append one user message and consume any pending UI-only attachment."""
-        # Consume pending UI attachment into this turn (same-session SDF bytes stay).
-        turn_attachments: list[dict[str, str]] = []
+        turn_attachments: list[dict[str, Any]] = []
+        active = session.active_run or {}
+        for summary in active.get("attachment_summaries") or []:
+            if isinstance(summary, dict):
+                turn_attachments.append(copy.deepcopy(summary))
+        # Direct-send / legacy path: SDF may only be flagged via sdf_ui_pending.
         if session.sdf_ui_pending and session.sdf_filename and session.sdf_bytes:
-            turn_attachments.append(
-                {"kind": "sdf", "filename": session.sdf_filename}
+            already = any(
+                str(item.get("kind") or "") == "sdf"
+                or str(item.get("filename") or "").lower().endswith(".sdf")
+                for item in turn_attachments
             )
+            if not already:
+                turn_attachments.append(
+                    {"kind": "sdf", "filename": session.sdf_filename}
+                )
             session.sdf_ui_pending = False
-        session.messages.append(
-            {
-                "role": "user",
-                "text": text,
-                "attachments": turn_attachments,
-            }
-        )
+        display_text = str(active.get("display_text") or text)
+        message = {
+            "role": "user",
+            "text": display_text,
+            "attachments": turn_attachments,
+            "created_at": str(active.get("started_at") or "") or utc_now(),
+            "run_id": str(active.get("run_id") or ""),
+            "turn_id": str(active.get("turn_id") or ""),
+        }
+        if active.get("kind") == "guidance":
+            message.update(
+                {
+                    "kind": "guidance",
+                    "parent_run_id": str(active.get("parent_run_id") or ""),
+                }
+            )
+        session.messages.append(message)
         if not session.title:
             self.store.set_title(session, text)
         else:
@@ -2037,7 +3278,68 @@ class AgentRuntime:
             return self._emit(session, ev)
 
         has_sdf = bool(session.sdf_bytes)
+        ensure_session_last_result(session)
         has_result = session.last_result is not None
+
+        task_route = self.task_router.route(intent, session)
+        yield out(
+            {
+                "type": "thinking",
+                "text": (
+                    f"路由：{task_route.route}"
+                    + (f"/{task_route.capability_id}" if task_route.capability_id else "")
+                    + f"（{task_route.reason}）"
+                ),
+            }
+        )
+
+        if task_route.route == "deny":
+            reply = self._deny_reply_for_route(task_route)
+            session.messages.append({"role": "assistant", "text": reply})
+            yield out({"type": "assistant", "text": reply})
+            yield out({"type": "done", "status": "succeeded"})
+            self.store.persist(session)
+            return
+
+        if task_route.route == "clarify":
+            reason = str(getattr(task_route, "reason", "") or "")
+            if reason.startswith("scp_skill_not_installed:"):
+                skill_id = (
+                    str(getattr(task_route, "skill_id", "") or "").strip()
+                    or reason.split(":", 1)[-1].strip()
+                )
+                yield from self._yield_scp_install_request(
+                    session,
+                    skill_ids=[skill_id],
+                    retry_text=text,
+                    label=str(getattr(task_route, "label", "") or ""),
+                    capability_id=str(getattr(task_route, "capability_id", "") or ""),
+                    out=out,
+                )
+                return
+            reply = self._clarify_reply_for_route(task_route)
+            session.messages.append({"role": "assistant", "text": reply})
+            yield out({"type": "assistant", "text": reply})
+            yield out({"type": "done", "status": "succeeded"})
+            self.store.persist(session)
+            return
+
+        # Live SCP only when the unified TaskRouter selected the scp lane.
+        if task_route.route == "scp":
+            scp_handled = yield from self._maybe_run_scp_chat(session, text)
+            if scp_handled:
+                return
+
+        if task_route.route == "explain":
+            intent = replace(
+                intent,
+                explain_ranking=True,
+                wants_tools=False,
+                want_csv=False,
+                want_pdf=False,
+                skill_ids=(),
+                reason="询问上一轮候选排名原因，不重新筛选或导出",
+            )
 
         # / @ 点选：单独介绍或试用，不联动整条筛选流水线
         if intent.mentions and intent.mention_action:
@@ -2171,6 +3473,7 @@ class AgentRuntime:
             )
             reply = None
             if intent.explain_ranking:
+                ensure_session_last_result(session)
                 reply = format_ranking_explanation(
                     session.last_result,
                     molecule_id=intent.ranking_molecule_id,
@@ -2182,6 +3485,11 @@ class AgentRuntime:
                     rank_positions=intent.ranking_positions,
                     rank_position_subject=intent.ranking_position_subject,
                 )
+                if reply is None and session.last_result is None:
+                    reply = (
+                        "当前会话还没有可用的冻结筛选结果，无法解释排名。"
+                        "请先完成一轮筛选，或指明具体分子 ID 后再问。"
+                    )
             if not reply:
                 reply = self._llm_chat_reply(session, text)
             session.messages.append({"role": "assistant", "text": reply})
@@ -2276,7 +3584,8 @@ class AgentRuntime:
         # produce a mislabeled, short CSV.  Conversely, explanation turns
         # have already exited above and never reach this gate.
         need_screen = (
-            (
+            bool(getattr(intent, "force_rescreen", False))
+            or (
                 intent.want_csv
                 and (
                     not has_result
@@ -2291,6 +3600,12 @@ class AgentRuntime:
                 and not has_result
             )
         )
+        if getattr(intent, "force_rescreen", False):
+            session.pending_goal = None
+            session.pending_action = None
+            session.pending_top_confirm = None
+            if intent.requested_top_n is None:
+                session.top_n = self._profile_default_top_n(session)
         if not need_screen and has_result:
             reused_task_id = self._task_id_for_tool(session, "score_and_rank")
             if reused_task_id:
@@ -2309,6 +3624,21 @@ class AgentRuntime:
                     }
                 )
         if need_screen and not has_sdf:
+            export_only = (
+                (intent.want_pdf or intent.want_bundle or intent.want_reserve)
+                and not intent.want_csv
+                and not getattr(intent, "force_rescreen", False)
+            )
+            if export_only and not has_result:
+                reply = (
+                    "当前没有可用的冻结筛选结果，无法仅生成机制 PDF 或候选包。"
+                    "请先完成一轮筛选；若化合物库已变更，请重新上传 SDF 后再筛选。"
+                )
+                session.messages.append({"role": "assistant", "text": reply})
+                yield out({"type": "assistant", "text": reply})
+                yield out({"type": "done", "status": "succeeded"})
+                self.store.persist(session)
+                return
             session.pending_action = {
                 "kind": "deliverable",
                 "status": "awaiting_slots",
@@ -2400,6 +3730,7 @@ class AgentRuntime:
                 return
 
         if intent.want_pdf:
+            ensure_session_last_result(session)
             if session.last_result is None:
                 yield out(
                     {
@@ -2464,6 +3795,853 @@ class AgentRuntime:
         )
         yield out({"type": "done"})
         self.store.persist(session)
+
+    @staticmethod
+    def _scp_live_requested(text: str) -> bool:
+        raw = str(text or "").strip().lower()
+        if re.search(r"\ballow[_\s-]?live\s*[:=：]\s*(?:true|1|yes|on)\b", raw):
+            return True
+        return bool(
+            re.search(
+                r"(?:允许|开启|启用|使用|通过)\s*(?:实时|在线|联网|scp(?:\s|-)?hub|mcp)"
+                r"|(?:实时|联网|在线)\s*(?:检索|查询|查文献|补充|调用)",
+                raw,
+                re.I,
+            )
+        )
+
+    @staticmethod
+    def _scp_live_disabled(text: str) -> bool:
+        raw = str(text or "").lower()
+        return bool(
+            re.search(r"\ballow[_\s-]?live\s*[:=：]\s*(?:false|0|no|off)\b", raw)
+            or re.search(r"(?:不要|别|禁止|不准|关闭|无需|不用)\s*(?:联网|实时|在线|scp(?:\s|-)?hub|mcp)", raw, re.I)
+        )
+
+    def _scp_plugin_default_live(self) -> bool:
+        plugin = self.registry.plugins.get("scp-hub")
+        policy = getattr(plugin, "network_policy", {}) if plugin else {}
+        return bool(isinstance(policy, dict) and policy.get("default_live", False))
+
+    @staticmethod
+    def _scp_history_summary_requested(text: str) -> bool:
+        raw = str(text or "")
+        return bool(
+            re.search(r"(?:基于|根据|汇总|总结).{0,8}(?:刚才|上一轮|之前).{0,8}(?:证据|结果|查询)", raw)
+            and not re.search(r"(?:重新|再次|再执行|重跑|重复)", raw)
+        )
+
+    @staticmethod
+    def _scp_repeat_requested(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(?:重新|再次|再执行|重跑|重复).{0,12}(?:相同|刚才|上一轮|之前).{0,12}(?:查询|机制|文献)",
+                str(text or ""),
+            )
+        )
+
+    @staticmethod
+    def _scp_cache_report_requested(text: str) -> bool:
+        raw = str(text or "").lower()
+        return "缓存" in raw and bool(re.search(r"(?:命中|复用|哪些|来自|实时)", raw))
+
+    def _scp_previous_scientific_question(
+        self, session: AgentSession
+    ) -> str:
+        meta = re.compile(r"(?:刚才|上一轮|之前|相同|缓存|重新执行|再次执行|基于.*证据)")
+        for message in reversed(session.messages[:-1]):
+            if message.get("role") != "user":
+                continue
+            value = str(message.get("text") or "").strip()
+            if value and not meta.search(value):
+                return value
+        return ""
+
+    def _scp_history_summary_reply(self, session: AgentSession) -> str:
+        previous = next(
+            (
+                str(message.get("text") or "").strip()
+                for message in reversed(session.messages[:-1])
+                if message.get("role") == "assistant"
+                and str(message.get("text") or "").strip()
+            ),
+            "",
+        )
+        insufficient = any(
+            marker in previous
+            for marker in (
+                "未通过相关性校验",
+                "没有获得",
+                "证据不足",
+                "无法据此",
+                "未达到可综合回答",
+            )
+        )
+        if insufficient:
+            return (
+                "基于上一轮已经校验的 Observation：\n\n"
+                "1. **直接机制**：尚未检索到满足全部问题约束的直接证据。\n"
+                "2. **间接机制**：放宽查询仍未形成可安全归因的完整机制链。\n"
+                "3. **文献支持**：补证结果未通过相关性或排除主题校验。\n"
+                "4. **证据缺口**：仍缺少同时覆盖目标疾病、组织、靶点和通路的直接资料。\n\n"
+                "本轮复用了上一轮会话证据，没有重新调用远程工具。"
+            )
+        return (
+            "以下内容复用上一轮已经生成的回答，没有重新调用远程工具：\n\n"
+            + (previous or "上一轮没有可复用的科研 Observation。")
+        )
+
+    def _scp_cache_summary(self, results: list[dict[str, Any]]) -> str:
+        calls = [
+            call
+            for result in results
+            for call in result.get("calls") or []
+            if call.get("tool_id")
+        ]
+        if not calls:
+            return "本轮没有产生可审计的 SCP 调用。"
+        lines = []
+        for call in calls:
+            status = str(call.get("cache_status") or "unknown")
+            label = "缓存命中" if status == "cache_hit" else "实时查询" if status == "live" else "状态未知"
+            lines.append(f"- `{call['tool_id']}`：{label}（`{status}`）")
+        return "本轮缓存审计：\n\n" + "\n".join(lines)
+
+    def _run_scp_route(
+        self,
+        session: AgentSession,
+        *,
+        route: Any,
+        question: str,
+        enabled_skill_ids: set[str],
+        allow_cross_skill_fallback: bool = True,
+    ) -> Iterator[dict[str, Any]]:
+        """Execute one routed SCP capability without closing the user turn."""
+        claim_scopes = self.task_router.claim_scopes(route.capability_id)
+        yield self._emit(
+            session,
+            {"type": "thinking", "text": f"正在通过 SCP Hub 执行{route.label}。"},
+        )
+        events: list[dict[str, Any]] = []
+        for event in self._execute_tool_adapter(
+            session,
+            route.tool_id,
+            route.arguments,
+            event_context={
+                "capability_id": route.capability_id,
+                "evidence_role": "primary_evidence",
+                "claim_scopes": claim_scopes,
+            },
+        ):
+            events.append(event)
+            yield event
+        end = next((event for event in reversed(events) if event.get("type") == "tool_end"), {})
+        digest: dict[str, Any] = {}
+        values: list[str] = []
+        if end.get("status") == "queued":
+            job_id = str(end.get("job_id") or "")
+            deadline = time.monotonic() + 600.0
+            job = self.scp_jobs.get(job_id, session_id=session.session_id)
+            run_cancellation = self._run_controller(session).cancel_event
+            while job and job.get("status") in {"queued", "running"} and time.monotonic() < deadline:
+                if run_cancellation.is_set():
+                    self.scp_jobs.cancel(job_id, session_id=session.session_id, reason="user_guidance")
+                    raise RunInterrupted("user_guidance")
+                wait_interruptible(run_cancellation, timeout_sec=1.0, slice_sec=0.25)
+                job = self.scp_jobs.get(job_id, session_id=session.session_id)
+            if not job or job.get("status") != "completed" or not isinstance(job.get("result"), dict):
+                return {
+                    "route": route,
+                    "ok": False,
+                    "relevant": False,
+                    "values": [],
+                    "digest": {},
+                    "calls": [{"tool_id": route.tool_id, "cache_status": "unknown"}],
+                    "error": (job or {}).get("error_code") or "job_incomplete",
+                }
+            result = job["result"]
+            values = [
+                str(block.get("value") or "")
+                for block in result.get("content") or []
+                if isinstance(block, dict) and str(block.get("value") or "").strip()
+            ]
+            digest = {
+                "source": "scp-hub",
+                "server_id": result.get("server_id") or "",
+                "tool_name": result.get("tool_name") or "",
+                "skill_id": result.get("skill_id") or route.skill_id,
+                "status": result.get("status") or "hit",
+                "cache_status": result.get("cache_status") or "unknown",
+                "response_hash": result.get("response_hash") or "",
+                "content": values,
+                "writes_selection": False,
+                "participates_in_ranking": False,
+            }
+            yield self._emit(
+                session,
+                {
+                    "type": "job_end",
+                    "job_id": job_id,
+                    "tool": route.tool_id,
+                    "ok": True,
+                    "source": "scp-hub",
+                    "status": digest["status"],
+                    "cache_status": digest["cache_status"],
+                    "response_hash": digest["response_hash"],
+                    "digest": digest,
+                },
+            )
+        elif end.get("ok"):
+            digest = (end.get("observation") or {}).get("digest") or end.get("digest") or {}
+            values = [str(value) for value in digest.get("content", []) if str(value).strip()]
+        else:
+            return {
+                "route": route,
+                "ok": False,
+                "relevant": False,
+                "values": [],
+                "digest": {},
+                "calls": [{"tool_id": route.tool_id, "cache_status": "unknown"}],
+                "error": end.get("error_code") or end.get("error") or "tool_failed",
+            }
+
+        assessment = self.observation_validator.validate(
+            plugin_id="scp-hub",
+            capability_id=route.capability_id,
+            question=question,
+            values=values,
+        )
+        protocol_check = (
+            self.observation_validator.validate_protocol(
+                plugin_id="scp-hub",
+                capability_id=route.capability_id,
+                question=question,
+                values=values,
+            )
+            if route.capability_id == "validation_protocol"
+            else None
+        )
+        digest["relevance"] = assessment.as_dict()
+        digest["claim_scopes"] = claim_scopes
+        if protocol_check is not None:
+            digest["protocol_validation"] = protocol_check
+        digest["degraded_channels"] = list(
+            dict.fromkeys(
+                [
+                    *assessment.degraded_channels,
+                    *((protocol_check or {}).get("degraded_channels") or []),
+                ]
+            )
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "observation_validation",
+                "source": "scp-hub",
+                **assessment.as_dict(),
+                "degraded_channels": digest["degraded_channels"],
+                "protocol_validation": protocol_check,
+                "claim_scopes": claim_scopes,
+            },
+        )
+        if route.capability_id == "mechanism_relation_search" and not assessment.relevant:
+            recovered = yield from self._recover_scp_observation(
+                session,
+                question=question,
+                capability_id=route.capability_id,
+                enabled_skill_ids=enabled_skill_ids,
+                include_fallback=allow_cross_skill_fallback,
+                initial_digest=digest,
+            )
+            if recovered is not None:
+                values = recovered["values"]
+                digest = recovered["digest"]
+                assessment = recovered["assessment"]
+                digest["claim_scopes"] = claim_scopes
+        calls = [
+            {
+                "tool_id": route.tool_id,
+                "cache_status": str((digest.get("recovery_primary") or {}).get("cache_status") or digest.get("cache_status") or "unknown"),
+            }
+        ]
+        for item in (digest.get("recovery") or {}).get("trace") or []:
+            if item.get("tool_id"):
+                calls.append(
+                    {
+                        "tool_id": item.get("tool_id"),
+                        "cache_status": item.get("cache_status") or "unknown",
+                    }
+                )
+        relevant = bool(assessment.relevant) and (
+            protocol_check is None or bool(protocol_check.get("complete"))
+        )
+        return {
+            "route": route,
+            "ok": True,
+            "relevant": relevant,
+            "values": values,
+            "digest": digest,
+            "assessment": assessment,
+            "protocol_validation": protocol_check,
+            "claim_scopes": claim_scopes,
+            "calls": calls,
+        }
+
+    def _synthesize_scp_multi_reply(
+        self, *, question: str, results: list[dict[str, Any]]
+    ) -> str:
+        relevant = [result for result in results if result.get("relevant")]
+        if not relevant:
+            subquestions = re.findall(
+                r"(?:^|\n)\s*(\d+)[.、]\s*([^\n]+)", str(question or "")
+            )
+            if subquestions:
+                protocol_selected = any(
+                    result.get("route")
+                    and result["route"].capability_id == "validation_protocol"
+                    for result in results
+                )
+                lines = [
+                    f"{number}. **{body.strip()}**\n   当前没有通过相关性与来源权限校验的直接证据，不能据此下结论。"
+                    for number, body in subquestions
+                ]
+                return (
+                    "本轮已执行所需的多个 SCP Capability，但上游证据未达到可综合回答的标准：\n\n"
+                    + "\n\n".join(lines)
+                    + (
+                        "\n\n实验方案任务依赖这些证据，已安全跳过。"
+                        if protocol_selected
+                        else ""
+                    )
+                    + "\n\n实时资料不参与候选排序。"
+                )
+            return (
+                "本轮已执行多个 SCP Capability，但没有 Observation 同时通过相关性和来源权限校验，"
+                "因此不能生成跨能力科学结论。实时资料不参与候选排序。"
+            )
+        evidence_blocks = []
+        for result in relevant:
+            route = result["route"]
+            evidence_blocks.append(
+                {
+                    "capability_id": route.capability_id,
+                    "label": route.label,
+                    "claim_scopes": result.get("claim_scopes") or [],
+                    "response_hash": (result.get("digest") or {}).get("response_hash") or "",
+                    "observation": "\n".join(result.get("values") or [])[:9000],
+                }
+            )
+        try:
+            from plugins.molmind_core.scientific.mechanism.llm_client import (
+                chat_completion,
+                resolve_llm_settings,
+            )
+
+            settings = resolve_llm_settings(
+                {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+            )
+            if settings.ready:
+                system = (
+                    "你是 MolMind 的多能力科研证据综合器。只依据输入的 Observation 回答，"
+                    "并逐项回应用户编号问题。每个证据块只能支持 claim_scopes 声明的结论："
+                    "mechanism_evidence 可支持机制关系；literature_evidence 可支持论文与研究发现；"
+                    "experimental_design_advice 只能作为实验设计草案，绝不能用于证明论文、年份、"
+                    "作者或机制事实。不得虚构 Citation、模型、药物、剂量或结论。"
+                    "若某项缺少对应权限证据，明确写证据不足。区分直接证据、间接证据和设计建议。"
+                    "末尾说明实时资料不参与候选排名。"
+                )
+                user = (
+                    f"用户问题：{question}\n\n"
+                    f"已验证证据块：{json.dumps(evidence_blocks, ensure_ascii=False)}"
+                )
+                reply = chat_completion(settings, system=system, user=user).strip()
+                if reply:
+                    return reply
+        except Exception:
+            pass
+        summaries = [
+            f"- {block['label']}（{', '.join(block['claim_scopes'])}）："
+            f"已通过校验，response_hash={block['response_hash']}"
+            for block in evidence_blocks
+        ]
+        return (
+            "已完成多能力检索，但当前无法调用受约束综合模型；以下仅列出通过校验的证据通道：\n\n"
+            + "\n".join(summaries)
+            + "\n\n实时资料不参与候选排序。"
+        )
+
+    def _run_scp_multi_routes(
+        self,
+        session: AgentSession,
+        *,
+        original_question: str,
+        evidence_question: str,
+        routes: list[Any],
+        enabled_skill_ids: set[str],
+        report_cache: bool,
+    ) -> Iterator[dict[str, Any]]:
+        selected_ids = {route.capability_id for route in routes}
+        steps = []
+        for index, route in enumerate(routes, start=1):
+            dependencies = [
+                value
+                for value in self.task_router.evidence_dependencies(route.capability_id)
+                if value in selected_ids
+            ]
+            steps.append(
+                {
+                    "task_id": f"scp-{index}",
+                    "tool": route.tool_id,
+                    "args": route.arguments,
+                    "label": route.label,
+                    "capability_id": route.capability_id,
+                    "depends_on": [
+                        f"scp-{next(i for i, item in enumerate(routes, start=1) if item.capability_id == dep)}"
+                        for dep in dependencies
+                    ],
+                }
+            )
+        yield self._emit(
+            session,
+            {
+                "type": "agent_plan",
+                "goal": original_question,
+                "action": "execute",
+                "diagnostics": ["task_router_multi", *[route.capability_id for route in routes]],
+                "steps": steps,
+            },
+        )
+        yield self._emit(
+            session,
+            {
+                "type": "thinking",
+                "text": "识别到多个明确科研子任务，将按证据依赖顺序逐项执行并统一综合。",
+            },
+        )
+        results: list[dict[str, Any]] = []
+        by_capability: dict[str, dict[str, Any]] = {}
+        has_explicit_literature = "literature_search" in selected_ids
+        for index, route in enumerate(routes, start=1):
+            task_id = f"scp-{index}"
+            dependencies = [
+                value
+                for value in self.task_router.evidence_dependencies(route.capability_id)
+                if value in selected_ids
+            ]
+            failed_dependencies = [
+                value
+                for value in dependencies
+                if not (by_capability.get(value) or {}).get("relevant")
+            ]
+            yield self._emit(session, {"type": "task_start", "task_id": task_id})
+            if failed_dependencies:
+                result = {
+                    "route": route,
+                    "ok": False,
+                    "relevant": False,
+                    "values": [],
+                    "digest": {"claim_scopes": self.task_router.claim_scopes(route.capability_id)},
+                    "claim_scopes": self.task_router.claim_scopes(route.capability_id),
+                    "calls": [],
+                    "error": "upstream_evidence_not_validated",
+                }
+                yield self._emit(
+                    session,
+                    {
+                        "type": "task_end",
+                        "task_id": task_id,
+                        "status": "skipped",
+                        "observation": {
+                            "reason": "upstream_evidence_not_validated",
+                            "dependencies": failed_dependencies,
+                        },
+                    },
+                )
+            else:
+                result = yield from self._run_scp_route(
+                    session,
+                    route=route,
+                    question=evidence_question,
+                    enabled_skill_ids=enabled_skill_ids,
+                    allow_cross_skill_fallback=not has_explicit_literature,
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "task_end",
+                        "task_id": task_id,
+                        "status": "succeeded" if result.get("relevant") else "degraded",
+                        "observation": {
+                            "capability_id": route.capability_id,
+                            "relevant": bool(result.get("relevant")),
+                            "claim_scopes": result.get("claim_scopes") or [],
+                            "response_hash": (result.get("digest") or {}).get("response_hash") or "",
+                        },
+                    },
+                )
+            results.append(result)
+            by_capability[route.capability_id] = result
+        reply = self._synthesize_scp_multi_reply(
+            question=original_question,
+            results=results,
+        )
+        if report_cache:
+            reply += "\n\n" + self._scp_cache_summary(results)
+        yield self._emit(session, {"type": "assistant", "text": reply})
+        yield self._emit(session, {"type": "done"})
+        self.store.persist(session)
+        return True
+
+    def _maybe_run_scp_chat(
+        self, session: AgentSession, text: str
+    ) -> Iterator[dict[str, Any]]:
+        """Auto-dispatch an authorized scientific chat request to SCP Hub."""
+        if frozen_ranking_mutation_requested(text):
+            yield self._emit(
+                session,
+                {
+                    "type": "assistant",
+                    "text": "实时文献和知识图谱只能作为补充证据，不能直接重算或改写已经冻结的候选排名；如需新排名，请明确发起新的筛选请求。",
+                },
+            )
+            yield self._emit(session, {"type": "done"})
+            self.store.persist(session)
+            return True
+        original_text = str(text or "")
+        if self._scp_history_summary_requested(original_text):
+            yield self._emit(
+                session,
+                {
+                    "type": "context_reuse",
+                    "source": "previous_scp_observation",
+                    "tool_calls": 0,
+                },
+            )
+            yield self._emit(
+                session,
+                {"type": "assistant", "text": self._scp_history_summary_reply(session)},
+            )
+            yield self._emit(session, {"type": "done"})
+            self.store.persist(session)
+            return True
+        repeated_question = (
+            self._scp_previous_scientific_question(session)
+            if self._scp_repeat_requested(original_text)
+            else ""
+        )
+        routing_text = repeated_question or original_text
+        plugin = self.registry.plugins.get("scp-hub")
+        declared_skill_ids = {
+            str(capability.get("skill_id") or "")
+            for capability in (getattr(plugin, "capabilities", None) or [])
+            if isinstance(capability, dict) and capability.get("skill_id")
+        }
+        declared_tasks = self.task_router.route_scp_tasks(
+            routing_text, enabled_skill_ids=declared_skill_ids
+        )
+        declared_route = self.task_router.route_scp(
+            routing_text, enabled_skill_ids=declared_skill_ids
+        )
+        if declared_route is None:
+            preflight = self.task_router.plan_scp(
+                routing_text,
+                enabled_skill_ids=declared_skill_ids,
+                recent_messages=session.messages,
+                allow_unregistered=True,
+            )
+            if preflight is not None and preflight.route == "scp":
+                declared_route = preflight
+        explicitly_allowed = (
+            not self._scp_live_disabled(original_text)
+            and (self._scp_live_requested(original_text) or self._scp_plugin_default_live())
+        )
+        installed = getattr(session, "installed_scp_skills", {}) or {}
+        enabled = {
+            sid: state
+            for sid, state in installed.items()
+            if isinstance(state, dict) and state.get("enabled")
+        }
+        if declared_route is None and not enabled:
+            return False
+        if not explicitly_allowed:
+            if enabled:
+                yield self._emit(
+                    session,
+                    {
+                        "type": "assistant",
+                        "text": "这类问题可能需要实时科研资料；当前消息未授权联网，因此没有调用 SCP Hub，也不会把模型生成内容冒充实时结果。若要查询，请明确写「允许联网」或 `allow_live=true`。",
+                    },
+                )
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
+                return True
+            return False
+        missing_declared_skills = [
+            str(route.skill_id)
+            for route in declared_tasks
+            if route.skill_id and route.skill_id not in enabled
+        ]
+        if missing_declared_skills:
+            yield from self._yield_scp_install_request(
+                session,
+                skill_ids=missing_declared_skills,
+                retry_text=original_text,
+                label="多项科研能力",
+            )
+            return True
+        if declared_route is not None and declared_route.skill_id not in enabled:
+            yield from self._yield_scp_install_request(
+                session,
+                skill_ids=[str(declared_route.skill_id)],
+                retry_text=original_text,
+                label=str(declared_route.label or ""),
+                capability_id=str(declared_route.capability_id or ""),
+            )
+            return True
+        if not enabled:
+            fallback_ids = [
+                str(declared_route.skill_id)
+            ] if declared_route is not None and declared_route.skill_id else []
+            if not fallback_ids:
+                yield self._emit(
+                    session,
+                    {
+                        "type": "assistant",
+                        "text": (
+                            "本轮明确要求实时资料，但当前会话没有可用的 SCP Skill。"
+                            "请打开安装请求或在「工具与插件」中安装对应能力后再试。"
+                        ),
+                    },
+                )
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
+                return True
+            yield from self._yield_scp_install_request(
+                session,
+                skill_ids=fallback_ids,
+                retry_text=original_text,
+                label=str(getattr(declared_route, "label", "") or ""),
+                capability_id=str(getattr(declared_route, "capability_id", "") or ""),
+            )
+            return True
+
+        multi_routes = self.task_router.route_scp_tasks(
+            routing_text, enabled_skill_ids=set(enabled)
+        )
+        if repeated_question and len(multi_routes) > 1:
+            explicitly_repeated = self.task_router.route_scp_tasks(
+                original_text, enabled_skill_ids=set(enabled)
+            )
+            requested_ids = {
+                route.capability_id for route in explicitly_repeated
+            }
+            if requested_ids:
+                multi_routes = [
+                    route
+                    for route in multi_routes
+                    if route.capability_id in requested_ids
+                ]
+        if len(multi_routes) > 1:
+            return (
+                yield from self._run_scp_multi_routes(
+                    session,
+                    original_question=original_text,
+                    evidence_question=routing_text,
+                    routes=multi_routes,
+                    enabled_skill_ids=set(enabled),
+                    report_cache=self._scp_cache_report_requested(original_text),
+                )
+            )
+
+        route = self.task_router.plan_scp(
+            routing_text,
+            enabled_skill_ids=set(enabled),
+            recent_messages=session.messages,
+        )
+        if route is None:
+            if declared_route is None:
+                return False
+            yield from self._yield_scp_install_request(
+                session,
+                skill_ids=[str(declared_route.skill_id)],
+                retry_text=original_text,
+                label=str(declared_route.label or ""),
+                capability_id=str(declared_route.capability_id or ""),
+            )
+            return True
+        if route.route == "chat":
+            return False
+        if route.route in {"clarify", "deny"}:
+            reason = str(getattr(route, "reason", "") or "")
+            if route.route == "clarify" and reason.startswith("scp_skill_not_installed:"):
+                skill_id = (
+                    str(getattr(route, "skill_id", "") or "").strip()
+                    or reason.split(":", 1)[-1].strip()
+                )
+                yield from self._yield_scp_install_request(
+                    session,
+                    skill_ids=[skill_id],
+                    retry_text=original_text,
+                    label=str(getattr(route, "label", "") or ""),
+                    capability_id=str(getattr(route, "capability_id", "") or ""),
+                )
+                return True
+            yield self._emit(
+                session,
+                {
+                    "type": "assistant",
+                    "text": (
+                        self._clarify_reply_for_route(route)
+                        if route.route == "clarify"
+                        else self._deny_reply_for_route(route)
+                    ),
+                },
+            )
+            yield self._emit(session, {"type": "done"})
+            self.store.persist(session)
+            return True
+        raw = routing_text
+        skill_id, tool_id, args, label = (
+            route.skill_id,
+            route.tool_id,
+            route.arguments,
+            route.label,
+        )
+        if tool_id not in self.registry.tools:
+            return False
+
+        yield self._emit(session, {"type": "agent_plan", "goal": original_text, "action": "execute", "diagnostics": ["task_router", route.capability_id, route.planner_status, f"confidence:{route.confidence:.2f}", route.reason], "steps": [{"tool": tool_id, "args": args}]})
+        yield self._emit(session, {"type": "thinking", "text": f"已获得实时资料授权，正在通过 SCP Hub 执行{label}。"})
+        events: list[dict[str, Any]] = []
+        for event in self._execute_tool_adapter(session, tool_id, args):
+            events.append(event)
+            yield event
+        end = next((e for e in reversed(events) if e.get("type") == "tool_end"), {})
+        if end.get("status") == "queued":
+            job_id = str(end.get("job_id") or "")
+            deadline = time.monotonic() + 600.0
+            job = self.scp_jobs.get(job_id, session_id=session.session_id)
+            last_progress = 0.0
+            run_cancellation = self._run_controller(session).cancel_event
+            while job and job.get("status") in {"queued", "running"} and time.monotonic() < deadline:
+                if run_cancellation.is_set():
+                    self.scp_jobs.cancel(job_id, session_id=session.session_id, reason="user_guidance")
+                    raise RunInterrupted("user_guidance")
+                now = time.monotonic()
+                if now - last_progress >= 5.0:
+                    yield self._emit(session, {"type": "thinking", "text": f"SCP Hub 正在生成{label}，后台任务 {job_id[:8]}… 仍在运行。"})
+                    last_progress = now
+                wait_interruptible(run_cancellation, timeout_sec=1.0, slice_sec=0.25)
+                job = self.scp_jobs.get(job_id, session_id=session.session_id)
+            if job and job.get("status") == "completed" and isinstance(job.get("result"), dict):
+                result = job["result"]
+                values = [
+                    str(block.get("value") or "")
+                    for block in result.get("content") or []
+                    if isinstance(block, dict) and str(block.get("value") or "").strip()
+                ]
+                digest = {
+                    "source": "scp-hub",
+                    "server_id": result.get("server_id") or "",
+                    "tool_name": result.get("tool_name") or "",
+                    "skill_id": result.get("skill_id") or skill_id,
+                    "status": result.get("status") or "hit",
+                    "cache_status": result.get("cache_status") or "unknown",
+                    "response_hash": result.get("response_hash") or "",
+                    "content": values,
+                    "writes_selection": False,
+                    "participates_in_ranking": False,
+                }
+                assessment = self.observation_validator.validate(
+                    plugin_id="scp-hub",
+                    capability_id=route.capability_id,
+                    question=raw,
+                    values=values,
+                )
+                protocol_check = (
+                    self.observation_validator.validate_protocol(
+                        plugin_id="scp-hub",
+                        capability_id=route.capability_id,
+                        question=raw,
+                        values=values,
+                    )
+                    if route.capability_id == "validation_protocol"
+                    else None
+                )
+                digest["relevance"] = assessment.as_dict()
+                digest["claim_scopes"] = self.task_router.claim_scopes(route.capability_id)
+                if protocol_check is not None:
+                    digest["protocol_validation"] = protocol_check
+                degraded_channels = list(dict.fromkeys([
+                    *assessment.degraded_channels,
+                    *((protocol_check or {}).get("degraded_channels") or []),
+                ]))
+                digest["degraded_channels"] = degraded_channels
+                yield self._emit(session, {"type": "observation_validation", "source": "scp-hub", **assessment.as_dict(), "degraded_channels": degraded_channels, "protocol_validation": protocol_check})
+                yield self._emit(session, {"type": "job_end", "job_id": job_id, "tool": tool_id, "ok": True, "source": "scp-hub", "status": digest["status"], "cache_status": digest["cache_status"], "response_hash": digest["response_hash"], "digest": digest})
+                reply = self._synthesize_scp_reply(question=raw, label=label, values=values, digest=digest)
+            elif job and job.get("status") == "failed":
+                yield self._emit(session, {"type": "job_end", "job_id": job_id, "tool": tool_id, "ok": False, "source": "scp-hub", "error_code": job.get("error_code") or "tool_failed"})
+                reply = f"SCP Hub 的{label}后台任务失败（{job.get('error_code') or 'tool_failed'}）；这不代表研究结论为阴性。"
+            else:
+                reply = f"SCP Hub 的{label}任务仍在运行（job_id: {job_id}），可稍后查询任务状态。"
+        elif end.get("ok"):
+            observation = end.get("observation") or {}
+            digest = observation.get("digest") or {}
+            values = [str(value) for value in digest.get("content", []) if str(value).strip()]
+            assessment = self.observation_validator.validate(
+                plugin_id="scp-hub",
+                capability_id=route.capability_id,
+                question=raw,
+                values=values,
+            )
+            protocol_check = (
+                self.observation_validator.validate_protocol(
+                    plugin_id="scp-hub",
+                    capability_id=route.capability_id,
+                    question=raw,
+                    values=values,
+                )
+                if route.capability_id == "validation_protocol"
+                else None
+            )
+            digest["relevance"] = assessment.as_dict()
+            digest["claim_scopes"] = self.task_router.claim_scopes(route.capability_id)
+            if protocol_check is not None:
+                digest["protocol_validation"] = protocol_check
+            degraded_channels = list(dict.fromkeys([
+                *assessment.degraded_channels,
+                *((protocol_check or {}).get("degraded_channels") or []),
+            ]))
+            digest["degraded_channels"] = degraded_channels
+            yield self._emit(session, {"type": "observation_validation", "source": "scp-hub", **assessment.as_dict(), "degraded_channels": degraded_channels, "protocol_validation": protocol_check})
+            if route.capability_id == "mechanism_relation_search" and not assessment.relevant:
+                recovered = yield from self._recover_scp_observation(
+                    session,
+                    question=raw,
+                    capability_id=route.capability_id,
+                    enabled_skill_ids=set(enabled),
+                )
+                if recovered is not None:
+                    values = recovered["values"]
+                    digest = recovered["digest"]
+                    assessment = recovered["assessment"]
+                    label = recovered["label"]
+                    digest["claim_scopes"] = self.task_router.claim_scopes(
+                        route.capability_id
+                    )
+            reply = self._synthesize_scp_reply(
+                question=raw,
+                label=label,
+                values=values,
+                digest=digest,
+            )
+        else:
+            reply = f"SCP Hub 的{label}调用未完成（{end.get('error_code') or end.get('error') or 'unknown_error'}）；这不代表研究结论为阴性。"
+        yield self._emit(session, {"type": "assistant", "text": reply})
+        yield self._emit(session, {"type": "done"})
+        self.store.persist(session)
+        return True
 
     def _resolve_mention(self, mention: MentionRef) -> dict[str, Any] | None:
         if mention.kind == "plugin":
@@ -3065,6 +5243,7 @@ class AgentRuntime:
         accepting_events = threading.Event()
         accepting_events.set()
         cancellation = threading.Event()
+        run_cancellation = self._run_controller(session).cancel_event
 
         def on_query_event(event: object) -> None:
             if not accepting_events.is_set():
@@ -3112,6 +5291,10 @@ class AgentRuntime:
         query_error: Exception | None = None
         query_deadline = started + total_timeout_sec
         while True:
+            if run_cancellation.is_set():
+                accepting_events.clear()
+                cancellation.set()
+                raise RunInterrupted("user_guidance")
             if time.perf_counter() >= query_deadline:
                 accepting_events.clear()
                 cancellation.set()
@@ -3428,8 +5611,29 @@ class AgentRuntime:
         )
 
     def _export_reserve_only(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        ensure_session_last_result(session)
         result = session.last_result
         if result is None:
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_start",
+                    "tool": "export_nomination",
+                    "plugin": "molmind-core",
+                    "args": {"format": "csv", "tier": "reserve"},
+                },
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_end",
+                    "tool": "export_nomination",
+                    "ok": False,
+                    "error_code": "missing_precondition",
+                    "error": "缺少前置条件：frozen_result",
+                    "status": "denied",
+                },
+            )
             return
         yield self._emit(
             session,
@@ -3466,8 +5670,29 @@ class AgentRuntime:
         yield from self._emit_artifact_card(session, artifact)
 
     def _export_primary_only(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        ensure_session_last_result(session)
         result = session.last_result
         if result is None:
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_start",
+                    "tool": "export_nomination",
+                    "plugin": "molmind-core",
+                    "args": {"format": "csv", "tier": "primary"},
+                },
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_end",
+                    "tool": "export_nomination",
+                    "ok": False,
+                    "error_code": "missing_precondition",
+                    "error": "缺少前置条件：frozen_result",
+                    "status": "denied",
+                },
+            )
             return
         expected_name = self._submission_csv_name(
             session, tier="primary", primary_count=len(result.top_molecules)
@@ -3666,6 +5891,27 @@ class AgentRuntime:
             },
         )
 
+    def _attachment_context_text(self, session: AgentSession) -> str:
+        """Collect non-SDF attachment summaries for planner/chat prompts."""
+        summaries: list[dict[str, Any]] = []
+        active = session.active_run or {}
+        for item in active.get("attachment_summaries") or []:
+            if isinstance(item, dict):
+                summaries.append(item)
+        if not summaries:
+            for message in reversed(session.messages[-4:]):
+                for item in message.get("attachments") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    kind = str(item.get("kind") or "")
+                    if kind == "sdf":
+                        continue
+                    if item.get("excerpt") or item.get("note"):
+                        summaries.append(item)
+                if summaries:
+                    break
+        return format_attachment_context(summaries)
+
     def _llm_chat_reply(self, session: AgentSession, text: str) -> str:
         """Answer general questions with LLM; fall back to a short template."""
         try:
@@ -3694,6 +5940,7 @@ class AgentRuntime:
 
             has_sdf = bool(session.sdf_bytes)
             name = session.sdf_filename or ""
+            attachment_context = self._attachment_context_text(session)
             frozen_result = session.last_result
             frozen_count = len(getattr(frozen_result, "top_molecules", None) or [])
             frozen_run_id = str(getattr(frozen_result, "run_id", "") or "").strip()
@@ -3703,20 +5950,18 @@ class AgentRuntime:
                 if frozen_result is not None
                 else "本会话最近冻结结果：无"
             )
-            hist_lines: list[str] = []
-            for m in session.messages[-8:-1]:
-                role = m.get("role")
-                body = (m.get("text") or "").strip()
-                if role in {"user", "assistant"} and body:
-                    hist_lines.append(f"{role}: {body[:400]}")
-            history = "\n".join(hist_lines) if hist_lines else "（无）"
-            working_context = self._compact_observation(
-                json.dumps(
-                    session.working_memory[-4:],
-                    ensure_ascii=False,
-                ),
-                limit=2200,
-            ) or "（无）"
+            active_resume = (session.active_run or {}).get("resume_context") or {}
+            context_window = build_context_window(
+                messages=session.messages[:-1],
+                working_memory=session.working_memory,
+                resume_context=active_resume,
+            )
+            history = context_window.history
+            working_context = context_window.working_memory
+            resume_context = context_window.resume_context
+            if context_window.summary != session.context_summary:
+                session.context_summary = context_window.summary
+                self.store.persist(session)
 
             system = (
                 "你是 MolMind Agent，面向 MASLD 低毒降脂分子筛选的能力助手。"
@@ -3736,17 +5981,26 @@ class AgentRuntime:
                 "导出候选 CSV、基于冻结榜单生成机制 PDF、解释冻结排名。"
                 "不得承诺任意属性统计、任意筛选阈值、指定靶点虚拟筛选或跨库对比，"
                 "除非当前工具事件已经明确提供该能力。"
+                "非 SDF 附件（PDF/图片/文档）仅作上下文参考，不能用于 score_and_rank，"
+                "也不能假装已经解析了 PDF/图片正文。"
                 f"当前会话附件：{'已绑定 ' + name if has_sdf else '无'}（仅本会话可用，不跨会话）。"
                 f"{frozen_context}。"
+                + (f"\n{attachment_context}" if attachment_context else "")
             )
             user = (
                 f"最近对话：\n{history}\n\n"
                 f"会话工作记忆（最近的调用、观察与 Loop 决策）：\n{working_context}\n\n"
+                f"若本轮由指引触发，以下是可审计的恢复上下文；只复用明确成功且输入未变化的结果：\n"
+                f"{resume_context}\n\n"
                 f"用户本轮：{text}\n\n"
                 "请直接回答本轮问题。"
             )
             return chat_completion(settings, system=system, user=user).strip()
-        except Exception:  # noqa: BLE001 — LLM optional
+        except CallCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001 — LLM optional
+            if self._run_controller(session).interruption_requested:
+                raise RunInterrupted("user_guidance") from exc
             return self._chat_reply_fallback(session, text)
 
     def _chat_reply_fallback(self, session: AgentSession, text: str) -> str:
@@ -3764,7 +6018,12 @@ class AgentRuntime:
         )
 
     def _execute_tool_adapter(
-        self, session: AgentSession, tool_id: str, args: dict[str, Any]
+        self,
+        session: AgentSession,
+        tool_id: str,
+        args: dict[str, Any],
+        *,
+        event_context: dict[str, Any] | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Validate, budget and dispatch one Registry-backed tool call."""
         tool = self.registry.tools.get(tool_id)
@@ -3784,8 +6043,66 @@ class AgentRuntime:
                 decision=decision,
             )
             return
+        retry_of = str((session.active_run or {}).get("retry_of_run_id") or "")
+        reusable = next(
+            (
+                item
+                for item in reversed(session.tool_checkpoints)
+                if retry_of
+                and item.get("run_id") == retry_of
+                and item.get("tool") == tool_id
+                and item.get("args_hash") == decision.args_hash
+                and item.get("status") == "succeeded"
+                and not bool(getattr(tool, "writes_selection", False))
+            ),
+            None,
+        )
+        if reusable is not None:
+            yield self._emit(
+                session,
+                {
+                    "type": "tool_start",
+                    "tool": tool_id,
+                    "plugin": tool.plugin_id,
+                    "args": copy.deepcopy(args),
+                    "checkpoint_reused": True,
+                    "reused_from_checkpoint_id": reusable.get("checkpoint_id") or "",
+                    **dict(event_context or {}),
+                },
+            )
+            terminal = copy.deepcopy(reusable.get("terminal_event") or {})
+            terminal.update(
+                {
+                    "type": "tool_end",
+                    "tool": tool_id,
+                    "ok": True,
+                    "status": "succeeded",
+                    "checkpoint_reused": True,
+                    "reused_from_checkpoint_id": reusable.get("checkpoint_id") or "",
+                }
+            )
+            yield self._emit(session, terminal)
+            return
         method = getattr(self, f"_execute_{tool_id}", None)
         if not callable(method):
+            if tool.plugin_id == "scp-hub":
+                yield self._emit(
+                    session,
+                    {
+                        "type": "tool_start",
+                        "tool": tool.tool_id,
+                        "plugin": "scp-hub",
+                        "source": "scp-hub",
+                        "args": {
+                            **args,
+                            "writes_selection": False,
+                            "participates_in_ranking": False,
+                        },
+                        **dict(event_context or {}),
+                    },
+                )
+                yield self._execute_scp_tool(session, tool, args)
+                return
             yield from self._governance_denied_events(
                 session,
                 tool_id=tool_id,
@@ -3800,6 +6117,684 @@ class AgentRuntime:
             )
             return
         yield from method(session, **args)
+
+    def _execute_scp_tool(self, session: AgentSession, tool: Any, args: dict[str, Any]) -> dict[str, Any]:
+        """Execute a dynamic SCP tool and preserve the frozen-ranking boundary."""
+        controller = self._run_controller(session)
+        if float(tool.timeout_sec or 0) > 120:
+            skill_id = next((sid for sid, state in session.installed_scp_skills.items() if tool.tool_id in state.get("tools", [])), "")
+            job = self.scp_jobs.submit(
+                lambda: self.scp.call(session, tool.tool_id, args, allow_live=True),
+                session_id=session.session_id,
+                skill_id=skill_id,
+                tool_id=tool.tool_id,
+                run_id=controller.run_id,
+                arguments=args,
+                allow_live=True,
+            )
+            return self._emit(session, {"type":"tool_end","tool":tool.tool_id,"ok":True,"status":"queued","job_id":job["job_id"],"source":"scp-hub","participates_in_ranking":False,"ranking_changed":False,"writes_selection":False})
+        try:
+            observation = run_cancellable(
+                lambda: self.scp.call(session, tool.tool_id, args, allow_live=True),
+                cancel_event=controller.cancel_event,
+                expected_run_id=controller.run_id,
+                current_run_id=lambda: self._run_controller(session).run_id,
+            )
+            if controller.interruption_requested:
+                return self._emit(session, {"type": "tool_end", "tool": tool.tool_id, "ok": False, "status": "interrupted", "error_code": "user_guidance", "source": "scp-hub", "participates_in_ranking": False, "ranking_changed": False, "writes_selection": False})
+            digest = self._scp_observation_digest(observation)
+            return self._emit(session, {"type": "tool_end", "tool": tool.tool_id, "ok": observation.status in {"hit", "cache_hit"}, "status": "succeeded" if observation.status in {"hit", "cache_hit"} else "failed", "source": "scp-hub", "summary": f"SCP Hub 返回 {len(digest.get('content') or [])} 个可用结果块", "digest": digest, "participates_in_ranking": False, "ranking_changed": False, "writes_selection": False})
+        except CallCancelled:
+            return self._emit(session, {"type": "tool_end", "tool": tool.tool_id, "ok": False, "status": "interrupted", "error_code": "user_guidance", "source": "scp-hub", "participates_in_ranking": False, "ranking_changed": False, "writes_selection": False})
+        except Exception as exc:  # remote failures are never scientific negatives
+            code = getattr(exc, "code", "tool_failed")
+            return self._emit(session, {"type": "tool_end", "tool": tool.tool_id, "ok": False, "error_code": code, "error": str(exc), "source": "scp-hub", "participates_in_ranking": False, "ranking_changed": False, "writes_selection": False})
+
+    @staticmethod
+    def _scp_observation_digest(observation: Any, *, limit: int = 9000) -> dict[str, Any]:
+        """Keep a bounded, synthesizable SCP payload in the canonical envelope."""
+        content: list[str] = []
+        remaining = max(1000, int(limit))
+        for block in getattr(observation, "content", None) or []:
+            value = getattr(block, "value", "")
+            if isinstance(value, str):
+                rendered = value.strip()
+            else:
+                rendered = json.dumps(value, ensure_ascii=False, default=str)
+            if not rendered:
+                continue
+            rendered = rendered[:remaining]
+            content.append(rendered)
+            remaining -= len(rendered)
+            if remaining <= 0:
+                break
+        citations_raw = list(getattr(observation, "citations", None) or [])[:10]
+        citations = [
+            AgentRuntime._compact_observation(
+                json.dumps(item, ensure_ascii=False, default=str), limit=300
+            )
+            for item in citations_raw
+        ]
+        return {
+            "source": "scp-hub",
+            "server_id": str(getattr(observation, "server_id", "") or ""),
+            "tool_name": str(getattr(observation, "tool_name", "") or ""),
+            "skill_id": str(getattr(observation, "skill_id", "") or ""),
+            "status": str(getattr(observation, "status", "") or ""),
+            "cache_status": str(getattr(observation, "cache_status", "") or "unknown"),
+            "response_hash": str(getattr(observation, "response_hash", "") or ""),
+            "citations": citations,
+            "content": content,
+            "writes_selection": False,
+            "participates_in_ranking": False,
+        }
+
+    def _execute_scp_recovery_step(
+        self,
+        session: AgentSession,
+        tool_id: str,
+        arguments: dict[str, Any],
+        *,
+        capability_id: str,
+        evidence_role: str,
+        recovery_stage: str,
+    ) -> Iterator[dict[str, Any]]:
+        """Execute one recovery call and return its terminal tool event."""
+        terminal: dict[str, Any] = {}
+        for event in self._execute_tool_adapter(
+            session,
+            tool_id,
+            arguments,
+            event_context={
+                "capability_id": capability_id,
+                "evidence_role": evidence_role,
+                "recovery_stage": recovery_stage,
+                "claim_scopes": self.task_router.claim_scopes(capability_id),
+            },
+        ):
+            if event.get("type") == "tool_end":
+                terminal = event
+            yield event
+        return terminal
+
+    def _recover_scp_observation(
+        self,
+        session: AgentSession,
+        *,
+        question: str,
+        capability_id: str,
+        enabled_skill_ids: set[str],
+        include_fallback: bool = True,
+        initial_digest: dict[str, Any] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Run plugin-declared probes, relaxed queries and cross-Skill fallback."""
+        steps, fallback = self.task_router.recovery_steps(
+            capability_id,
+            question,
+            enabled_skill_ids=enabled_skill_ids,
+        )
+        if not include_fallback:
+            fallback = None
+        if not steps and fallback is None:
+            return None
+        yield self._emit(
+            session,
+            {
+                "type": "agent_replan",
+                "action": "recover_observation",
+                "reason": "initial_observation_irrelevant_or_empty",
+                "capability_id": capability_id,
+                "steps": [
+                    {
+                        "tool": step["tool_id"],
+                        "title": step["title"],
+                        "evidence_role": step["evidence_role"],
+                    }
+                    for step in steps
+                ]
+                + (
+                    [
+                        {
+                            "tool": fallback.tool_id,
+                            "title": fallback.label,
+                            "evidence_role": "fallback_evidence",
+                        }
+                    ]
+                    if fallback is not None
+                    else []
+                ),
+            },
+        )
+        trace: list[dict[str, Any]] = []
+        last_result: dict[str, Any] | None = None
+        candidate_values: list[str] = []
+        candidate_hashes: list[str] = []
+        for index, step in enumerate(steps, start=1):
+            yield self._emit(
+                session,
+                {
+                    "type": "thinking",
+                    "text": f"初始机制证据不足，正在执行恢复步骤 {index}：{step['title']}。",
+                },
+            )
+            end = yield from self._execute_scp_recovery_step(
+                session,
+                step["tool_id"],
+                step["arguments"],
+                capability_id=capability_id,
+                evidence_role=step["evidence_role"],
+                recovery_stage=step["title"],
+            )
+            digest = ((end.get("observation") or {}).get("digest") or end.get("digest") or {})
+            record = {
+                "stage": step["title"],
+                "tool_id": step["tool_id"],
+                "evidence_role": step["evidence_role"],
+                "ok": bool(end.get("ok")),
+                "status": digest.get("status") or end.get("status") or "failed",
+                "cache_status": digest.get("cache_status") or "unknown",
+                "response_hash": digest.get("response_hash") or "",
+            }
+            trace.append(record)
+            if not end.get("ok") or step["evidence_role"] != "evidence_query":
+                continue
+            values = [
+                str(value)
+                for value in digest.get("content", [])
+                if str(value).strip()
+            ]
+            assessment = self.observation_validator.validate(
+                plugin_id="scp-hub",
+                capability_id=capability_id,
+                question=question,
+                values=values,
+            )
+            digest["relevance"] = assessment.as_dict()
+            digest["degraded_channels"] = assessment.degraded_channels
+            digest["recovery"] = {"trace": list(trace), "exhausted": False}
+            digest["recovery_primary"] = dict(initial_digest or {})
+            record["relevance_status"] = assessment.status
+            record["relevance_score"] = assessment.score
+            if values and assessment.score > 0:
+                candidate_values.extend(values)
+                if digest.get("response_hash"):
+                    candidate_hashes.append(str(digest["response_hash"]))
+            yield self._emit(
+                session,
+                {
+                    "type": "observation_validation",
+                    "source": "scp-hub",
+                    **assessment.as_dict(),
+                    "recovery_stage": step["title"],
+                },
+            )
+            last_result = {
+                "values": values,
+                "digest": digest,
+                "assessment": assessment,
+                "label": "机制关系查询",
+            }
+            if assessment.relevant:
+                return last_result
+
+        if fallback is not None:
+            yield self._emit(
+                session,
+                {
+                    "type": "thinking",
+                    "text": "知识图谱恢复查询仍未形成直接证据，正在通过文献检索 Skill 补证。",
+                },
+            )
+            end = yield from self._execute_scp_recovery_step(
+                session,
+                fallback.tool_id,
+                fallback.arguments,
+                capability_id=fallback.capability_id,
+                evidence_role="fallback_evidence",
+                recovery_stage=fallback.label,
+            )
+            digest = ((end.get("observation") or {}).get("digest") or end.get("digest") or {})
+            record = {
+                "stage": fallback.label,
+                "tool_id": fallback.tool_id,
+                "evidence_role": "fallback_evidence",
+                "ok": bool(end.get("ok")),
+                "status": digest.get("status") or end.get("status") or "failed",
+                "cache_status": digest.get("cache_status") or "unknown",
+                "response_hash": digest.get("response_hash") or "",
+            }
+            trace.append(record)
+            if end.get("ok"):
+                values = [
+                    str(value)
+                    for value in digest.get("content", [])
+                    if str(value).strip()
+                ]
+                assessment = self.observation_validator.validate(
+                    plugin_id="scp-hub",
+                    capability_id=fallback.capability_id,
+                    question=question,
+                    values=values,
+                )
+                digest["relevance"] = assessment.as_dict()
+                digest["degraded_channels"] = assessment.degraded_channels
+                digest["evidence_mode"] = "literature_fallback"
+                digest["recovery"] = {"trace": list(trace), "exhausted": False}
+                digest["recovery_primary"] = dict(initial_digest or {})
+                record["relevance_status"] = assessment.status
+                record["relevance_score"] = assessment.score
+                yield self._emit(
+                    session,
+                    {
+                        "type": "observation_validation",
+                        "source": "scp-hub",
+                        **assessment.as_dict(),
+                        "recovery_stage": fallback.label,
+                        "fallback_for": capability_id,
+                    },
+                )
+                last_result = {
+                    "values": values,
+                    "digest": digest,
+                    "assessment": assessment,
+                    "label": "机制关系查询（文献补证）",
+                }
+                if assessment.relevant:
+                    return last_result
+                combined_values = [*candidate_values, *values]
+                combined_assessment = self.observation_validator.validate(
+                    plugin_id="scp-hub",
+                    capability_id=capability_id,
+                    question=question,
+                    values=combined_values,
+                )
+                if combined_assessment.relevant:
+                    hashes = [
+                        *candidate_hashes,
+                        *(
+                            [str(digest.get("response_hash"))]
+                            if digest.get("response_hash")
+                            else []
+                        ),
+                    ]
+                    fusion_hash = hashlib.sha256(
+                        "|".join(hashes).encode("utf-8")
+                    ).hexdigest()
+                    trace.append(
+                        {
+                            "stage": "多源证据联合校验",
+                            "evidence_role": "evidence_fusion",
+                            "ok": True,
+                            "status": combined_assessment.status,
+                            "response_hash": f"sha256:{fusion_hash}",
+                        }
+                    )
+                    digest = {
+                        **digest,
+                        "server_id": "SciGraph-Bio+Scholar-KG",
+                        "tool_name": "recovery_evidence_fusion",
+                        "skill_id": "mechanism_research+literature_research",
+                        "response_hash": f"sha256:{fusion_hash}",
+                        "content": combined_values,
+                        "relevance": combined_assessment.as_dict(),
+                        "degraded_channels": [],
+                        "evidence_mode": "combined_recovery",
+                        "recovery": {"trace": list(trace), "exhausted": False},
+                        "recovery_primary": dict(initial_digest or {}),
+                    }
+                    yield self._emit(
+                        session,
+                        {
+                            "type": "observation_fusion_validation",
+                            "source": "scp-hub",
+                            **combined_assessment.as_dict(),
+                            "component_response_hashes": hashes,
+                            "response_hash": f"sha256:{fusion_hash}",
+                            "fallback_for": capability_id,
+                        },
+                    )
+                    return {
+                        "values": combined_values,
+                        "digest": digest,
+                        "assessment": combined_assessment,
+                        "label": "机制关系查询（图谱与文献联合补证）",
+                    }
+
+        if last_result is not None:
+            last_result["digest"]["recovery"] = {
+                "trace": trace,
+                "exhausted": True,
+            }
+            last_result["digest"]["recovery_primary"] = dict(initial_digest or {})
+            return last_result
+        return None
+
+    def _display_scp_concept(self, canonical: str) -> str:
+        plugin = self.registry.plugins.get("scp-hub")
+        terminology = getattr(plugin, "terminology", {}) if plugin else {}
+        for canonical_map in terminology.values():
+            if not isinstance(canonical_map, dict) or canonical not in canonical_map:
+                continue
+            aliases = [str(value) for value in canonical_map.get(canonical) or []]
+            preferred = next(
+                (
+                    value
+                    for value in aliases
+                    if re.search(r"[\u3400-\u9fffα-ωΑ-Ω]", value)
+                ),
+                "",
+            )
+            return preferred or canonical
+        return canonical
+
+    def _display_scp_reason(self, reason: str) -> str:
+        if reason == "observation_empty_result":
+            return "远程查询结果为空"
+        if reason == "observation_empty":
+            return "远程 Observation 为空"
+        if reason == "observation_scope_missing":
+            return "当前问题没有可继承或可识别的科学范围"
+        if reason.startswith("missing_concept:"):
+            return f"未覆盖{self._display_scp_concept(reason.split(':', 1)[1])}"
+        if reason.startswith("time_range_not_met:"):
+            return f"未满足 {reason.split(':', 1)[1]} 年后的时间范围"
+        if reason.startswith("excluded_concept_present:"):
+            return f"包含已排除主题{self._display_scp_concept(reason.split(':', 1)[1])}"
+        return reason
+
+    @staticmethod
+    def _parse_scp_payload(value: str) -> Any:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    @classmethod
+    def _iter_scp_output_items(cls, values: list[str]) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for raw in values:
+            payload = cls._parse_scp_payload(str(raw or ""))
+            if isinstance(payload, dict):
+                output = payload.get("output")
+                if isinstance(output, list) and output:
+                    for item in output:
+                        if isinstance(item, dict):
+                            items.append(item)
+                    continue
+                data = payload.get("data")
+                if isinstance(data, list) and data:
+                    for item in data:
+                        if isinstance(item, dict):
+                            items.append(item)
+                        else:
+                            items.append({"summary": str(item)})
+                    continue
+                if any(
+                    key in payload
+                    for key in (
+                        "paper_title",
+                        "title",
+                        "abstract",
+                        "summary",
+                        "node_text",
+                    )
+                ):
+                    items.append(payload)
+                    continue
+            text = str(raw or "").strip()
+            if text:
+                items.append({"summary": text})
+        return items
+
+    @classmethod
+    def _format_scp_evidence_materials(
+        cls,
+        values: list[str],
+        *,
+        limit_items: int = 8,
+        snippet_chars: int = 280,
+    ) -> str:
+        """Organize remote observation items for user-facing replies."""
+        items = cls._iter_scp_output_items(values)
+        if not items:
+            return ""
+        lines: list[str] = ["## 检索到的资料", ""]
+        shown = 0
+        for item in items:
+            if shown >= limit_items:
+                break
+            title = str(
+                item.get("paper_title")
+                or item.get("title")
+                or item.get("name")
+                or item.get("node_text")
+                or ""
+            ).strip()
+            year = str(
+                item.get("pub_year")
+                or item.get("year")
+                or item.get("publication_year")
+                or ""
+            ).strip()
+            authors = item.get("authors") or item.get("author") or ""
+            if isinstance(authors, list):
+                authors = "、".join(str(part).strip() for part in authors if str(part).strip())
+            else:
+                authors = str(authors or "").strip()
+            snippet = str(
+                item.get("abstract")
+                or item.get("summary")
+                or item.get("node_text")
+                or item.get("text")
+                or ""
+            ).strip()
+            if not title and not snippet:
+                continue
+            shown += 1
+            heading = title or f"资料 {shown}"
+            if year and year not in heading:
+                heading = f"{heading}（{year}）"
+            lines.append(f"{shown}. **{heading}**")
+            if authors:
+                lines.append(f"   - 作者：{authors}")
+            if snippet and snippet != title:
+                compact = cls._compact_observation(snippet, limit=snippet_chars)
+                lines.append(f"   - 摘要/要点：{compact}")
+            doi = str(item.get("doi") or item.get("DOI") or "").strip()
+            if doi:
+                lines.append(f"   - DOI：{doi}")
+            lines.append("")
+        if shown == 0:
+            # Fall back to raw evidence blocks when structured fields are absent.
+            evidence = "\n\n".join(str(value).strip() for value in values if str(value).strip())
+            if not evidence:
+                return ""
+            return (
+                "## 检索到的资料\n\n"
+                f"```text\n{cls._compact_observation(evidence, limit=6000)}\n```"
+            )
+        omitted = max(0, len(items) - shown)
+        if omitted:
+            lines.append(f"（另有 {omitted} 条未完整展开）")
+            lines.append("")
+        return "\n".join(lines).rstrip()
+
+    def _scp_relevance_failure_footer(
+        self,
+        *,
+        label: str,
+        relevance: dict[str, Any],
+        digest: dict[str, Any],
+        question: str,
+    ) -> str:
+        missing = "、".join(
+            self._display_scp_concept(str(value))
+            for value in relevance.get("missing_concepts") or []
+        ) or "目标约束"
+        reasons = "；".join(
+            self._display_scp_reason(str(value))
+            for value in relevance.get("reasons") or []
+        )
+        recovery = digest.get("recovery") or {}
+        recovery_note = (
+            "\n\nAgent 已依次执行图谱探测、放宽机制查询和可用的文献补证，"
+            "但仍没有获得满足全部问题约束的直接证据。"
+            if recovery.get("exhausted")
+            else ""
+        )
+        subquestions = re.findall(
+            r"(?:^|\n)\s*(\d+)[.、]\s*([^\n]+)", str(question or "")
+        )
+        subquestion_note = (
+            "\n\n逐项结果：\n"
+            + "\n".join(
+                f"{number}. {body.strip()}：当前 Observation 未通过完整约束校验，不能据此下结论。"
+                for number, body in subquestions
+            )
+            if subquestions
+            else ""
+        )
+        return (
+            f"## 相关性校验结论\n\n"
+            f"SCP Hub 已完成{label}，但返回结果未通过相关性校验，"
+            f"不能作为目标问题的直接证据。\n\n"
+            f"缺失或未满足：{missing}。\n"
+            f"校验原因：{reasons or 'evidence_relevance_insufficient'}。"
+            f"{recovery_note}"
+            f"{subquestion_note}"
+            "\n\n本次实时资料不参与候选排序。"
+        )
+
+    def _synthesize_scp_reply(
+        self,
+        *,
+        question: str,
+        label: str,
+        values: list[str],
+        digest: dict[str, Any],
+    ) -> str:
+        """Answer from the actual MCP observation instead of a success banner."""
+        evidence = "\n\n".join(values).strip()
+        if not evidence:
+            return (
+                f"SCP Hub 已完成{label}，但返回内容为空，无法据此生成科学总结。"
+                "本次调用不参与候选排序。"
+            )
+        relevance = digest.get("relevance") or {}
+        if relevance and not relevance.get("relevant", False):
+            materials = self._format_scp_evidence_materials(values)
+            footer = self._scp_relevance_failure_footer(
+                label=label,
+                relevance=relevance if isinstance(relevance, dict) else {},
+                digest=digest,
+                question=question,
+            )
+            try:
+                from plugins.molmind_core.scientific.mechanism.llm_client import (
+                    chat_completion,
+                    resolve_llm_settings,
+                )
+
+                settings = resolve_llm_settings(
+                    {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+                )
+                if settings.ready:
+                    system = (
+                        "你是 MolMind 的科研检索整理器。任务是先整理远程返回的资料，"
+                        "再给出相关性校验结论。规则："
+                        "1) 只能依据给定 Observation 整理标题、年份、作者、摘要要点；"
+                        "2) 不得补造论文、作者、年份或结论；"
+                        "3) 明确说明这些资料未通过相关性校验，不能当作目标问题的直接证据；"
+                        "4) 必须复述缺失概念与校验原因；"
+                        "5) 末尾说明实时资料不参与候选排序；"
+                        "6) 用清晰的中文 Markdown，先资料后结论。"
+                    )
+                    user = (
+                        f"用户问题：{question}\n"
+                        f"任务类型：{label}\n"
+                        f"claim_scopes：{digest.get('claim_scopes') or []}\n"
+                        f"相关性校验：{json.dumps(relevance, ensure_ascii=False)}\n"
+                        f"SCP Observation：\n{evidence[:10000]}\n"
+                        "请先整理检索资料，最后再总结校验结论。"
+                    )
+                    reply = chat_completion(settings, system=system, user=user).strip()
+                    if reply:
+                        # Ensure the hard governance footer is not dropped by the model.
+                        if "不参与候选排序" not in reply and "不参与候选排名" not in reply:
+                            reply = f"{reply.rstrip()}\n\n本次实时资料不参与候选排序。"
+                        if "未通过相关性校验" not in reply:
+                            reply = f"{reply.rstrip()}\n\n{footer}"
+                        return reply
+            except Exception:  # noqa: BLE001 - fall back to deterministic layout
+                pass
+            if materials:
+                return f"{materials}\n\n{footer}"
+            return footer
+        protocol_check = digest.get("protocol_validation") or {}
+        if protocol_check and not protocol_check.get("complete", False):
+            missing = ", ".join(protocol_check.get("missing_fields") or []) or "未声明字段"
+            materials = self._format_scp_evidence_materials(values)
+            conclusion = (
+                f"## 方案完整性结论\n\n"
+                f"SCP Hub 已完成{label}，但方案 Observation 缺少必要结构字段：{missing}。\n\n"
+                "当前内容只能作为不完整草案，不能当作可执行实验方案；"
+                "本次实时资料不参与候选排序。"
+            )
+            if materials:
+                return f"{materials}\n\n{conclusion}"
+            return conclusion
+        try:
+            from plugins.molmind_core.scientific.mechanism.llm_client import (
+                chat_completion,
+                resolve_llm_settings,
+            )
+
+            settings = resolve_llm_settings(
+                {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+            )
+            if settings.ready:
+                system = (
+                    "你是 MolMind 的科研证据总结器。只能依据给定 SCP Hub Observation 回答，"
+                    "不得补造论文、作者、年份、机制或实验结论。区分远程返回事实与推断；"
+                    "若证据不足要明确说明。用清晰的中文 Markdown 输出，并在末尾说明"
+                    "这些实时资料不参与候选排名。严格遵守 claim_scopes："
+                    "experimental_design_advice 只能生成实验设计草案，不能证明或声称检索到了"
+                    "论文、作者、年份、研究发现或机制事实；literature_evidence 才能支持文献结论；"
+                    "mechanism_evidence 才能支持机制关系。"
+                )
+                user = (
+                    f"用户问题：{question}\n"
+                    f"任务类型：{label}\n"
+                    f"Server：{digest.get('server_id') or 'unknown'}\n"
+                    f"响应哈希：{digest.get('response_hash') or 'unknown'}\n"
+                    f"claim_scopes：{digest.get('claim_scopes') or []}\n"
+                    f"SCP Observation：\n{evidence[:10000]}\n"
+                    "请直接回答用户问题。"
+                )
+                reply = chat_completion(settings, system=system, user=user).strip()
+                if reply:
+                    risks = protocol_check.get("risk_flags") or []
+                    if risks:
+                        warning = "；".join(str(item.get("message") or "需要科学复核") for item in risks)
+                        return f"【科学复核提示】{warning}\n\n{reply}"
+                    return reply
+        except Exception:  # noqa: BLE001 - deterministic evidence fallback below
+            pass
+        materials = self._format_scp_evidence_materials(values)
+        if materials:
+            return (
+                f"{materials}\n\n"
+                "以上为远程返回内容整理（未经过模型扩写）。"
+                "这些实时资料仅作补充，不参与候选排序。"
+            )
+        return (
+            f"已通过 SCP Hub 完成{label}。以下为远程返回内容（未经过模型扩写）：\n\n"
+            f"```text\n{evidence[:8000]}\n```\n\n"
+            "这些实时资料仅作补充，不参与候选排序。"
+        )
 
     def _execute_required_tool(
         self,
@@ -3925,8 +6920,11 @@ class AgentRuntime:
         )
 
         log_events: list[dict[str, Any]] = []
+        run_cancellation = self._run_controller(session).cancel_event
 
         def on_log(entry: RunLogEntry) -> None:
+            if run_cancellation.is_set():
+                raise RunInterrupted("user_guidance")
             log_events.append({"type": "log", **entry.to_dict()})
 
         tmp_path: Path | None = None
@@ -3943,7 +6941,19 @@ class AgentRuntime:
                     log_sink=on_log,
                 )
 
-            result, elapsed = timed_call(_call)
+            started = time.perf_counter()
+            try:
+                result = run_cancellable(
+                    _call,
+                    cancel_event=run_cancellation,
+                    expected_run_id=self._run_controller(session).run_id,
+                    current_run_id=lambda: self._run_controller(session).run_id,
+                )
+            except CallCancelled as exc:
+                raise RunInterrupted("user_guidance") from exc
+            elapsed = time.perf_counter() - started
+            if run_cancellation.is_set():
+                raise RunInterrupted("user_guidance")
         except Exception as exc:  # noqa: BLE001
             yield self._emit(
                 session,
@@ -3960,6 +6970,7 @@ class AgentRuntime:
             yield self._emit(session, ev)
 
         session.last_result = result
+        session.frozen_ranking = snapshot_from_result(result)
         session.last_run_id = result.run_id
         session.last_selection_sha256 = result.selection_sha256
         session.last_config_hash = result.config.config_hash
@@ -3981,6 +6992,7 @@ class AgentRuntime:
             }
         )
         session.run_history = session.run_history[-20:]
+        self.store.persist(session)
 
         yield self._emit(
             session,
@@ -4058,6 +7070,7 @@ class AgentRuntime:
             )
 
     def _run_mechanism(self, session: AgentSession) -> Iterator[dict[str, Any]]:
+        ensure_session_last_result(session)
         result = session.last_result
         if result is None:
             yield self._emit(session, {"type": "error", "detail": "尚无筛选结果，无法生成机制 PDF。"})
@@ -4089,6 +7102,7 @@ class AgentRuntime:
                 assumptions=result.config.assumptions,
                 run_context={
                     "run_id": result.run_id,
+                    "agent_run_id": self._run_controller(session).run_id,
                     "input_sha256": result.input_sha256,
                     "config_hash": result.config.config_hash,
                     "selection_sha256": result.selection_sha256,
@@ -4111,7 +7125,11 @@ class AgentRuntime:
         session.last_mechanism_job_id = job_id
         deadline = time.time() + 180.0
         last_status = ""
+        run_cancellation = self._run_controller(session).cancel_event
         while time.time() < deadline:
+            if run_cancellation.is_set():
+                cancel_job(job_id, reason="user_guidance")
+                raise RunInterrupted("user_guidance")
             job = get_job(job_id)
             if not job:
                 yield self._emit(
@@ -4131,6 +7149,9 @@ class AgentRuntime:
             if status != last_status:
                 last_status = status
                 yield self._emit(session, {"type": "thinking", "text": f"机制报告状态：{status}"})
+            if status in {"cancel_requested", "cancelled"}:
+                yield self._emit(session, {"type": "tool_end", "tool": "start_mechanism_report", "ok": False, "status": "interrupted", "error_code": "user_guidance", "digest": {"job_id": job_id, "status": status}})
+                return
             if status == "ready":
                 b64 = job.get("mechanism_pdf_base64") or ""
                 pdf_name = job.get("mechanism_pdf_name") or f"mechanism_{result.run_id[:8]}.pdf"
@@ -4200,7 +7221,7 @@ class AgentRuntime:
                     },
                 )
                 return
-            time.sleep(1.0)
+            wait_interruptible(run_cancellation, timeout_sec=1.0, slice_sec=0.25)
 
         yield self._emit(
             session,

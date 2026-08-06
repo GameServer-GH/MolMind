@@ -395,11 +395,18 @@
       list.innerHTML = rows
         .map((s, i) => {
           const st = s.status || "pending";
-          const label = shortText(s.desc || s.raw || `步骤 ${i + 1}`, 42) || `步骤 ${i + 1}`;
+          const fullLabel = String(s.desc || s.raw || `步骤 ${i + 1}`).trim() || `步骤 ${i + 1}`;
+          const label = shortText(fullLabel, 42) || `步骤 ${i + 1}`;
+          // Keep the compact row readable while exposing the complete step
+          // text through the browser tooltip only when it was truncated.
+          const fullTextAttr =
+            label !== fullLabel
+              ? ` title="${escapeHtml(fullLabel)}" aria-label="${escapeHtml(fullLabel)}"`
+              : "";
           return `
             <li class="mm-run-step-tip-item mm-run-step-tip-item--${st}">
               <span class="mm-run-step-tip-idx">${i + 1}</span>
-              <span class="mm-run-step-tip-text">${escapeHtml(label)}</span>
+              <span class="mm-run-step-tip-text"${fullTextAttr}>${escapeHtml(label)}</span>
               <span class="mm-run-step-tip-beam" aria-hidden="true"></span>
             </li>
           `;
@@ -616,6 +623,12 @@
           last.status = "active";
           stepIndex = steps.length - 1;
         }
+        paint();
+        return;
+      }
+
+      if (type === "install_request") {
+        phase = "等待安装确认";
         paint();
         return;
       }

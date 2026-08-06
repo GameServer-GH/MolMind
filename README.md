@@ -288,18 +288,19 @@ PY
 
 ```bash
 # Docker Engine 需一次性配置 insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.2
-docker tag 8.133.197.65:5001/molmind:0.2.2 molmind:0.2.2
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.3
+docker tag 8.133.197.65:5001/molmind:0.2.3 molmind:0.2.3
 mkdir -p output
-docker compose -f deploy/docker-compose.yml up -d
+# Compose 文件在 deploy/，需显式传入仓库根 .env（可选 SCP_HUB_API_KEY 等）
+docker compose --env-file .env -f deploy/docker-compose.yml up -d
 ```
 
-本地访问 <http://127.0.0.1:18765/>（健康检查：`/health`）。请勿用 `file://` 直接打开静态页。
+本地访问 <http://127.0.0.1:18765/>（健康检查：`/health`）。请勿用 `file://` 直接打开静态页。Compose 默认拉起 **PostgreSQL + Redis**（Agent 会话 / 队列真源与短锁）；可选 `--profile object` 启用 MinIO 作 Blob。
 
 仅开发调试时再现场构建：
 
 ```bash
-docker compose -f deploy/docker-compose.yml up --build
+docker compose --env-file .env -f deploy/docker-compose.yml up --build
 ```
 
 CLI 一键示例：
@@ -316,10 +317,24 @@ python -m apps.cli.main --input data/sample.sdf --output output/nomination_top10
 Docker 内离线 CLI 冒烟：
 
 ```bash
-docker compose -f deploy/docker-compose.yml run --rm cli
+docker compose --env-file .env -f deploy/docker-compose.yml run --rm cli
 ```
 
 机制 Markdown 默认使用**准确模板**生成（**不改 Top 10**）；`llm_client` 保留兼容位，不作为默认主路径。
+
+---
+
+## 0.2.3 Agent 能力摘要
+
+| 能力 | 说明 |
+|------|------|
+| **持久化队列** | Turn 可排队（默认最多 3）；进程重启后可回收 lease / 继续 drain |
+| **硬中断** | UI 停止按钮 → `interrupt`；后台机制 PDF / SCP Job 可取消 |
+| **Turn 附件** | Blob 暂存，不改写进行中的 Run；排队卡片展示文件摘要 |
+| **SCP Hub（可选）** | 白名单 MCP enrichment；`writes_selection=false`，永不参与同轮排名 |
+| **任务路由** | 多能力意图拆分与执行门禁；观测经 validator 后再进回复 |
+
+界面与 API 细节见 [`apps/web/README.md`](apps/web/README.md)、[`apps/api/README.md`](apps/api/README.md)；SCP 边界见 [`plugins/scp_hub/README.md`](plugins/scp_hub/README.md)。
 
 ---
 
@@ -328,12 +343,14 @@ docker compose -f deploy/docker-compose.yml run --rm cli
 | 路径 | 说明 |
 |------|------|
 | `apps/` | API、CLI、Web 静态前端 |
+| `agent/` | Agent 运行时：决策环、Turn 队列、任务路由、Postgres/Redis/Blob 存储 |
 | `plugins/molmind_core/` | 流水线、评分、证据 Gateway / Facade、Critic、机制与 Tool 的 canonical 实现 |
+| `plugins/scp_hub/` | 可选 SCP Hub MCP 边界（Catalog opt-in；不改主榜） |
 | `services/` | 指向 canonical 实现的向后兼容 shim；新科学逻辑不放在此处 |
 | `packages/` | 化学核心、金标、可选 ML、数据模型等共享兼容入口 |
 | `configs/` | 过滤、打分、排序权重与模型清单（纳入 `config_hash`） |
 | `data/` | 样本 SDF、goldset、证据快照、`public/` 注册表与导入工作区、参考表、可选模型 |
-| `deploy/` | Dockerfile、Compose、部署说明 |
+| `deploy/` | Dockerfile、Compose（含 postgres/redis）、部署说明 |
 | `scripts/` | 冒烟、配置门禁、证据烘焙等工具 |
 | `tests/` | 单元 / 回归 / 集成测试（pytest） |
 

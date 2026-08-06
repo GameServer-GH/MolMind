@@ -204,18 +204,19 @@ Recommended in China (pull prebuilt image; avoid slow overseas builds):
 
 ```bash
 # One-time Docker Engine: insecure-registries: ["8.133.197.65:5001"]
-docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.2
-docker tag 8.133.197.65:5001/molmind:0.2.2 molmind:0.2.2
+docker pull --platform linux/amd64 8.133.197.65:5001/molmind:0.2.3
+docker tag 8.133.197.65:5001/molmind:0.2.3 molmind:0.2.3
 mkdir -p output
-docker compose -f deploy/docker-compose.yml up -d
+# Compose file lives under deploy/; pass repo-root .env explicitly
+docker compose --env-file .env -f deploy/docker-compose.yml up -d
 ```
 
-Local UI: <http://127.0.0.1:18765/> (health: `/health`). Do not open the static page via `file://`.
+Local UI: <http://127.0.0.1:18765/> (health: `/health`). Do not open the static page via `file://`. Compose starts **PostgreSQL + Redis** for Agent sessions/queues; optional `--profile object` enables MinIO for blobs.
 
 For local code changes only:
 
 ```bash
-docker compose -f deploy/docker-compose.yml up --build
+docker compose --env-file .env -f deploy/docker-compose.yml up --build
 ```
 
 CLI one-liner:
@@ -227,10 +228,24 @@ python -m apps.cli.main --input data/sample.sdf --output output/nomination_top10
 Offline CLI smoke inside Docker:
 
 ```bash
-docker compose -f deploy/docker-compose.yml run --rm cli
+docker compose --env-file .env -f deploy/docker-compose.yml run --rm cli
 ```
 
 Mechanism Markdown defaults to the accurate template (**Top 10 unchanged**); the LLM client remains for optional/compat use only.
+
+---
+
+## 0.2.3 Agent highlights
+
+| Capability | Notes |
+|------------|--------|
+| **Durable turn queue** | Up to 3 queued turns; lease reclaim / drain after restart |
+| **Hard interrupt** | Stop control → `interrupt`; mechanism PDF / SCP jobs cancellable |
+| **Turn attachments** | Blob staging without mutating an active Run |
+| **SCP Hub (optional)** | Allow-listed MCP enrichment; never same-turn ranking |
+| **Task routing** | Multi-capability routing + observation validation before reply |
+
+See [`apps/web/README.md`](apps/web/README.md), [`apps/api/README.md`](apps/api/README.md), and [`plugins/scp_hub/README.md`](plugins/scp_hub/README.md).
 
 ---
 
@@ -239,11 +254,14 @@ Mechanism Markdown defaults to the accurate template (**Top 10 unchanged**); the
 | Path | Description |
 |------|-------------|
 | `apps/` | API, CLI, static Web UI |
-| `services/` | Pipeline, scoring, evidence, critic, mechanism |
+| `agent/` | Runtime loop, turn queue, task router, Postgres/Redis/Blob stores |
+| `plugins/molmind_core/` | Canonical pipeline, scoring, evidence, critic, mechanism, tools |
+| `plugins/scp_hub/` | Optional SCP Hub MCP boundary (catalog opt-in; never rewrites ranking) |
+| `services/` | Backward-compatible shims to canonical scientific code |
 | `packages/` | Chem core, goldset, optional ML, shared records |
 | `configs/` | Filter / score / rank weights and model manifest (`config_hash`) |
 | `data/` | Sample SDF, goldset, evidence snapshots, `public/` registry workspace, reference tables, optional models |
-| `deploy/` | Dockerfile, Compose, deploy notes |
+| `deploy/` | Dockerfile, Compose (postgres/redis), deploy notes |
 | `scripts/` | Smoke, config gates, evidence bake utilities |
 | `tests/` | Unit / regression / integration (pytest) |
 

@@ -336,8 +336,8 @@
       overflow: hidden;
     }
   </style>
-  <link href="./agent/agent_chat.css?v=mm-agent-client-switch-1" rel="stylesheet" />
-  <link href="./agent/agent_icons.css?v=mm-agent-send-1" rel="stylesheet" />
+  <link href="./agent/agent_chat.css?v=mm-install-offer-row-1" rel="stylesheet" />
+  <link href="./agent/agent_icons.css?v=mm-agent-stop-1" rel="stylesheet" />
   <link href="./agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
   <link href="./agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
   <link href="./agent/confirm.css?v=mm-agent-client-switch-1" rel="stylesheet" />
@@ -355,7 +355,7 @@
               <button id="agentNewChatBtn" type="button" class="mm-glass-btn" title="新对话" aria-label="新对话">
                 <span class="mm-icon mm-icon--plus" aria-hidden="true"></span>
               </button>
-              <button id="agentDemoSdfBtn" type="button" class="mm-glass-btn" title="试用样例库" aria-label="试用样例库" aria-haspopup="dialog" aria-expanded="false">
+              <button id="agentDemoSdfBtn" type="button" class="hidden" title="可选试用样例库" aria-label="可选试用样例库" aria-haspopup="dialog" aria-expanded="false" aria-hidden="true" tabindex="-1">
                 <span class="mm-icon mm-icon--download mm-icon--md" aria-hidden="true"></span>
               </button>
             </div>
@@ -364,7 +364,7 @@
               <span class="mm-profile-banner-name">MolMind · MASLD</span>
             </button>
             <div class="mm-top-right-actions">
-              <button id="modeClassicBtn" type="button" class="mm-glass-btn" title="经典筛选" aria-label="经典筛选">
+              <button id="modeClassicBtn" type="button" class="hidden" title="经典筛选" aria-label="经典筛选" aria-hidden="true" tabindex="-1">
                 <span class="mm-icon mm-icon--cpu mm-icon--md" aria-hidden="true"></span>
               </button>
               <button id="agentSettingsBtn" type="button" class="mm-glass-btn" title="工具与插件" aria-label="设置">
@@ -384,7 +384,7 @@
             <div id="agentWelcome" class="mm-empty-placeholder">
               <div class="mm-empty-shimmer-text">你好，我是 MolMind Agent</div>
               <p class="mm-empty-hint">
-                可以直接对话问用法；若要做化合物筛选，再上传 .sdf 附件并描述目标产物。<br />
+                可以直接对话问用法；若要做化合物筛选，再上传 .sdf；也可附带 PDF / 图片 / 文档作为本轮参考。<br />
                 我会按你的描述决定是否调用技能 / 插件，并把 CSV / PDF 放到对话里下载。
               </p>
             </div>
@@ -394,24 +394,31 @@
 
           <div class="mm-bottom-send">
             <div class="mm-bottom-send-toolbar">
-              <label id="agentUploadBtn" class="mm-glass-btn mm-glass-btn-wide cursor-pointer" title="上传附件" aria-label="上传附件">
+              <button id="agentUploadBtn" type="button" class="mm-glass-btn mm-glass-btn-wide" title="上传附件" aria-label="上传附件" aria-haspopup="dialog" aria-expanded="false">
                 <span class="mm-icon mm-icon--upload mm-icon--md" aria-hidden="true"></span>
                 <span class="mm-upload-spinner" aria-hidden="true"></span>
                 <span id="agentFileLabel">上传附件</span>
-                <input id="agentFileInput" type="file" accept=".sdf" class="hidden" />
-              </label>
+              </button>
+              <input id="agentFileInput" type="file" accept=".sdf,.pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.tsv,.json,.doc,.docx" class="hidden" />
               <div id="agentAttachRail" class="mm-attach-rail" aria-live="polite"></div>
             </div>
             <form id="agentChatForm" class="mm-send-form">
               <div class="mm-send-wrapper">
                 <textarea id="agentInput" class="mm-send-input" rows="1"
                   placeholder="您可以直接用自然语言描述需求"></textarea>
+                <button id="agentGuideBtn" type="button" class="mm-guide-btn hidden" aria-label="作为指引发送"
+                  title="停止当前未完成步骤，并根据这条指引重新规划" hidden>指引</button>
                 <button id="agentSendBtn" type="submit" class="mm-send-btn" aria-label="发送">
                   <span id="agentSendShortcut" class="mm-send-btn-text">RUN ⌘ + ↵</span>
+                </button>
+                <button id="agentStopBtn" type="button" class="mm-stop-btn hidden" aria-label="停止" title="停止当前任务" hidden>
+                  <span class="mm-icon mm-icon--stop mm-icon--md" aria-hidden="true"></span>
                 </button>
               </div>
             </form>
           </div>
+
+          <aside id="agentQueueRail" class="mm-queue-rail hidden" aria-live="polite" aria-label="排队中的提示词"></aside>
 
           <div id="agentToast" class="mm-agent-toast" aria-live="polite" aria-hidden="true"></div>
         </div>
@@ -461,6 +468,10 @@
                   </button>
                 </div>
               </div>
+              <button id="profileClassicModeBtn" type="button" class="mm-profile-info-link" title="切换到经典筛选">
+                <span>工作模式</span>
+                <strong>经典筛选</strong>
+              </button>
               <a class="mm-profile-info-link" href="https://github.com/GameServer-GH/MolMind" target="_blank" rel="noopener noreferrer">
                 <span>GitHub 仓库</span>
                 <strong>GameServer-GH/MolMind</strong>
@@ -882,15 +893,15 @@
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./agent/client_identity.js?v=mm-agent-client-switch-2"></script>
-  <script src="./agent/ui_render.js?v=mm-agent-client-switch-1"></script>
+  <script src="./agent/client_identity.js?v=mm-agent-client-switch-3"></script>
+  <script src="./agent/ui_render.js?v=mm-install-float-1"></script>
   <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-replay-1"></script>
-  <script src="./agent/ui_history.js?v=mm-agent-client-switch-1"></script>
-  <script src="./agent/ui_settings.js?v=mm-agent-client-switch-1"></script>
+  <script src="./agent/ui_history.js?v=mm-agent-capability-audit-3"></script>
+  <script src="./agent/ui_settings.js?v=mm-install-float-1"></script>
   <script src="./agent/ui_mention.js?v=mm-agent-mention-4"></script>
   <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
   <script src="./agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
-  <script src="./agent/tour/ui_tour.js?v=mm-agent-send-1"></script>
-  <script src="./app.js?v=mm-agent-turn-replay-1"></script>
+  <script src="./agent/tour/ui_tour.js?v=mm-tour-v3-1"></script>
+  <script src="./app.js?v=mm-install-float-1"></script>
 </body>
 </html>

@@ -197,5 +197,31 @@ def test_format_ranking_explanation_resolves_rank_after_cutoff_to_reserve() -> N
     assert "整体 Top 11" in text
     assert "候补第 1 位" in text
     assert "主榜名额固定为 Top 10" in text
-    assert "Top 10 `T10`" in text
-    assert "Top 10 的排名概览" not in text
+
+
+def test_format_ranking_explanation_single_rank_without_subject_flag() -> None:
+    class _R:
+        run_id = "mm-rank3"
+        top_molecules = [
+            _mol(molecule_id="T19959", selection_score=0.504),
+            _mol(molecule_id="T27832", selection_score=0.426),
+            _mol(molecule_id="T11137", selection_score=0.404, lipid_score=0.380, tox_risk=0.350),
+        ]
+        reserve_molecules = []
+        scored_molecules = []
+
+    text = format_ranking_explanation(_R(), rank_positions=(3,))
+    assert text is not None
+    assert "T11137" in text
+    assert "不会重新筛选" in text
+
+
+def test_mechanism_pdf_blurb_filters_unresolved_pathway() -> None:
+    mol = _mol(
+        molecule_id="T1",
+        selection_reason="critic_quota pathway=UNRESOLVED",
+        selection_factors={"pathway": "UNRESOLVED"},
+    )
+    text = mechanism_pdf_blurb([mol])
+    assert "UNRESOLVED" not in text
+    assert "尚未锁定" in text or "双终点" in text

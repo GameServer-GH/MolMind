@@ -122,11 +122,9 @@ def format_ranking_explanation(
         if rank > 0 and rank not in requested_positions:
             requested_positions.append(rank)
 
-    # “介绍一下排名 Top5 的分子” names a single frozen record. Resolve that
-    # record first so it cannot be turned into an overview of ranks 1–5.
+    # “介绍一下排名 Top5 的分子” / “解释第 N 名…” names one frozen primary record.
     if (
         not molecule_id
-        and rank_position_subject
         and len(requested_positions) == 1
         and requested_positions[0] <= len(top)
     ):
@@ -136,7 +134,7 @@ def format_ranking_explanation(
     # “Top11 为啥没有进榜” after a frozen Top10) refers to the corresponding
     # frozen reserve record. Explain the cutoff directly instead of falling
     # through to a Top10 overview or asking the LLM to guess.
-    if not molecule_id and rank_position_subject and len(requested_positions) == 1:
+    if not molecule_id and len(requested_positions) == 1:
         requested_rank = requested_positions[0]
         reserve_rank = requested_rank - len(top)
         if 1 <= reserve_rank <= len(reserve):
@@ -426,7 +424,9 @@ def _pathway_hint(mol: ScoreRecord) -> str | None:
     text = f"{mol.selection_reason or ''} {mol.overall_reason or ''}"
     m = re.search(r"pathway[=:\s]+([A-Za-z0-9_\-]+)", text, re.I)
     if m:
-        return m.group(1)
+        label = str(m.group(1) or "").strip()
+        if label and label.lower() not in {"none", "n/a", "unresolved"}:
+            return label
     return None
 
 

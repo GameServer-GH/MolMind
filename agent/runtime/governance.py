@@ -4,11 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Any
 import uuid
 
 from agent.runtime.planning import session_capabilities
 from agent.runtime.scheduler import RunController, ScheduledCall, canonical_args_hash
+
+
+_FROZEN_RANKING_MUTATION_RE = re.compile(
+    r"(?:重新|重算|重排|改写|修改|更新|调整).{0,16}(?:排名|主榜|候选优先级)"
+    r"|(?:用|根据|依据).{0,32}(?:重算|重排|改写|修改|更新|调整).{0,16}"
+    r"(?:排名|主榜|候选优先级)",
+    re.I,
+)
+
+
+def frozen_ranking_mutation_requested(text: str) -> bool:
+    """Return whether a request asks non-Core evidence to mutate a frozen rank."""
+    return bool(_FROZEN_RANKING_MUTATION_RE.search(str(text or "")))
 
 
 @dataclass(frozen=True)

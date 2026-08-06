@@ -1,7 +1,7 @@
 /* MolMind Agent first-run tour (localStorage, no URL param) */
 (function (global) {
   // Bump the tour version whenever its steps change so existing users see new controls.
-  const STORAGE_KEY = "molmind:agent_tour_v2";
+  const STORAGE_KEY = "molmind:agent_tour_v3";
   const PROMPT_TIP_KEY = "molmind:agent_upload_tip_v1";
 
   const PROMPT_EXAMPLES = [
@@ -42,8 +42,22 @@
     }
   }
 
+  function isTourTargetVisible(el) {
+    if (!el || !(el instanceof Element)) return false;
+    if (el.hasAttribute("hidden") || el.classList.contains("hidden")) return false;
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  /**
+   * Agent-first path. Classic mode & demo-library top buttons are hidden;
+   * classic lives under Profile, demo library under the upload popover.
+   */
   function getSteps() {
-    return [
+    const steps = [
       {
         targetSelector: "#agentNewChatBtn",
         spotlightPadding: 8,
@@ -52,18 +66,12 @@
         content: "清空当前对话并开启新一轮会话。不会删除历史记录，可随时从右侧历史找回。",
       },
       {
-        targetSelector: "#agentDemoSdfBtn",
+        targetSelector: "#mmProfileBanner",
         spotlightPadding: 8,
         cardPlacement: "bottom",
-        title: "试用样例库",
-        content: "打开样例库后，可将内置 SDF 直接附加到当前会话，或下载到本地后再使用，方便快速体验筛选流程。",
-      },
-      {
-        targetSelector: "#modeClassicBtn",
-        spotlightPadding: 8,
-        cardPlacement: "bottom",
-        title: "经典筛选",
-        content: "如需表单式上传与结果页，可切到经典筛选模式。日常产出更推荐留在 Agent 对话。",
+        title: "当前 Profile",
+        content:
+          "查看应用、研究方向与用户 ID。若需要表单式上传与结果页，可在弹窗里切换到「经典筛选」；日常产出更推荐留在 Agent 对话。",
       },
       {
         targetSelector: "#agentSettingsBtn",
@@ -80,30 +88,29 @@
         content: "打开历史抽屉，按时间回看会话、恢复消息与产物卡片。",
       },
       {
-        targetSelector: "#agentChatForm",
-        spotlightPadding: 10,
-        cardPlacement: "top",
-        title: "输入提示词",
-        content:
-          "用自然语言描述目标即可，例如「生成 top10 候选清单 csv」。\n⌘/Ctrl+Enter 发送 · Enter 换行。\n输入框会随文字自动增高。",
-      },
-      {
         targetSelector: "#agentUploadBtn",
         spotlightPadding: 10,
         cardPlacement: "top",
         title: "上传附件",
         content:
-          "在这里可选上传化合物库 .sdf。没有附件也能先对话问用法；上传后按你的描述，Agent 会判断是否调用筛选 / 机制等技能。",
+          "上传化合物库 .sdf，或附带 PDF / 图片 / 文档作参考。点这里也会打开样例库，可将内置 SDF 直接附加到会话。没有附件也能先对话问用法。",
       },
       {
-        targetSelector: "#agentInput",
-        spotlightPadding: 8,
+        targetSelector: "#agentChatForm",
+        spotlightPadding: 10,
         cardPlacement: "top",
-        title: "可以这样说",
+        title: "输入与发送",
         content:
-          "有或没有附件都可以先聊。准备跑筛选产物时试试：\n· 生成 top10 候选清单 csv\n· 生成 top10 候选，并给出机制与验证方案 pdf\n· 只要机制与验证方案 pdf",
+          "用自然语言描述目标即可，例如：\n· 生成 top10 候选清单 csv\n· 生成 top10 候选，并给出机制与验证方案 pdf\n· 只要机制与验证方案 pdf\n⌘/Ctrl+Enter 发送 · Enter 换行。",
       },
     ];
+    return steps.filter((step) => {
+      const el =
+        typeof step.targetSelector === "string"
+          ? document.querySelector(step.targetSelector)
+          : null;
+      return isTourTargetVisible(el);
+    });
   }
 
   function placeCard(card, step, pad) {
@@ -193,6 +200,10 @@
     start() {
       const TourGuide = global.MolMindTourGuide;
       const steps = getSteps();
+      if (!steps.length) {
+        markTourDone();
+        return null;
+      }
       const card = createCard();
       const badge = card.querySelector(".tour-step-badge");
       const title = card.querySelector(".tour-card-title");

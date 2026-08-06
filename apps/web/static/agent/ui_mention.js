@@ -1,18 +1,14 @@
-/* MolMind Agent — / @ mention tips for plugins / skills / tools */
+/* MolMind Agent — / @ suggestions for user-facing plugins and skills. */
 (function (global) {
   const KIND_META = {
     skill: { label: "技能", order: 0, icon: "sparkles" },
-    tool: { label: "工具", order: 1, icon: "tool" },
-    plugin: { label: "插件", order: 2, icon: "puzzle" },
+    plugin: { label: "插件", order: 1, icon: "puzzle" },
   };
 
   const KIND_ALIASES = {
     skill: "skill",
     skills: "skill",
     技能: "skill",
-    tool: "tool",
-    tools: "tool",
-    工具: "tool",
     plugin: "plugin",
     plugins: "plugin",
     插件: "plugin",
@@ -39,16 +35,6 @@
         plugin_id: it.plugin_id || "",
       });
     });
-    (settings.tools || []).forEach((it) => {
-      out.push({
-        kind: "tool",
-        id: it.id || it.tool_id,
-        title: it.title || it.id || it.tool_id,
-        description: it.description || "",
-        installed: !!it.installed,
-        plugin_id: it.plugin_id || "",
-      });
-    });
     (settings.plugins || []).forEach((it) => {
       out.push({
         kind: "plugin",
@@ -65,7 +51,7 @@
   function parseSearchQuery(raw) {
     let q = String(raw || "").trim().toLowerCase();
     let kindHint = null;
-    const prefixed = q.match(/^(skill|tool|plugin)[:：]\s*(.*)$/i);
+    const prefixed = q.match(/^(skill|plugin)[:：]\s*(.*)$/i);
     if (prefixed) {
       kindHint = prefixed[1].toLowerCase();
       q = (prefixed[2] || "").trim();
@@ -219,7 +205,7 @@
       menu.id = "agentMentionMenu";
       menu.className = "mm-mention-menu";
       menu.setAttribute("role", "listbox");
-      menu.setAttribute("aria-label", "选择插件、技能或工具");
+      menu.setAttribute("aria-label", "选择插件或技能");
       menu.setAttribute("aria-hidden", "true");
       this._anchor.appendChild(menu);
       this._menu = menu;

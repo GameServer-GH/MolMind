@@ -55,18 +55,24 @@ def test_runtime_uses_registry_backed_llm_plan_before_legacy_classifier(
     monkeypatch.setattr(
         "agent.runtime.loop.llm_plan_request",
         lambda **_kwargs: (
-            AgentPlan(goal="解释已有结果", action="explain", rationale="冻结结果追问"),
+            AgentPlan(goal="生成候选 CSV", action="execute", rationale="明确交付物"),
             "llm",
         ),
+    )
+    # Ranking questions short-circuit before the planner; use a non-ranking
+    # tool-shaped request to assert the registry-backed plan path.
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **_kwargs: ("chat", "should_not_reach_legacy"),
     )
     runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
     session = runtime.create_session()
     intent = __import__("agent.intent", fromlist=["parse_intent"]).parse_intent(
-        "解释一下 Top10"
+        "帮我生成候选清单"
     )
 
-    action, why = runtime._classify_request_action(session, "解释一下 Top10", intent)
-    assert action == "explain_ranking"
+    action, why = runtime._classify_request_action(session, "帮我生成候选清单", intent)
+    assert action == "execute_tools"
     assert why.startswith("llm;")
 
 

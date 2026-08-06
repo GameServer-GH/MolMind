@@ -32,6 +32,80 @@
     return text.length > limit ? text.slice(0, limit - 1) + "…" : text;
   }
 
+  /** Parse ISO / epoch into a finite ms timestamp, or null. */
+  function parseTimeMs(value) {
+    if (value == null || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const parsed = Date.parse(String(value));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function turnStartedMs(el) {
+    if (!el) return null;
+    const raw = el.getAttribute("data-started-at");
+    if (raw != null && raw !== "") {
+      const n = Number(raw);
+      if (Number.isFinite(n)) return n;
+    }
+    return parseTimeMs(raw);
+  }
+
+  /**
+   * Insert a turn node so `.mm-turn` siblings stay chronological by
+   * `data-started-at`. Non-turn nodes (e.g. clarify chips) stay after turns.
+   */
+  function placeTurnChronologically(container, root, startedAt) {
+    if (!container || !root) return;
+    const ms = Number.isFinite(startedAt) ? startedAt : Date.now();
+    root.setAttribute("data-started-at", String(ms));
+    const turns = Array.from(container.querySelectorAll(":scope > .mm-turn"));
+    let insertBefore = null;
+    for (const other of turns) {
+      if (other === root) continue;
+      const otherMs = turnStartedMs(other);
+      if (otherMs != null && otherMs > ms) {
+        insertBefore = other;
+        break;
+      }
+    }
+    if (insertBefore) {
+      container.insertBefore(root, insertBefore);
+      return;
+    }
+    // Keep clarify / suggest cards at the end of the list.
+    const trailing = Array.from(container.children).find(
+      (child) => child !== root && !child.classList.contains("mm-turn")
+    );
+    if (trailing) container.insertBefore(root, trailing);
+    else container.appendChild(root);
+  }
+
+  /** Re-order existing `.mm-turn` children by `data-started-at` (stable). */
+  function sortTurnsByTime(container) {
+    if (!container) return;
+    const turns = Array.from(container.querySelectorAll(":scope > .mm-turn"));
+    if (turns.length < 2) return;
+    const keyed = turns.map((el, index) => ({
+      el,
+      index,
+      ms: turnStartedMs(el) ?? Number.MAX_SAFE_INTEGER,
+    }));
+    keyed.sort((a, b) => a.ms - b.ms || a.index - b.index);
+    let changed = false;
+    for (let i = 0; i < keyed.length; i++) {
+      if (keyed[i].el !== turns[i]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    const trailing = Array.from(container.children).filter(
+      (child) => !child.classList.contains("mm-turn")
+    );
+    keyed.forEach((item) => container.appendChild(item.el));
+    trailing.forEach((child) => container.appendChild(child));
+  }
+
   function safeToolArgs(args) {
     const blocked = /authorization|api[_-]?key|access[_-]?token|secret|password|credential|headers?/i;
     const copy = {};
@@ -62,18 +136,67 @@
     let s = String(line || "").trim();
     if (s.startsWith("|")) s = s.slice(1);
     if (s.endsWith("|")) s = s.slice(0, -1);
-    return s.split("|").map((c) => c.trim());
+    const cells = [];
+    let cell = "";
+    let inCode = false;
+    for (let index = 0; index < s.length; index += 1) {
+      const char = s[index];
+      if (char === "`" && s[index - 1] !== "\\") inCode = !inCode;
+      if (char === "|" && !inCode && s[index - 1] !== "\\") {
+        cells.push(cell.trim().replace(/\\\|/g, "|"));
+        cell = "";
+      } else {
+        cell += char;
+      }
+    }
+    cells.push(cell.trim().replace(/\\\|/g, "|"));
+    return cells;
+  }
+
+  function safeLinkHref(value) {
+    const href = String(value || "").trim();
+    if (/^(https?:|mailto:)/i.test(href) || href.startsWith("/") || href.startsWith("#")) {
+      return escapeHtml(href);
+    }
+    return "";
   }
 
   function inlineHtml(text) {
-    // Escape first, then light inline marks.
-    let s = escapeHtml(text);
-    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    // Protect code and links before escaping the remaining user/LLM content.
+    const tokens = [];
+    const token = (html) => {
+      const key = `\u0000MM${tokens.length}\u0000`;
+      tokens.push(html);
+      return key;
+    };
+    let source = String(text || "");
+    source = source.replace(/`([^`\n]+)`/g, (_, code) =>
+      token(`<code>${escapeHtml(code)}</code>`)
+    );
+    source = source.replace(/\[([^\]\n]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g, (all, label, url) => {
+      const href = safeLinkHref(url);
+      if (!href) return all;
+      return token(
+        `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
+      );
+    });
+    let s = escapeHtml(source);
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+    s = s.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+    tokens.forEach((html, index) => {
+      s = s.replace(`\u0000MM${index}\u0000`, html);
+    });
     return s;
   }
 
-  /** Lightweight markdown: paragraphs + pipe tables (no external deps). */
+  /**
+   * Tolerant, dependency-free Markdown renderer for assistant output.
+   * It deliberately accepts unfinished fences/lists while tokens are streaming,
+   * then produces the same DOM structure again when the answer is complete.
+   */
   function renderAssistantHtml(text) {
     const raw = String(text || "").replace(/\r\n/g, "\n").trim();
     if (!raw) return "";
@@ -94,6 +217,30 @@
     while (i < lines.length) {
       const line = lines[i];
       const next = lines[i + 1] || "";
+
+      const fence = line.match(/^\s*(```+|~~~+)\s*([^\s`]*)\s*$/);
+      if (fence) {
+        flushPara();
+        const marker = fence[1][0];
+        const markerLength = fence[1].length;
+        const language = String(fence[2] || "").replace(/[^a-z0-9_+-]/gi, "").toLowerCase();
+        const codeLines = [];
+        i += 1;
+        while (i < lines.length) {
+          const close = lines[i].match(/^\s*(```+|~~~+)\s*$/);
+          if (close && close[1][0] === marker && close[1].length >= markerLength) {
+            i += 1;
+            break;
+          }
+          codeLines.push(lines[i]);
+          i += 1;
+        }
+        chunks.push(
+          `<pre class="mm-md-code"><code${language ? ` class="language-${language}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`
+        );
+        continue;
+      }
+
       const looksTable =
         line.includes("|") && isMdTableSep(next) && splitMdRow(line).length >= 2;
 
@@ -130,6 +277,49 @@
         continue;
       }
 
+      const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        flushPara();
+        const level = heading[1].length;
+        chunks.push(`<h${level} class="mm-md-h mm-md-h${level}">${inlineHtml(heading[2])}</h${level}>`);
+        i += 1;
+        continue;
+      }
+
+      if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
+        flushPara();
+        chunks.push('<hr class="mm-md-hr">');
+        i += 1;
+        continue;
+      }
+
+      if (/^\s{0,3}>\s?/.test(line)) {
+        flushPara();
+        const quoted = [];
+        while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) {
+          quoted.push(lines[i].replace(/^\s{0,3}>\s?/, ""));
+          i += 1;
+        }
+        chunks.push(`<blockquote class="mm-md-quote">${renderAssistantHtml(quoted.join("\n"))}</blockquote>`);
+        continue;
+      }
+
+      const listItem = line.match(/^\s{0,3}([-+*]|\d+[.)])\s+(.+)$/);
+      if (listItem) {
+        flushPara();
+        const ordered = /^\d/.test(listItem[1]);
+        const tag = ordered ? "ol" : "ul";
+        const items = [];
+        while (i < lines.length) {
+          const match = lines[i].match(/^\s{0,3}([-+*]|\d+[.)])\s+(.+)$/);
+          if (!match || /^\d/.test(match[1]) !== ordered) break;
+          items.push(`<li>${inlineHtml(match[2])}</li>`);
+          i += 1;
+        }
+        chunks.push(`<${tag} class="mm-md-list">${items.join("")}</${tag}>`);
+        continue;
+      }
+
       if (!line.trim()) {
         flushPara();
         i += 1;
@@ -148,13 +338,33 @@
 
     const el = document.createElement("div");
     el.className = "mm-msg-user-hint";
-    el.title = text || "";
     el.setAttribute("data-turn-text", text || "");
-    el.appendChild(icon("activity", "mm-icon--sm"));
     const span = document.createElement("span");
     span.className = "mm-msg-user-text";
-    span.textContent = truncateHint(text, 48);
+    const fullText = String(text || "").replace(/\s+/g, " ").trim();
+    // Keep this below the CSS text rail so every ellipsized hint is also
+    // marked interactive and can be expanded by the user.
+    const shortText = truncateHint(fullText, 32);
+    span.textContent = shortText;
     el.appendChild(span);
+    el.classList.add("mm-msg-user-hint--expandable");
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-expanded", "false");
+    el.title = "点击展开完整内容";
+    const toggle = () => {
+      const expanded = el.classList.toggle("mm-msg-user-hint--expanded");
+      span.textContent = expanded ? fullText : shortText;
+      el.setAttribute("aria-expanded", String(expanded));
+      el.title = expanded ? "点击收起" : "点击展开完整内容";
+    };
+    el.addEventListener("click", toggle);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle();
+      }
+    });
     ask.appendChild(el);
 
     const atts = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
@@ -185,18 +395,10 @@
     const bubble = document.createElement("div");
     bubble.className = error ? "mm-msg-bubble mm-msg-bubble--error" : "mm-msg-bubble";
     if (error) {
-      const head = document.createElement("div");
-      head.className = "mm-msg-error-head";
-      head.appendChild(icon("file-info", "mm-icon--md"));
-      const label = document.createElement("span");
-      label.className = "mm-msg-error-label";
-      label.textContent = "出错了";
-      head.appendChild(label);
       const body = document.createElement("div");
       body.className = "mm-msg-error-body";
       const detail = String(text || "").replace(/^错误[：:]\s*/, "");
       body.textContent = detail || "未知错误";
-      bubble.appendChild(head);
       bubble.appendChild(body);
     } else {
       const html = renderAssistantHtml(text);
@@ -207,6 +409,61 @@
     }
     block.appendChild(bubble);
     return block;
+  }
+
+  function buildInstallOfferCard(ev) {
+    const skills = Array.isArray(ev && ev.skills) && ev.skills.length
+      ? ev.skills
+      : [
+          {
+            skill_id: (ev && ev.skill_id) || "",
+            title: (ev && (ev.title || ev.label)) || "科研 Skill",
+            description: (ev && ev.description) || "",
+          },
+        ];
+    const wrap = document.createElement("section");
+    wrap.className = "mm-install-offer";
+    wrap.setAttribute("role", "status");
+
+    const head = document.createElement("div");
+    head.className = "mm-install-offer-head";
+    head.appendChild(icon("puzzle", "mm-icon--md"));
+
+    const titlesWrap = document.createElement("div");
+    titlesWrap.className = "mm-install-offer-titles";
+    const titleEl = document.createElement("div");
+    titleEl.className = "mm-install-offer-title";
+    titleEl.textContent = "安装请求";
+    const subEl = document.createElement("div");
+    subEl.className = "mm-install-offer-sub";
+    const titles = skills
+      .map((s) => safeDisplayText((s && (s.title || s.skill_id)) || "", 80))
+      .filter(Boolean)
+      .join("、");
+    subEl.textContent = titles || "科研能力";
+    titlesWrap.appendChild(titleEl);
+    titlesWrap.appendChild(subEl);
+    head.appendChild(titlesWrap);
+    wrap.appendChild(head);
+
+    const summary = document.createElement("p");
+    summary.className = "mm-install-offer-summary";
+    summary.textContent = safeDisplayText(
+      (ev && ev.summary) || `需要安装「${titles}」后才能继续。`,
+      240
+    );
+    wrap.appendChild(summary);
+
+    const ids = skills
+      .map((s) => safeDisplayText((s && s.skill_id) || "", 80))
+      .filter(Boolean);
+    if (ids.length) {
+      const meta = document.createElement("div");
+      meta.className = "mm-install-offer-meta";
+      meta.textContent = ids.join(" · ");
+      wrap.appendChild(meta);
+    }
+    return wrap;
   }
 
   function buildArtifactCard(card) {
@@ -454,14 +711,43 @@
     return wrap;
   }
 
+  function isDocumentHidden() {
+    return typeof document !== "undefined" && document.visibilityState === "hidden";
+  }
+
+  /** Live typewriter queues — flushed when the tab is backgrounded so setTimeout
+   * throttling cannot stall waitForStream / queue drain. */
+  const liveRevealQueues = new Set();
+
+  function flushLiveRevealQueues() {
+    liveRevealQueues.forEach((queue) => {
+      try {
+        queue.flush();
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushLiveRevealQueues();
+    });
+  }
+
   function createRevealQueue() {
     let chain = Promise.resolve();
-    let forceInstant = false;
+    let forceInstant = isDocumentHidden();
+    let pendingCount = 0;
     const waiters = new Set();
+
+    function shouldInstant() {
+      return forceInstant || isDocumentHidden();
+    }
 
     function delay(ms) {
       return new Promise((resolve) => {
-        if (forceInstant) {
+        if (shouldInstant()) {
           resolve();
           return;
         }
@@ -477,9 +763,9 @@
     async function typeInto(el, fullText, onTick) {
       const text = String(fullText || "");
       if (!el) return;
-      if (forceInstant || !text) {
+      if (shouldInstant() || !text) {
         el.textContent = text;
-        if (onTick) onTick();
+        if (onTick) onTick(text);
         return;
       }
       const len = text.length;
@@ -498,21 +784,27 @@
       let i = 0;
       el.textContent = "";
       while (i < len) {
-        if (forceInstant) {
+        if (shouldInstant()) {
           el.textContent = text;
-          if (onTick) onTick();
+          if (onTick) onTick(text);
           return;
         }
         i = Math.min(len, i + chunk);
         el.textContent = text.slice(0, i);
-        if (onTick) onTick();
+        if (onTick) onTick(text.slice(0, i));
         await delay(Math.max(10, Math.round((1000 / cps) * chunk)));
       }
     }
 
-    return {
+    const api = {
       enqueue(task) {
-        chain = chain.then(() => task()).catch(() => {});
+        pendingCount += 1;
+        chain = chain
+          .then(() => task())
+          .catch(() => {})
+          .finally(() => {
+            pendingCount = Math.max(0, pendingCount - 1);
+          });
         return chain;
       },
       whenIdle() {
@@ -529,9 +821,14 @@
       },
       typeInto,
       get instant() {
-        return forceInstant;
+        return forceInstant || isDocumentHidden();
+      },
+      get pending() {
+        return pendingCount > 0;
       },
     };
+    liveRevealQueues.add(api);
+    return api;
   }
 
   function finishAssistantBubble(block, full) {
@@ -550,7 +847,7 @@
     block.className = "mm-msg-assistant-block";
     const bubble = document.createElement("div");
     bubble.className = "mm-msg-bubble mm-msg-bubble--streaming";
-    const streamEl = document.createElement("span");
+    const streamEl = document.createElement("div");
     streamEl.className = "mm-msg-stream-text";
     const cursor = document.createElement("span");
     cursor.className = "mm-msg-stream-cursor";
@@ -649,6 +946,7 @@
 
     const traceStartedAt = Number.isFinite(startedAt) ? startedAt : Date.now();
     let traceCompletedAt = Number.isFinite(completedAt) ? completedAt : null;
+    let durationTimer = null;
     const formatDuration = (referenceTime = Date.now()) => {
       const elapsedSeconds = Math.max(0, Math.floor((referenceTime - traceStartedAt) / 1000));
       const minutes = Math.floor(elapsedSeconds / 60);
@@ -661,7 +959,9 @@
       )}`;
     };
     updateDuration(false);
-    const durationTimer = live ? setInterval(() => updateDuration(false), 1000) : null;
+    if (live) {
+      durationTimer = setInterval(() => updateDuration(false), 1000);
+    }
 
     const markLatest = () => {
       body.querySelectorAll(".mm-thinking-step--latest").forEach((n) => {
@@ -700,9 +1000,19 @@
         if (nextLabel) label.textContent = nextLabel;
         count.textContent = `${n} 步`;
       },
+      destroy() {
+        if (durationTimer) {
+          clearInterval(durationTimer);
+          durationTimer = null;
+        }
+        if (wrap.parentNode) wrap.remove();
+      },
       finalize({ completedAt: nextCompletedAt } = {}) {
         if (Number.isFinite(nextCompletedAt)) traceCompletedAt = nextCompletedAt;
-        if (durationTimer) clearInterval(durationTimer);
+        if (durationTimer) {
+          clearInterval(durationTimer);
+          durationTimer = null;
+        }
         updateDuration(true);
         const n = Number(wrap.dataset.steps || "0");
         label.textContent = "思考与执行过程";
@@ -844,32 +1154,85 @@
     } else if (type === "card" && ev.card) {
       // 附件始终挂在本轮回答末尾，不结束思考块
       turn.appendCard(ev.card);
+    } else if (type === "install_request") {
+      turn.appendInstallOffer(ev);
+      turn._pendingInstallRequest = { ...ev };
     } else if (type === "assistant") {
       turn.appendAssistant(ev.text || "");
     } else if (type === "error") {
       turn.appendAssistant(`错误：${ev.detail || "unknown"}`, { error: true });
     } else if (type === "run_interrupted") {
-      turn.appendAssistant(
+      const errorBlock = turn.appendAssistant(
         ev.detail || "服务重启导致本轮中断，请重新发送本轮请求。",
         { error: true }
+      );
+      const errorBubble =
+        errorBlock && errorBlock.querySelector(".mm-msg-bubble--error");
+      if (ev.run_id && !ev.guidance_id && errorBubble) {
+        const actions = document.createElement("div");
+        actions.className = "mm-run-retry-actions";
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "mm-glass-btn mm-glass-btn-wide mm-run-retry-button";
+        retry.title = "从检查点重试";
+        retry.setAttribute("aria-label", "从检查点重试");
+        retry.innerHTML =
+          '<span class="mm-icon mm-icon--rotate mm-icon--md" aria-hidden="true"></span>' +
+          "<span>从检查点重试</span>";
+        retry.addEventListener("click", () => {
+          retry.disabled = true;
+          // Clear the interrupted answer immediately so retry feels like a fresh run.
+          if (typeof turn.resetAnswer === "function") turn.resetAnswer();
+          document.dispatchEvent(
+            new CustomEvent("molmind:retry-agent-run", {
+              detail: { runId: String(ev.run_id), button: retry, turn },
+            })
+          );
+        });
+        actions.appendChild(retry);
+        errorBubble.appendChild(actions);
+      }
+    } else if (type === "done" && turn.live && turn._pendingInstallRequest) {
+      const pending = turn._pendingInstallRequest;
+      turn._pendingInstallRequest = null;
+      document.dispatchEvent(
+        new CustomEvent("molmind:install-request", { detail: pending })
       );
     }
     // done：由调用方 waitForStream 后再 finalize（直播打字机完成后收起思考）
   }
 
   const MolMindAgentRender = {
+    /** Render assistant Markdown through the same safe path used by live/history views. */
+    renderMarkdown(text) {
+      return renderAssistantHtml(text);
+    },
+
+    parseTimeMs,
+    sortTurnsByTime,
+
     /**
      * 一轮对话盒子：问(ask) + 答(answer)。
      * answer 内顺序固定：思考过程 → 正文 → 附件（末尾）。
      * live=true 时对思考/回答做打字机渐进揭示；历史回放保持瞬间展示。
+     * 多轮排队自动发送时按 startedAt 插入，避免 DOM 追加顺序与真实时间错位。
      */
-    beginTurn(container, { text, attachments, live, onScroll, startedAt, completedAt } = {}) {
+    beginTurn(
+      container,
+      { text, attachments, live, onScroll, startedAt, completedAt, runId, turnKey } = {}
+    ) {
+      let turnStartedAt = Number.isFinite(startedAt)
+        ? startedAt
+        : parseTimeMs(startedAt) ?? Date.now();
       const turnId =
-        "turn-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+        turnKey ||
+        "turn-" + turnStartedAt.toString(36) + "-" + Math.random().toString(36).slice(2, 7);
       const root = document.createElement("div");
       root.className = "mm-turn";
       root.setAttribute("data-turn-id", turnId);
       root.setAttribute("data-turn-text", text || "");
+      root.setAttribute("data-started-at", String(turnStartedAt));
+      if (runId) root.setAttribute("data-run-id", String(runId));
 
       const hasAsk = text != null && String(text).length > 0;
       if (hasAsk) {
@@ -888,10 +1251,11 @@
       answer.appendChild(body);
       answer.appendChild(artifacts);
       root.appendChild(answer);
-      container.appendChild(root);
+      placeTurnChronologically(container, root, turnStartedAt);
 
-      const reveal = live ? createRevealQueue() : null;
-      const turnStartedAt = Number.isFinite(startedAt) ? startedAt : Date.now();
+      let reveal = live ? createRevealQueue() : null;
+      // History replay starts without a ticking clock; checkpoint retry re-enables it.
+      let timingLive = !!live;
       const tick = () => {
         if (typeof onScroll === "function") onScroll();
       };
@@ -904,13 +1268,15 @@
         answer,
         body,
         artifacts,
+        live: !!live,
+        startedAt: turnStartedAt,
+        runId: runId ? String(runId) : "",
         ensureTrace() {
           if (!trace) {
             trace = createTraceBlock(reveal, {
-              live: !!live,
+              live: timingLive,
               onTick: tick,
               startedAt: turnStartedAt,
-              completedAt,
             });
             answer.insertBefore(trace.root, body);
           }
@@ -918,27 +1284,33 @@
         },
         appendAssistant(text, opts) {
           const error = !!(opts && opts.error);
-          const instant = !live || !!(opts && opts.instant) || error;
+          const instant = !timingLive || !!(opts && opts.instant) || error;
           if (error) {
-            body.appendChild(buildAssistantBubble(text, opts));
+            const block = buildAssistantBubble(text, opts);
+            body.appendChild(block);
             tick();
-            return;
+            return block;
           }
           const full = String(text || "");
           if (instant || !reveal) {
-            body.appendChild(buildAssistantBubble(full, opts));
+            const block = buildAssistantBubble(full, opts);
+            body.appendChild(block);
             tick();
-            return;
+            return block;
           }
           const { block, streamEl } = buildStreamingAssistantShell();
           block.dataset.fullText = full;
           body.appendChild(block);
           tick();
           reveal.enqueue(async () => {
-            await reveal.typeInto(streamEl, full, tick);
+            await reveal.typeInto(streamEl, full, (partial) => {
+              streamEl.innerHTML = renderAssistantHtml(partial) || escapeHtml(partial || "");
+              tick();
+            });
             finishAssistantBubble(block, full);
             tick();
           });
+          return block;
         },
         appendCard(card) {
           if (!card) return;
@@ -953,11 +1325,55 @@
           }
           tick();
         },
+        appendInstallOffer(ev) {
+          if (!ev) return;
+          const skillKey = Array.isArray(ev.skills)
+            ? ev.skills.map((s) => (s && s.skill_id) || "").filter(Boolean).join(",")
+            : String(ev.skill_id || "");
+          if (
+            skillKey &&
+            artifacts.querySelector(
+              `[data-install-offer="${String(skillKey).replace(/"/g, "")}"]`
+            )
+          ) {
+            return;
+          }
+          const card = buildInstallOfferCard(ev);
+          if (skillKey) card.setAttribute("data-install-offer", skillKey);
+          artifacts.appendChild(card);
+          tick();
+        },
         applyEvent(ev) {
           applyEventToTurn(api, ev);
         },
         waitForStream() {
           return reveal ? reveal.whenIdle() : Promise.resolve();
+        },
+        isStreamPending() {
+          return !!(reveal && reveal.pending && !reveal.instant);
+        },
+        /** Clear answer body / thinking / artifacts so a checkpoint retry can paint fresh. */
+        resetAnswer() {
+          if (reveal) {
+            reveal.flush();
+            liveRevealQueues.delete(reveal);
+          }
+          body.innerHTML = "";
+          if (trace) {
+            if (typeof trace.destroy === "function") trace.destroy();
+            else if (trace.root && trace.root.parentNode) trace.root.remove();
+          }
+          trace = null;
+          artifacts.innerHTML = "";
+          finalized = false;
+          // Restart the clock from this retry, and keep the duration ticking.
+          turnStartedAt = Date.now();
+          api.startedAt = turnStartedAt;
+          root.setAttribute("data-started-at", String(turnStartedAt));
+          if (container) placeTurnChronologically(container, root, turnStartedAt);
+          timingLive = true;
+          reveal = createRevealQueue();
+          tick();
         },
         finalize({ completedAt: nextCompletedAt } = {}) {
           if (finalized) return;
@@ -1006,6 +1422,13 @@
 
     clearMessages(container) {
       if (container) container.innerHTML = "";
+      flushLiveRevealQueues();
+      liveRevealQueues.clear();
+    },
+
+    /** Background tabs throttle timers — jump typewriters so the run can settle. */
+    flushLiveReveals() {
+      flushLiveRevealQueues();
     },
 
     /** 将一批事件回放到一个已创建的 turn（一轮只一个思考块） */

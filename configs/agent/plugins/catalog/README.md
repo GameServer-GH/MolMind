@@ -8,6 +8,7 @@
 # 赛期可添加（有适配器）：
 #   origene-mcp.yaml  → plugins/origene_mcp/
 #   aurobind.yaml     → plugins/aurobind/
+#   scp-hub.yaml      → plugins/scp_hub/（白名单 MCP；live 仅 enrichment，不改主榜）
 #
 # 赛后高价值（空壳/清单）：
 #   vcworld.yaml · enzyme-cage.yaml · eva-rna.yaml

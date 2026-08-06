@@ -11,6 +11,7 @@ import json
 import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any, Optional
@@ -20,9 +21,13 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from apps.api.agent_routes import router as agent_router
+from apps.api.agent_routes import (
+    router as agent_router,
+    start_run_queue_workers,
+    stop_run_queue_workers,
+)
 from apps.api.download_headers import content_disposition_attachment
-from plugins.molmind_core.scientific.mechanism.jobs import get_job, job_public_view, start_mechanism_job
+from plugins.molmind_core.scientific.mechanism.jobs import cancel_job, get_job, job_public_view, start_mechanism_job
 from plugins.molmind_core.scientific.nomination import (
     apply_selected_proposals,
     build_interactive_review_proposals,
@@ -60,7 +65,16 @@ def _resolve_app_version() -> str:
 
 APP_VERSION = _resolve_app_version()
 
-app = FastAPI(title="MolMind", version=APP_VERSION)
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    start_run_queue_workers()
+    try:
+        yield
+    finally:
+        stop_run_queue_workers()
+
+
+app = FastAPI(title="MolMind", version=APP_VERSION, lifespan=_lifespan)
 app.include_router(agent_router)
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -327,6 +341,15 @@ def mechanism_status(job_id: str, include_payload: bool = False) -> dict:
     if not job:
         raise HTTPException(status_code=404, detail="mechanism job 不存在或已过期")
     return job_public_view(job, include_payload=include_payload)
+
+
+@app.delete("/api/mechanism/{job_id}")
+def mechanism_cancel(job_id: str) -> dict:
+    if not get_job(job_id):
+        raise HTTPException(status_code=404, detail="mechanism job 不存在或已过期")
+    if not cancel_job(job_id, reason="user_cancelled"):
+        raise HTTPException(status_code=409, detail="机制任务已结束")
+    return {"job_id": job_id, "status": "cancel_requested"}
 
 
 @app.get("/api/mechanism/{job_id}/download")

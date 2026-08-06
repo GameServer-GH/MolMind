@@ -1,4 +1,4 @@
-/* MolMind Agent — settings / catalog drawer (Codex-inspired) */
+/* MolMind Agent — plugin / skill catalog drawer (Tools stay runtime-internal) */
 (function (global) {
   function apiErrorMessage(body, fallback) {
     const detail = body && body.detail;
@@ -13,11 +13,12 @@
       ? global.MolMindClientIdentity.clientId
       : "anonymous";
   const CATALOG_PREF_KEY = `${LEGACY_CATALOG_PREF_KEY}:${CLIENT_ID}`;
+  const SCP_PREF_KEY = `molmind:agent_installed_scp_v1:${CLIENT_ID}`;
 
   const TABS = [
     { id: "plugins", label: "插件" },
-    { id: "tools", label: "工具" },
     { id: "skills", label: "技能" },
+    { id: "scp", label: "SCP 科研能力" },
   ];
 
   /* Semantic icons (GameGhost Tabler set) — prefer exact id match */
@@ -107,6 +108,12 @@
     "square-plus",
   ];
 
+  const DESCRIPTION_BY_ID = {
+    mechanism_research: "查询靶点、通路和疾病关系。",
+    literature_research: "检索论文并整理引用。",
+    validation_protocol: "生成未执行的实验验证 protocol 草案。",
+  };
+
   const state = {
     tab: "plugins",
     query: "",
@@ -152,11 +159,24 @@
     return `mm-icon mm-icon--${name}${size ? ` mm-icon--${size}` : ""}`;
   }
 
+  function itemDescription(item) {
+    const id = item && (item.id || item.skill_id || item.plugin_id);
+    return String((item && item.description) || DESCRIPTION_BY_ID[id] || "暂无简介");
+  }
+
+  function isScpSkill(item) {
+    return !!(item && item.plugin_id === "scp-hub" && item.skill_id);
+  }
+
+  function showToast(message) {
+    global.dispatchEvent(new CustomEvent("molmind:agent-toast", { detail: { message: String(message || "操作失败") } }));
+  }
+
   function itemsForTab(settings, tab) {
     if (!settings) return [];
     if (tab === "plugins") return settings.plugins || [];
-    if (tab === "tools") return settings.tools || [];
     if (tab === "skills") return settings.skills || [];
+    if (tab === "scp") return settings.scp_catalog || [];
     return [];
   }
 
@@ -208,6 +228,19 @@
     }
   }
 
+  function readPreferredScp() {
+    try {
+      const raw = localStorage.getItem(SCP_PREF_KEY);
+      if (raw === null) return null;
+      const value = JSON.parse(raw);
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    } catch { return null; }
+  }
+
+  function writePreferredScp(value) {
+    try { localStorage.setItem(SCP_PREF_KEY, JSON.stringify(value || {})); } catch { /* ignore */ }
+  }
+
   function catalogIdsFromSettings(settings) {
     if (!settings) return [];
     return normalizeCatalogIds(
@@ -231,6 +264,18 @@
     let cur = readPreferredCatalog();
     if (cur === null) cur = catalogIdsFromSettings(state.settings);
     writePreferredCatalog(cur.filter((x) => x !== id));
+  }
+
+  function rememberScpInstall(skillId, enabled = true) {
+    const prefs = readPreferredScp() || {};
+    prefs[String(skillId)] = !!enabled;
+    writePreferredScp(prefs);
+  }
+
+  function rememberScpUninstall(skillId) {
+    const prefs = readPreferredScp() || {};
+    delete prefs[String(skillId)];
+    writePreferredScp(prefs);
   }
 
   function closeTip() {
@@ -272,6 +317,43 @@
     if (state.onChanged) await state.onChanged();
   }
 
+  async function doScpInstall(skillId) {
+    if (!state.sessionId || !skillId) return;
+    const resp = await fetch(`/api/agent/sessions/${state.sessionId}/scp/install`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(global.MolMindClientIdentity ? global.MolMindClientIdentity.headers() : {}) },
+      body: JSON.stringify({ skill_id: skillId }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(apiErrorMessage(body, "SCP Skill 安装失败"));
+    rememberScpInstall(skillId, true);
+    if (state.onChanged) await state.onChanged();
+  }
+
+  async function doScpToggle(skillId, enabled) {
+    const action = enabled ? "enable" : "disable";
+    const resp = await fetch(`/api/agent/sessions/${state.sessionId}/scp/${encodeURIComponent(skillId)}/${action}`, {
+      method: "POST",
+      headers: global.MolMindClientIdentity ? global.MolMindClientIdentity.headers() : {},
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(apiErrorMessage(body, "SCP Skill 状态更新失败"));
+    rememberScpInstall(skillId, enabled);
+    if (state.onChanged) await state.onChanged();
+  }
+
+  async function doScpUninstall(skillId) {
+    const resp = await fetch(`/api/agent/sessions/${state.sessionId}/scp/${encodeURIComponent(skillId)}`, {
+      method: "DELETE",
+      headers: global.MolMindClientIdentity ? global.MolMindClientIdentity.headers() : {},
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(apiErrorMessage(body, "SCP Skill 卸载失败"));
+    rememberScpUninstall(skillId);
+    closeTip();
+    if (state.onChanged) await state.onChanged();
+  }
+
   function openTip(anchor, item) {
     closeTip();
     const id = item.id || item.plugin_id;
@@ -287,16 +369,38 @@
           <div class="mm-cat-tip-id">${escapeHtml(id)}</div>
         </div>
       </div>
-      <p class="mm-cat-tip-desc">${escapeHtml(item.description || "暂无简介")}</p>
+      <p class="mm-cat-tip-desc">${escapeHtml(itemDescription(item))}</p>
+      ${Array.isArray(item.tools) && item.tools.length ? `<div class="mm-cat-tip-desc">内部工具：${item.tools.map((tool) => `<code>${escapeHtml(tool)}</code>`).join("、")}</div>` : ""}
       <div class="mm-cat-tip-meta">
         ${item.plugin_id && item.plugin_id !== id ? `<span>插件 · ${escapeHtml(item.plugin_id)}</span>` : ""}
         ${item.builtin ? "<span>内置</span>" : ""}
         ${item.risk ? `<span>${escapeHtml(item.risk)}</span>` : ""}
+        ${item.credential_status ? `<span>凭据 · ${escapeHtml(item.credential_status)}</span>` : ""}
+        ${item.plugin_id === "scp-hub" ? `<span>实时资料不参与当前排名</span>` : ""}
       </div>
       <div class="mm-cat-tip-actions"></div>
     `;
     const actions = tip.querySelector(".mm-cat-tip-actions");
-    if (item.can_uninstall && item.install_target) {
+    if (isScpSkill(item) && item.installed) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "mm-cat-btn mm-cat-btn--primary";
+      toggle.textContent = item.enabled ? "停用" : "启用";
+      toggle.addEventListener("click", async () => {
+        toggle.disabled = true;
+        try { await doScpToggle(id, !item.enabled); } catch (err) { showToast(err.message || err); toggle.disabled = false; }
+      });
+      actions.appendChild(toggle);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "mm-cat-btn mm-cat-btn--danger";
+      remove.textContent = "卸载";
+      remove.addEventListener("click", async () => {
+        remove.disabled = true;
+        try { await doScpUninstall(id); } catch (err) { showToast(err.message || err); remove.disabled = false; }
+      });
+      actions.appendChild(remove);
+    } else if (item.can_uninstall && item.install_target) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "mm-cat-btn mm-cat-btn--danger";
@@ -307,7 +411,7 @@
         try {
           await doUninstall(item.install_target);
         } catch (err) {
-          alert(err.message || err);
+          showToast(err.message || err);
           btn.disabled = false;
         }
       });
@@ -368,7 +472,7 @@
         </div>
         <div class="mm-cat-card-body">
           <div class="mm-cat-card-title">${escapeHtml(item.title || id)}</div>
-          <div class="mm-cat-card-desc">${escapeHtml(item.description || "")}</div>
+          <div class="mm-cat-card-desc">${escapeHtml(itemDescription(item))}</div>
         </div>
         <div class="mm-cat-card-action"></div>
       `;
@@ -390,20 +494,31 @@
         btn.type = "button";
         btn.className = "mm-cat-btn mm-cat-btn--primary";
         btn.textContent = "安装";
-        btn.disabled = !state.sessionId || !item.install_target;
+        const scpItem = isScpSkill(item);
+        btn.disabled = !state.sessionId || (!scpItem && !item.install_target) || item.installable === false;
         btn.title = state.sessionId
-          ? item.install_target
+          ? scpItem
+            ? item.installable === false ? "该能力尚未锁定 Server/Tool 依赖" : `安装 ${id}`
+            : item.install_target
             ? `安装 ${item.install_target}`
             : "不可安装"
           : "请先开始一次对话会话";
         btn.addEventListener("click", async (e) => {
           e.stopPropagation();
-          if (!item.install_target) return;
+          if (!scpItem && !item.install_target) return;
           btn.disabled = true;
+          btn.classList.add("mm-cat-btn--installing");
+          btn.setAttribute("aria-busy", "true");
+          const prevLabel = btn.textContent;
+          btn.textContent = "安装中";
           try {
-            await doInstall(item.install_target);
+            if (scpItem) await doScpInstall(id);
+            else await doInstall(item.install_target);
           } catch (err) {
-            alert(err.message || err);
+            showToast(err.message || err);
+            btn.classList.remove("mm-cat-btn--installing");
+            btn.removeAttribute("aria-busy");
+            btn.textContent = prevLabel || "安装";
             btn.disabled = false;
           }
         });
@@ -557,6 +672,38 @@
           /* ignore */
         }
       }
+      // SCP skills are persisted by the active browser identity and replayed
+      // into each of that identity's sessions. They are never shared with a
+      // different Client ID.
+      const settings = await MolMindAgentSettings.fetchSettings(sessionId);
+      const currentScp = Object.fromEntries(
+        (settings.scp_skills || []).map((item) => [String(item.skill_id), !!item.enabled])
+      );
+      let scpPreferred = readPreferredScp();
+      if (scpPreferred === null) {
+        scpPreferred = currentScp;
+        writePreferredScp(scpPreferred);
+      }
+      for (const [skillId, enabled] of Object.entries(scpPreferred)) {
+        if (!(skillId in currentScp)) {
+          try {
+            await MolMindAgentSettings.scpInstall(sessionId, skillId);
+            currentScp[skillId] = true;
+          } catch {
+            delete scpPreferred[skillId];
+            writePreferredScp(scpPreferred);
+            continue;
+          }
+        }
+        if (currentScp[skillId] !== enabled) {
+          try { await MolMindAgentSettings.scpToggle(sessionId, skillId, enabled); } catch { /* ignore */ }
+        }
+      }
+      for (const skillId of Object.keys(currentScp)) {
+        if (!(skillId in scpPreferred)) {
+          try { await MolMindAgentSettings.scpUninstall(sessionId, skillId); } catch { /* ignore */ }
+        }
+      }
       return preferred;
     },
 
@@ -589,6 +736,34 @@
         const err = await resp.json().catch(() => ({}));
         throw new Error(apiErrorMessage(err, "移除失败"));
       }
+      return resp.json();
+    },
+
+    async scpInstall(sessionId, skillId) {
+      const resp = await fetch(`/api/agent/sessions/${sessionId}/scp/install`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(global.MolMindClientIdentity ? global.MolMindClientIdentity.headers() : {}),
+        },
+        body: JSON.stringify({ skill_id: skillId }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(apiErrorMessage(body, "SCP Skill 安装失败"));
+      rememberScpInstall(skillId, true);
+      return body;
+    },
+
+    async scpToggle(sessionId, skillId, enabled) {
+      const action = enabled ? "enable" : "disable";
+      const resp = await fetch(`/api/agent/sessions/${sessionId}/scp/${encodeURIComponent(skillId)}/${action}`, { method: "POST" });
+      if (!resp.ok) throw new Error("SCP Skill 状态更新失败");
+      return resp.json();
+    },
+
+    async scpUninstall(sessionId, skillId) {
+      const resp = await fetch(`/api/agent/sessions/${sessionId}/scp/${encodeURIComponent(skillId)}`, { method: "DELETE" });
+      if (!resp.ok) throw new Error("SCP Skill 卸载失败");
       return resp.json();
     },
 

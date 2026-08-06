@@ -61,6 +61,13 @@ class AgentIntent:
     ranking_positions: tuple[int, ...] = ()
     #: “排名 Top5 的分子”中的 Top5 指向单个排名对象，不是 Top5 概览。
     ranking_position_subject: bool = False
+    #: Structured dialog act: user is requesting Core screening/export execution
+    #: (as opposed to chat, explain, or supplementary SCP evidence).
+    execution_requested: bool = False
+    #: Drop any matching frozen result and run a fresh score_and_rank.
+    #: Set by the loop execution-gate classifier (or structural rescreen cues),
+    #: not by domain keyword walls in the router.
+    force_rescreen: bool = False
 
 
 _TOP_RE = re.compile(
@@ -71,11 +78,16 @@ _TOP_RE = re.compile(
 )
 
 _RANKING_CONTEXT_RE = re.compile(
-    r"top[\s\-_]*\d+|排名|排第|第\s*\d+\s*(?:名|位)?|第一名|榜首|首位|入选",
+    r"top[\s\-_]*\d+|排名|排第|第\s*\d+\s*(?:名|位)?|前\s*\d+\s*名?|第一名|榜首|首位|入选",
     re.I,
 )
 _RANK_POSITION_RE = re.compile(
     r"(?:(?<![A-Za-z])top[\s\-_]*|第\s*)(\d{1,3})(?:\s*(?:名|位))?",
+    re.I,
+)
+_FRONT_RANK_SPAN_RE = re.compile(r"前\s*(\d{1,3})\s*名?", re.I)
+_RANKING_COMPARE_RE = re.compile(
+    r"哪个|哪一个|更适合|更推荐|优先推进|怎么选|选哪个",
     re.I,
 )
 _RANK_POSITION_SUBJECT_RE = re.compile(
@@ -97,6 +109,10 @@ _RANKING_EXPLANATION_RE = re.compile(
 _EXPLICIT_RUN_RE = re.compile(
     r"生成|导出|筛选|重跑|重新跑|开始跑|跑一下|制作|做一份|出一份|"
     r"\bgenerate\b|\bexport\b|\brerun\b|\brun\b",
+    re.I,
+)
+_FORCE_RESCREEN_RE = re.compile(
+    r"重新筛选|重跑|重新跑|忽略(?:上述|之前)?(?:条件|偏好|配置)|另起|从头(?:筛|跑)",
     re.I,
 )
 _QUESTION_END_RE = re.compile(r"(?:吗|呢|么|？|\?)\s*$", re.I)
@@ -191,6 +207,16 @@ def _csv_param(text: str, names: tuple[str, ...]) -> tuple[str, ...]:
 def _looks_like_evidence_query(text: str) -> bool:
     low = (text or "").lower()
     if not any(term in low for term in ("证据", "evidence")):
+        return False
+    # Evidence is a molecule-level Core operation only when an identity or an
+    # explicit evidence-card request is present. Domain vocabulary belongs to
+    # plugin capabilities; it must not decide whether a literature question
+    # is routed to Core here.
+    if not re.search(
+        r"(?:inchikey|cas|smiles|molecule[_\s-]?id|候选\s*分子|分子\s*证据|证据\s*卡)"
+        r"|(?:候选|分子)\s*[:=：]?\s*[A-Za-z][A-Za-z0-9_.-]*\d[A-Za-z0-9_.-]*",
+        low,
+    ):
         return False
     return any(
         term in low
@@ -440,11 +466,16 @@ def ranking_question_fallback(text: str) -> tuple[bool, str | None]:
         return False, None
 
     asks_for_explanation = bool(_RANKING_EXPLANATION_RE.search(raw))
+    asks_compare = bool(_RANKING_COMPARE_RE.search(raw))
     asks_a_question = bool(_QUESTION_END_RE.search(raw))
     explicitly_runs = bool(_EXPLICIT_RUN_RE.search(raw))
-    if not asks_for_explanation and (not asks_a_question or explicitly_runs):
+    if (
+        not asks_for_explanation
+        and not asks_compare
+        and (not asks_a_question or explicitly_runs)
+    ):
         return False, None
-    if asks_for_explanation and explicitly_runs:
+    if (asks_for_explanation or asks_compare) and explicitly_runs:
         return False, None
 
     molecule_id = None
@@ -460,12 +491,18 @@ def extract_ranking_positions(text: str) -> tuple[int, ...]:
     """Return explicitly named frozen ranks in their original order.
 
     ``Top4 和 Top5`` is a pairwise explanation request, rather than shorthand
-    for the first four rows.  Keep the positional list separate from
-    ``requested_top_n`` so an execution-size parser cannot collapse it to the
-    first number it encounters.
+    for the first four rows.  ``前 5 名`` expands to ranks 1..N.  Keep the
+    positional list separate from ``requested_top_n`` so an execution-size
+    parser cannot collapse it to the first number it encounters.
     """
+    raw = text or ""
     out: list[int] = []
-    for match in _RANK_POSITION_RE.finditer(text or ""):
+    span = _FRONT_RANK_SPAN_RE.search(raw)
+    if span:
+        end = int(span.group(1))
+        if TOP_N_MIN <= end <= TOP_N_MAX:
+            out.extend(range(1, end + 1))
+    for match in _RANK_POSITION_RE.finditer(raw):
         rank = int(match.group(1))
         if TOP_N_MIN <= rank <= TOP_N_MAX and rank not in out:
             out.append(rank)
@@ -567,6 +604,8 @@ def parse_intent(
             "交卷包",
             "提交包",
             "结果包",
+            "候选包",
+            "bundle",
             "submission bundle",
             "submission_bundle",
             "export_submission_bundle",
@@ -574,15 +613,62 @@ def parse_intent(
     )
     # Explicit deliverable markers → tools even without soft verbs like「帮我」
     strong_product = any(
-        k in low for k in ("csv", "pdf", "top", "清单", "sdf", "候补", "reserve", "交卷包")
+        k in low
+        for k in (
+            "csv",
+            "pdf",
+            "top",
+            "清单",
+            "sdf",
+            "候补",
+            "reserve",
+            "交卷包",
+            "候选包",
+            "bundle",
+        )
     )
     soft_request = any(
         k in low
         for k in ("生成", "帮我", "导出", "跑", "开始", "做一份", "出一份", "给我", "来一份")
     )
+    # Structured execution act (Intent extractor only — Router consumes the flag).
+    execution_requested = bool(
+        soft_request or strong_product or _EXPLICIT_RUN_RE.search(raw)
+    )
+
+    # Ranking follow-ups are structured read-only acts and must not depend on
+    # wants_tools / soft deliverable verbs. Prefer explain even when the surface
+    # contains “topN” (strong_product), as long as ranking_question_fallback
+    # classifies the utterance as an explanatory follow-up.
+    is_ranking_followup, ranking_molecule_id = ranking_question_fallback(raw)
+    ranking_positions = extract_ranking_positions(raw) if is_ranking_followup else ()
+    ranking_position_subject = (
+        ranking_position_subject_fallback(raw) if is_ranking_followup else False
+    )
+    if is_ranking_followup:
+        return AgentIntent(
+            want_csv=False,
+            want_pdf=False,
+            top_n=top_n,
+            raw_text=raw,
+            reason="询问上一轮候选排名原因，不重新筛选或导出",
+            skill_ids=(),
+            wants_tools=False,
+            mentions=mentions,
+            mention_action="",
+            requested_top_n=requested_top_n,
+            top_n_over_limit=False,
+            top_n_max=int(top_n_max),
+            top_n_min=int(top_n_min),
+            explain_ranking=True,
+            ranking_molecule_id=ranking_molecule_id,
+            ranking_positions=ranking_positions,
+            ranking_position_subject=ranking_position_subject,
+            execution_requested=False,
+        )
 
     product = mentions_csv or mentions_pdf or mentions_reserve or mentions_bundle
-    if not product or (not soft_request and not strong_product):
+    if not product or not execution_requested:
         return AgentIntent(
             want_csv=False,
             want_pdf=False,
@@ -597,6 +683,11 @@ def parse_intent(
             top_n_over_limit=False,
             top_n_max=int(top_n_max),
             top_n_min=int(top_n_min),
+            explain_ranking=False,
+            ranking_molecule_id=None,
+            ranking_positions=(),
+            ranking_position_subject=False,
+            execution_requested=False,
         )
 
     want_reserve = mentions_reserve or mentions_bundle
@@ -615,6 +706,10 @@ def parse_intent(
     want_csv = mentions_primary_csv or want_bundle or (soft_request and not mentions_pdf and not want_reserve) or (
         soft_request and mentions_pdf
     )
+    # execution_requested with screening vocabulary but no soft verb still means
+    # a Core deliverable (e.g. 「按默认配置重新筛选」).
+    if execution_requested and mentions_csv and not mentions_pdf and not want_reserve and not want_bundle:
+        want_csv = True
     only_pdf = mentions_pdf and not mentions_csv and not want_reserve and not want_bundle and not any(
         k in low for k in ("清单", "提名", "候选", "csv", "top")
     )
@@ -664,4 +759,6 @@ def parse_intent(
         top_n_over_limit=bool(top_n_over_limit),
         top_n_max=int(top_n_max),
         top_n_min=int(top_n_min),
+        execution_requested=True,
+        force_rescreen=bool(_FORCE_RESCREEN_RE.search(raw)),
     )

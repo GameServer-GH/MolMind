@@ -1,31 +1,105 @@
 # MolMind 本地 Compose（无 nginx，直连 uvicorn）
-# 在仓库根目录执行：
-#   docker compose -f deploy/docker-compose.yml up --build
-#   docker compose -f deploy/docker-compose.yml run --rm cli
+# 在仓库根目录执行（compose 文件在 deploy/，默认不会读仓库根 .env，需显式传入）：
+#   docker compose --env-file .env -f deploy/docker-compose.yml up --build
+#   docker compose --env-file .env -f deploy/docker-compose.yml --profile object up -d minio
 #
 # 浏览器：http://127.0.0.1:18765/
 # 服务器部署见仓库外的 deploy_pro/（不入库）
+#
+# 存储约定（本地与生产一致）：
+#   PostgreSQL = 会话 / 事件 / checkpoint / Run 队列 / 后台 Job 真源
+#   Redis      = 会话短锁与事件扇出（可选降级到 PG advisory lock）
+#   Blob       = 本地目录默认；可选 MinIO/S3（MOLMIND_BLOB_STORE_URL=s3://molmind-blobs）
 services:
   web:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: molmind:0.2.2
+    image: molmind:0.2.3
     ports:
       - "18765:18765"
+    # Compose project dir is deploy/，所以这里显式挂仓库根 .env（SCP_HUB_API_KEY 等）。
+    # 不要在 environment 里写 SCP_HUB_API_KEY: ${SCP_HUB_API_KEY:-} —— 空默认值会覆盖 env_file。
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       MOLMIND_MODE: auto
       PYTHONPATH: /app
+      MOLMIND_DATABASE_URL: postgresql://molmind:molmind@postgres:5432/molmind
+      MOLMIND_AGENT_QUEUE_URL: postgresql://molmind:molmind@postgres:5432/molmind
+      MOLMIND_REDIS_URL: redis://redis:6379/0
+      MOLMIND_BLOB_ROOT: /app/data/agent_blobs
+      MOLMIND_BLOB_STORE_URL: ${MOLMIND_BLOB_STORE_URL:-}
+      MOLMIND_S3_ENDPOINT: ${MOLMIND_S3_ENDPOINT:-http://minio:9000}
+      MOLMIND_S3_ACCESS_KEY: ${MOLMIND_S3_ACCESS_KEY:-molmind}
+      MOLMIND_S3_SECRET_KEY: ${MOLMIND_S3_SECRET_KEY:-molmindsecret}
+      MOLMIND_AGENT_WORKERS: ${MOLMIND_AGENT_WORKERS:-2}
+      MOLMIND_AGENT_LEASE_SECONDS: ${MOLMIND_AGENT_LEASE_SECONDS:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ../output:/app/output
-    command: ["uvicorn", "apps.api.app:app", "--host", "0.0.0.0", "--port", "18765"]
+      - agent_blobs:/app/data/agent_blobs
+    command: ["uvicorn", "apps.api.app:app", "--host", "0.0.0.0", "--port", "18765", "--workers", "${MOLMIND_WEB_WORKERS:-1}"]
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:${MOLMIND_POSTGRES_PORT:-15432}:5432"
+    environment:
+      POSTGRES_DB: molmind
+      POSTGRES_USER: molmind
+      POSTGRES_PASSWORD: molmind
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U molmind -d molmind"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - agent_db:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${MOLMIND_REDIS_PORT:-16379}:6379"
+    volumes:
+      - agent_redis:/data
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["object"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MOLMIND_S3_ACCESS_KEY:-molmind}
+      MINIO_ROOT_PASSWORD: ${MOLMIND_S3_SECRET_KEY:-molmindsecret}
+    ports:
+      - "127.0.0.1:${MOLMIND_MINIO_PORT:-19000}:9000"
+      - "127.0.0.1:${MOLMIND_MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - agent_minio:/data
 
   cli:
-    image: molmind:0.2.2
+    image: molmind:0.2.3
     profiles: ["cli"]
     environment:
       MOLMIND_MODE: offline
       PYTHONPATH: /app
+      MOLMIND_DATABASE_URL: postgresql://molmind:molmind@postgres:5432/molmind
+      MOLMIND_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ../output:/app/output
+      - agent_blobs:/app/data/agent_blobs
     command: ["python", "-m", "apps.cli.main", "--input", "data/sample.sdf", "--output", "output/nomination_top10.csv", "--mode", "offline"]
+
+volumes:
+  agent_blobs:
+  agent_db:
+  agent_redis:
+  agent_minio:

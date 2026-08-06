@@ -204,19 +204,237 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function buildCapabilityAudit(detail, events, settings) {
+    const skillStates = Array.isArray(detail.installed_scp_skills)
+      ? detail.installed_scp_skills
+      : [];
+    const toolOwners = new Map();
+    const serverIndex = new Map();
+    const registeredTools = [];
+    for (const skill of settings && Array.isArray(settings.skills) ? settings.skills : []) {
+      if (!skill || !skill.installed) continue;
+      for (const toolId of Array.isArray(skill.tools) ? skill.tools : []) {
+        if (!toolOwners.has(String(toolId))) {
+          toolOwners.set(String(toolId), {
+            plugin_id: skill.plugin_id || "",
+            skill_id: skill.skill_id || skill.id || "",
+            server_id: "",
+          });
+        }
+      }
+    }
+    const installedSkills = skillStates.map((state) => {
+      const servers = Array.isArray(state.servers) ? state.servers : [];
+      for (const server of servers) {
+        const serverId = String(server.server_id || "");
+        if (serverId) {
+          serverIndex.set(serverId, {
+            server_id: serverId,
+            title: server.title || serverId,
+            endpoint: server.endpoint || "",
+            skill_id: state.skill_id || "",
+          });
+        }
+      }
+      const descriptors = Array.isArray(state.tool_descriptors)
+        ? state.tool_descriptors
+        : [];
+      for (const descriptor of descriptors) {
+        const toolId = String(descriptor.tool_id || "");
+        if (!toolId) continue;
+        const owner = {
+          plugin_id: descriptor.plugin_id || "scp-hub",
+          skill_id: state.skill_id || "",
+          server_id: descriptor.server_id || "",
+        };
+        toolOwners.set(toolId, owner);
+        registeredTools.push({
+          tool_id: toolId,
+          ...owner,
+          wire_tool_name: descriptor.wire_tool_name || "",
+          descriptor_hash: descriptor.descriptor_hash || "",
+          writes_selection: Boolean(descriptor.writes_selection),
+        });
+      }
+      return {
+        skill_id: state.skill_id || "",
+        plugin_id: "scp-hub",
+        enabled: Boolean(state.enabled),
+        capability_ids: state.capability_ids || [],
+        credential_status: state.credential_status || "unknown",
+        tools: state.tools || [],
+        servers: servers.map((server) => server.server_id).filter(Boolean),
+      };
+    });
+
+    const plans = new Map();
+    const calls = [];
+    const openCalls = new Map();
+    for (const event of Array.isArray(events) ? events : []) {
+      if (!event || typeof event !== "object") continue;
+      if (event.type === "agent_plan") {
+        const diagnostics = Array.isArray(event.diagnostics) ? event.diagnostics : [];
+        plans.set(String(event.run_id || ""), {
+          capability_id: diagnostics[0] === "task_router" ? diagnostics[1] || "" : "",
+          planner_status: diagnostics[0] === "task_router" ? diagnostics[2] || "" : "",
+        });
+        continue;
+      }
+      if (event.type === "tool_start") {
+        const toolId = String(event.tool || "");
+        const owner = toolOwners.get(toolId) || {};
+        const plan = plans.get(String(event.run_id || "")) || {};
+        const record = {
+          call_id: event.call_id || "",
+          run_id: event.run_id || "",
+          seq_start: event.seq || null,
+          seq_end: null,
+          capability_id: event.capability_id || plan.capability_id || "",
+          planner_status: plan.planner_status || "",
+          plugin_id: event.plugin || owner.plugin_id || "molmind-core",
+          skill_id: owner.skill_id || "",
+          tool_id: toolId,
+          source: event.source || "core",
+          mcp_server_id: owner.server_id || "",
+          arguments: event.args || {},
+          status: "running",
+          cache_status: "",
+          response_hash: "",
+          writes_selection: Boolean(event.writes_selection),
+          ranking_changed: false,
+          job_id: "",
+          relevance_status: "",
+          relevance_score: null,
+          missing_concepts: [],
+          excluded_concepts_present: [],
+          protocol_validation: null,
+          evidence_role: event.evidence_role || "primary_evidence",
+          recovery_stage: event.recovery_stage || "",
+          claim_scopes: event.claim_scopes || [],
+        };
+        calls.push(record);
+        const key = String(event.call_id || `${event.run_id || ""}:${toolId}`);
+        openCalls.set(key, record);
+        continue;
+      }
+      if (event.type === "tool_end") {
+        const toolId = String(event.tool || "");
+        const key = String(event.call_id || `${event.run_id || ""}:${toolId}`);
+        let record = openCalls.get(key);
+        if (!record) {
+          record = [...calls]
+            .reverse()
+            .find((item) => item.run_id === (event.run_id || "") && item.tool_id === toolId && !item.seq_end);
+        }
+        if (!record) continue;
+        const digest = event.digest || (event.observation && event.observation.digest) || {};
+        record.seq_end = event.seq || null;
+        record.status = event.status || (event.ok ? "succeeded" : "failed");
+        record.cache_status =
+          digest.cache_status || (digest.status === "cache_hit" ? "cache_hit" : "unknown");
+        record.response_hash = digest.response_hash || event.response_hash || "";
+        record.writes_selection = Boolean(event.writes_selection || digest.writes_selection);
+        record.ranking_changed = Boolean(event.ranking_changed);
+        record.job_id = event.job_id || "";
+        if (record.status !== "queued") openCalls.delete(key);
+        continue;
+      }
+      if (event.type === "job_end") {
+        const record = [...calls]
+          .reverse()
+          .find((item) => item.job_id && item.job_id === event.job_id);
+        if (record) {
+          record.seq_end = event.seq || record.seq_end;
+          record.status = event.ok ? "succeeded" : "failed";
+          record.cache_status =
+            event.cache_status || (event.digest && event.digest.cache_status) || record.cache_status;
+          record.response_hash = event.response_hash || record.response_hash;
+        }
+        continue;
+      }
+      if (event.type === "observation_validation") {
+        const record = [...calls]
+          .reverse()
+          .find((item) => item.run_id === (event.run_id || "") && !item.relevance_status);
+        if (record) {
+          record.relevance_status = event.status || "";
+          record.relevance_score = event.score == null ? null : event.score;
+          record.missing_concepts = event.missing_concepts || [];
+          record.excluded_concepts_present = event.excluded_concepts_present || [];
+          record.protocol_validation = event.protocol_validation || null;
+          record.claim_scopes = event.claim_scopes || record.claim_scopes;
+        }
+      }
+    }
+
+    const unique = (values) => [...new Set(values.filter(Boolean))].sort();
+    const installedPluginIds = unique([
+      ...(detail.installed_catalog || []),
+      ...installedSkills.map((item) => item.plugin_id),
+      ...((settings && Array.isArray(settings.plugins) ? settings.plugins : [])
+        .filter((item) => item && item.installed)
+        .map((item) => item.plugin_id || item.id || "")),
+    ]);
+    return {
+      inventory: {
+        installed_plugin_ids: installedPluginIds,
+        installed_plugins: (settings && Array.isArray(settings.plugins)
+          ? settings.plugins.filter((item) => item && item.installed)
+          : []
+        ).map((item) => ({
+          plugin_id: item.plugin_id || item.id || "",
+          title: item.title || "",
+          builtin: Boolean(item.builtin),
+          catalog: Boolean(item.catalog),
+          network_policy: item.network_policy || {},
+        })),
+        available_skills: (settings && Array.isArray(settings.skills)
+          ? settings.skills.filter((item) => item && item.installed)
+          : []
+        ).map((item) => ({
+          skill_id: item.skill_id || item.id || "",
+          plugin_id: item.plugin_id || "",
+          capability_ids: item.capability_ids || [],
+          tools: item.tools || [],
+          builtin: Boolean(item.builtin),
+        })),
+        installed_scp_skills: installedSkills,
+        registered_scp_tools: registeredTools,
+        mcp_servers: [...serverIndex.values()],
+      },
+      usage_summary: {
+        plugin_ids: unique(calls.map((item) => item.plugin_id)),
+        skill_ids: unique(calls.map((item) => item.skill_id)),
+        capability_ids: unique(calls.map((item) => item.capability_id)),
+        tool_ids: unique(calls.map((item) => item.tool_id)),
+        mcp_server_ids: unique(calls.map((item) => item.mcp_server_id)),
+      },
+      calls,
+    };
+  }
+
   async function exportSessionLog(session) {
     const sessionId = session.session_id;
-    const [detailResp, eventsResp] = await Promise.all([
+    const [detailResp, eventsResp, settingsResp] = await Promise.all([
       fetch(`/api/agent/sessions/${sessionId}`),
       fetch(`/api/agent/sessions/${sessionId}/events`),
+      fetch(`/api/agent/settings?session_id=${encodeURIComponent(sessionId)}`),
     ]);
-    if (!detailResp.ok || !eventsResp.ok) {
-      const failedResp = !detailResp.ok ? detailResp : eventsResp;
+    if (!detailResp.ok || !eventsResp.ok || !settingsResp.ok) {
+      const failedResp = !detailResp.ok
+        ? detailResp
+        : !eventsResp.ok
+          ? eventsResp
+          : settingsResp;
       const err = await failedResp.json().catch(() => ({}));
       throw new Error(err.detail || "导出日志失败");
     }
 
-    const [detail, eventData] = await Promise.all([detailResp.json(), eventsResp.json()]);
+    const [detail, eventData, settings] = await Promise.all([
+      detailResp.json(),
+      eventsResp.json(),
+      settingsResp.json(),
+    ]);
     const exportedAt = new Date();
     const exportedAtLocal = toLocalIso(exportedAt);
     const stamp = exportedAtLocal.replace(/[:.]/g, "-");
@@ -239,7 +457,7 @@
     };
     downloadJson(`MolMind_${safeFilename(title)}_${stamp}.json`, {
       format: "molmind-agent-session-log",
-      format_version: 2,
+      format_version: 3,
       exported_at: exportedAtLocal,
       exported_at_utc: exportedAt.toISOString(),
       time_context: {
@@ -249,6 +467,9 @@
         storage_timezone: "UTC",
       },
       session_summary: localizeLogTimestamps(freshSummary),
+      capability_audit: localizeLogTimestamps(
+        buildCapabilityAudit(detail, eventData.events || [], settings),
+      ),
       conversation: localizeLogTimestamps(detail),
       execution: {
         event_seq: eventData.event_seq,

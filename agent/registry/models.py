@@ -23,6 +23,13 @@ class ToolSpec:
     idempotent: bool = False
     timeout_sec: float | None = None
     confirmation_required: bool = False
+    output_schema: dict[str, Any] | None = None
+    annotations: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
+    wire_tool_name: str = ""
+    server_id: str = ""
+    descriptor_hash: str = ""
+    dynamic: bool = False
 
 
 @dataclass
@@ -35,6 +42,7 @@ class SkillSpec:
     limits: dict[str, Any] = field(default_factory=dict)
     requires: list[str] = field(default_factory=list)
     produces: list[str] = field(default_factory=list)
+    capability_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -51,6 +59,14 @@ class PluginSpec:
     requires: dict[str, Any] = field(default_factory=dict)
     limits: dict[str, Any] = field(default_factory=dict)
     tool_limits: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Plugin-owned network defaults.  This keeps live access policy attached
+    #: to the capability bundle instead of scattering it through chat intent.
+    network_policy: dict[str, Any] = field(default_factory=dict)
+    #: Declarative capabilities consumed by the Task Router. Kept as plain
+    #: mappings in Phase 1 so plugins can evolve without a code release.
+    capabilities: list[dict[str, Any]] = field(default_factory=list)
+    #: Canonical domain vocabulary and aliases owned by the plugin.
+    terminology: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

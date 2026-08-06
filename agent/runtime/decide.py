@@ -7,6 +7,97 @@ import re
 from typing import Any
 
 
+def _chat_json_payload(
+    *,
+    system: str,
+    user: str,
+    purpose: str,
+    max_tokens: int,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    from plugins.molmind_core.scientific.mechanism.llm_client import (
+        chat_completion,
+        resolve_llm_settings,
+    )
+
+    settings = resolve_llm_settings(
+        {"enabled": True, "agent_chat": True}, purpose=purpose
+    )
+    if not settings.ready:
+        raise RuntimeError("llm_not_ready")
+
+    settings = type(settings)(
+        enabled=settings.enabled,
+        model=settings.model,
+        base_url=settings.base_url,
+        api_key=settings.api_key,
+        temperature=0.0,
+        timeout_sec=min(settings.timeout_sec, timeout_sec),
+        max_tokens=max_tokens,
+        cache_dir=settings.cache_dir,
+        use_cache=False,
+    )
+    raw = chat_completion(settings, system=system, user=user).strip()
+    match = re.search(r"\{[\s\S]*\}", raw)
+    data = json.loads(match.group(0) if match else raw)
+    if not isinstance(data, dict):
+        raise ValueError("llm_json_not_object")
+    return data
+
+
+def _reraise_cancel(exc: BaseException) -> None:
+    from agent.runtime.cancellable_call import CallCancelled
+    from plugins.molmind_core.scientific.mechanism.llm_client import MechanismLLMError
+
+    if isinstance(exc, CallCancelled):
+        raise exc
+    if isinstance(exc, MechanismLLMError) and "cancelled" in str(exc).lower():
+        raise CallCancelled("llm cancelled") from exc
+
+
+def llm_json_object(
+    *,
+    system: str,
+    user: str,
+    default: dict[str, Any],
+    purpose: str = "agent_chat",
+    max_tokens: int = 256,
+    timeout_sec: float = 30.0,
+    retries: int = 1,
+) -> tuple[dict[str, Any], str]:
+    """Return (payload, status_tag).
+
+    ``status_tag`` is ``ok`` on success, otherwise an ``llm_*`` failure tag.
+    On failure returns a shallow copy of ``default``.
+    Retries once on JSON parse errors (not on cancel / not-ready).
+    """
+    fallback = dict(default)
+    attempts = max(1, int(retries) + 1)
+    last_tag = "llm_unavailable"
+    for attempt in range(attempts):
+        try:
+            data = _chat_json_payload(
+                system=system,
+                user=user,
+                purpose=purpose,
+                max_tokens=max_tokens,
+                timeout_sec=timeout_sec,
+            )
+            return data, "ok"
+        except Exception as exc:  # noqa: BLE001 — LLM optional
+            _reraise_cancel(exc)
+            if str(exc) == "llm_not_ready":
+                return fallback, "llm_not_ready"
+            last_tag = f"llm_unavailable:{type(exc).__name__}"
+            # Retry only parse/shape failures; transport/model errors still fall back.
+            if attempt + 1 >= attempts or type(exc).__name__ not in {
+                "JSONDecodeError",
+                "ValueError",
+            }:
+                break
+    return fallback, last_tag
+
+
 def llm_json_decision(
     *,
     system: str,
@@ -23,36 +114,18 @@ def llm_json_decision(
     if fallback not in allowed_norm:
         fallback = next(iter(allowed_norm), "other")
 
-    try:
-        from plugins.molmind_core.scientific.mechanism.llm_client import (
-            chat_completion,
-            resolve_llm_settings,
-        )
-
-        settings = resolve_llm_settings(
-            {"enabled": True, "agent_chat": True}, purpose=purpose
-        )
-        if not settings.ready:
-            return fallback, "llm_not_ready"
-
-        settings = type(settings)(
-            enabled=settings.enabled,
-            model=settings.model,
-            base_url=settings.base_url,
-            api_key=settings.api_key,
-            temperature=0.0,
-            timeout_sec=min(settings.timeout_sec, timeout_sec),
-            max_tokens=max_tokens,
-            cache_dir=settings.cache_dir,
-            use_cache=False,
-        )
-        raw = chat_completion(settings, system=system, user=user).strip()
-        m = re.search(r"\{[\s\S]*\}", raw)
-        data: dict[str, Any] = json.loads(m.group(0) if m else raw)
-        decision = str(data.get("decision") or fallback).strip().lower()
-        if decision not in allowed_norm:
-            decision = fallback
-        reason = str(data.get("reason") or "llm").strip() or "llm"
-        return decision, reason
-    except Exception as exc:  # noqa: BLE001 — LLM optional
-        return fallback, f"llm_unavailable:{type(exc).__name__}"
+    data, status = llm_json_object(
+        system=system,
+        user=user,
+        default={"decision": fallback, "reason": "offline"},
+        purpose=purpose,
+        max_tokens=max_tokens,
+        timeout_sec=timeout_sec,
+    )
+    if status != "ok":
+        return fallback, status
+    decision = str(data.get("decision") or fallback).strip().lower()
+    if decision not in allowed_norm:
+        decision = fallback
+    reason = str(data.get("reason") or "llm").strip() or "llm"
+    return decision, reason

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "source": "InternScience/scp pinned catalog seed",
+  "skills": [
+    {"skill_id":"bioassay_analysis","title":"BioAssay Analysis","description":"查询候选级活性和 BioAssay 记录。","tags":["bioassay","activity"],"servers":[{"server_id":"Origene-PubChem","title":"Origene-PubChem","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/8/Origene-PubChem","tools":["get_assay_summary_by_cid"]},{"server_id":"Origene-ChEMBL","title":"Origene-ChEMBL","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/4/Origene-ChEMBL","tools":["search_activity","get_target_by_name"]},{"server_id":"DrugSDA-Tool","title":"DrugSDA-Tool","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/2/DrugSDA-Tool","tools":["calculate_mol_basic_info"]}]},
+    {"skill_id":"mechanism_research","title":"SciGraph-Bio Mechanism Research","description":"查询靶点、通路和疾病关系。","tags":["target","pathway","mechanism"],"servers":[{"server_id":"SciGraph-Bio","title":"SciGraph-Bio","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/38/SciGraph-Bio","tools":["query_cypher","get_kg_statistics","get_node_labels","get_relationship_types"]}]},
+    {"skill_id":"literature_research","title":"Scholar / PubMed Literature Research","description":"检索论文并整理引用。","tags":["literature","pubmed"],"servers":[{"server_id":"Scholar-KG","title":"Scholar-KG","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/42/Scholar-KG","tools":["query_paper","list_subjects","download_results","health_check"]}]},
+    {"skill_id":"validation_protocol","title":"Thoth Validation Protocol","description":"生成未执行的实验验证 protocol 草案。","tags":["protocol","validation"],"timeout_sec":600,"servers":[{"server_id":"Thoth-Plan","title":"Thoth-Plan","endpoint":"https://scp.intern-ai.org.cn/api/v1/mcp/19/Thoth-Plan","tools":["protocol_generation"]}]}
+  ]
+}

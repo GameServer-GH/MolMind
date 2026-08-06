@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import time
+import threading
 import uuid
 from typing import Any
 
@@ -125,6 +126,9 @@ class RunController:
         self.stop_reason = ""
         self.status = "running"
         self._observation_counts: dict[str, int] = {}
+        self.cancel_event = threading.Event()
+        self.interrupt_reason = ""
+        self.guidance_id = ""
 
     @property
     def elapsed_sec(self) -> float:
@@ -143,7 +147,7 @@ class RunController:
         args_hash: str,
         allow_retry: bool = True,
     ) -> tuple[bool, str]:
-        if self.status != "running":
+        if self.cancel_event.is_set() or self.status != "running":
             return False, self.stop_reason or "run_not_active"
         if self.elapsed_sec >= self.budget.max_wall_time_sec:
             self.stop("max_wall_time_exceeded")
@@ -252,6 +256,22 @@ class RunController:
         self.stop_reason = str(reason or "stopped")
         self.status = status
 
+    def request_interrupt(self, *, reason: str, guidance_id: str = "") -> None:
+        """Cooperatively stop new work while an in-flight call unwinds."""
+        self.interrupt_reason = str(reason or "user_guidance")
+        self.guidance_id = str(guidance_id or "")
+        self.stop_reason = self.interrupt_reason
+        self.status = "interrupt_requested"
+        self.cancel_event.set()
+        for call in self.calls:
+            if call.status == "running":
+                call.status = "interrupted"
+                call.ended_at = utc_now()
+
+    @property
+    def interruption_requested(self) -> bool:
+        return self.cancel_event.is_set()
+
     def complete(self) -> None:
         if self.status == "running":
             self.status = "completed"
@@ -267,4 +287,7 @@ class RunController:
             "tool_calls": len(self.calls),
             "budget": self.budget.to_dict(),
             "calls": [call.to_dict() for call in self.calls[-16:]],
+            "interrupt_requested": self.interruption_requested,
+            "interrupt_reason": self.interrupt_reason,
+            "guidance_id": self.guidance_id,
         }

@@ -40,6 +40,7 @@ output/
 **/output/diagnostics/
 data/agent_runs/**
 !data/agent_runs/.gitkeep
+data/scp_hub/runtime/**
 
 # 本地/密钥
 .env

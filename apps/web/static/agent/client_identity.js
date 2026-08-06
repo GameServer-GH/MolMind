@@ -68,6 +68,10 @@
     }
   }
 
+  function headers() {
+    return { [HEADER_NAME]: clientId };
+  }
+
   function switchClientId(value, latestSessionId) {
     const target = String(value || "").trim();
     if (!VALID_ID.test(target)) throw new Error("用户 ID 格式无效");
@@ -85,6 +89,7 @@
   global.MolMindClientIdentity = Object.freeze({
     storageKey: STORAGE_KEY,
     clientId,
+    headers,
     decorateDownloadUrl,
     switchClientId,
   });

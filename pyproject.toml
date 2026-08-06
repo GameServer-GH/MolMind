@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molmind"
-version = "0.2.2"
+version = "0.2.3"
 description = "MolMind (分子思维): Quality-Max lipid-lowering & low-tox prioritization"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,6 +17,9 @@ dependencies = [
   "python-multipart>=0.0.9",
   "httpx>=0.27.0",
   "reportlab>=4.0.0",
+  "psycopg[binary]>=3.1.18",
+  "redis>=5",
+  "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]

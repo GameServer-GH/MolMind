@@ -1,0 +1,120 @@
+plugin_id: scp-hub
+title: SCP Hub · 可安装科研能力
+builtin: false
+enabled: false
+catalog: true
+description: 通过白名单 MCP Server 按需安装和调用 SCP Skill；实时结果仅作补充，不修改当前排名。
+source: https://scphub.intern-ai.org.cn/
+requires:
+  network: true
+  api_key_env: SCP_HUB_API_KEY
+tools: []
+skills: []
+activation: user_opt_in
+network_policy:
+  default_live: true
+  scope: supplementary_research_only
+  excluded_actions: [nomination, ranking, export]
+  writes_selection: false
+  participates_in_ranking: false
+capabilities:
+  - capability_id: literature_search
+    title: 科研文献检索
+    skill_id: literature_research
+    domains: [biomedical, pharmacology]
+    entity_types: [disease, target, drug, pathway]
+    supports: [time_range, exclusions, model_type, citations]
+    output_types: [paper_summary, evidence_table]
+    claim_scopes: [literature_evidence]
+    execution_order: 20
+    multi_task_terms: [文献, 论文, 检索, 查找, paper, pubmed, literature, scholar]
+    incompatible_concepts: [alcoholic_liver_disease, retina]
+    task_terms: [文献, 论文, 研究, 检索, 查找, 最新, paper, pubmed, literature, scholar]
+    exclude_terms: [实验方案, 验证方案, protocol]
+    argument_builder: literature_query
+    planner_argument_keys: []
+    default_arguments: {subject: biology, top_k: 5}
+    tools: [scp:Scholar-KG:query_paper]
+    evidence_required: true
+  - capability_id: mechanism_relation_search
+    title: 机制关系查询
+    skill_id: mechanism_research
+    domains: [biomedical, molecular_mechanism]
+    entity_types: [disease, gene, protein, pathway, relationship]
+    output_types: [relation_graph, direct_evidence]
+    claim_scopes: [mechanism_evidence]
+    execution_order: 10
+    multi_task_terms: [知识图谱, 机制, 通路, 关系, 作用, 角色, 影响, 调控, mechanism, pathway, graph, function, role, regulates]
+    incompatible_concepts: [alcoholic_liver_disease, retina]
+    task_terms: [知识图谱, 机制, 通路, 关系, 作用, 角色, 影响, 调控, mechanism, pathway, graph, function, role, regulates]
+    argument_builder: mechanism_cypher
+    planner_argument_keys: []
+    default_arguments: {kg_name: NAFLDkb, limit: 50}
+    tools: [scp:SciGraph-Bio:query_cypher]
+    evidence_required: true
+    recovery:
+      max_calls: 5
+      steps:
+        - tool_id: scp:SciGraph-Bio:get_node_labels
+          title: 图谱节点类型探测
+          evidence_role: schema_probe
+          arguments: {kg_name: NAFLDkb}
+        - tool_id: scp:SciGraph-Bio:get_relationship_types
+          title: 图谱关系类型探测
+          evidence_role: schema_probe
+          arguments: {kg_name: NAFLDkb}
+        - tool_id: scp:SciGraph-Bio:query_cypher
+          title: 靶点邻接关系放宽查询
+          evidence_role: evidence_query
+          argument_builder: mechanism_target_neighbors
+        - tool_id: scp:SciGraph-Bio:query_cypher
+          title: 靶点到疾病或通路的两跳查询
+          evidence_role: evidence_query
+          argument_builder: mechanism_context_paths
+      fallback_capability_id: literature_search
+      fallback_argument_builder: mechanism_literature_query
+  - capability_id: validation_protocol
+    title: 实验验证方案草案
+    skill_id: validation_protocol
+    domains: [experimental_design, assay]
+    entity_types: [disease, target, drug, cell_model, animal_model]
+    supports: [controls, dose_response, endpoints, statistics]
+    output_types: [protocol_draft]
+    claim_scopes: [experimental_design_advice]
+    execution_order: 30
+    multi_task_terms: [实验方案, 验证方案, protocol, 对照组, 剂量梯度, 统计分析]
+    evidence_dependencies: [mechanism_relation_search, literature_search]
+    task_terms: [实验方案, 验证方案, protocol, 对照组, 剂量梯度, 统计分析]
+    argument_builder: user_prompt
+    planner_argument_keys: []
+    required_evidence_fields:
+      model: [模型, model, 细胞, cell, animal]
+      intervention: [干预, 药物, 激动剂, intervention, treatment]
+      controls: [对照, control]
+      dose_response: [剂量, 剂量梯度, dose, concentration]
+      endpoints: [终点, 指标, endpoint, assay, readout]
+      statistics: [统计, statistical, t-test, anova, 重复]
+    risk_patterns:
+      - risk_id: inhibitor_as_fatty_acid_oxidation_positive_control
+        terms: [etomoxir]
+        context_terms: [阳性对照, positive control, 脂肪酸氧化, fatty acid oxidation]
+        message: Etomoxir 通常抑制 CPT1/脂肪酸氧化，作为促进脂肪酸氧化的阳性对照需要复核。
+    tools: [scp:Thoth-Plan:protocol_generation]
+    evidence_required: true
+terminology:
+  disease:
+    MASLD: [MASLD, NAFLD, NASH, 代谢相关脂肪性肝病, 脂肪肝]
+  organ:
+    liver: [肝脏, 肝细胞, hepatic, liver]
+  target:
+    PPARA: [PPARα, PPAR-alpha, PPARA, 过氧化物酶体增殖物激活受体α]
+  pathway:
+    fatty_acid_oxidation: [脂肪酸氧化, fatty acid oxidation, beta oxidation, β-氧化]
+    lipid_metabolism: [脂质代谢, 脂肪代谢, lipid metabolism, lipid homeostasis]
+  excluded_topic:
+    alcoholic_liver_disease: [酒精性肝病, alcoholic liver disease, ALD]
+    retina: [视网膜, retina, retinal]
+limits:
+  max_calls_per_turn: 6
+  max_servers_per_turn: 2
+  max_response_bytes: 2000000

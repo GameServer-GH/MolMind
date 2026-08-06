@@ -91,6 +91,12 @@ def test_natural_language_evidence_intent_precedes_nomination() -> None:
     assert intent.evidence_force_refresh is True
 
 
+def test_scientific_evidence_qualifier_does_not_trigger_core_evidence() -> None:
+    intent = parse_intent("请总结 MASLD 与 PPARα 激动剂的证据和最新研究")
+    assert intent.query_evidence is False
+    assert intent.wants_tools is False
+
+
 def test_live_requires_explicit_opt_in() -> None:
     offline = parse_intent("查询候选 T001 的证据，看看联网来源")
     enabled = parse_intent("查询候选 T001 的证据，开启联网补证")

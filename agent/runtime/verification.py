@@ -79,6 +79,24 @@ def _has_successful_tool_memory(session: Any, tool_id: str) -> bool:
     return False
 
 
+def _has_any_successful_tool_memory(session: Any) -> bool:
+    memory = [
+        item
+        for item in (getattr(session, "working_memory", None) or [])
+        if isinstance(item, dict)
+    ]
+    latest_turn_id = str(memory[-1].get("turn_id") or "") if memory else ""
+    for iteration in reversed(memory):
+        if latest_turn_id and str(iteration.get("turn_id") or "") != latest_turn_id:
+            break
+        if any(
+            isinstance(call, dict) and call.get("status") == "succeeded"
+            for call in iteration.get("tool_calls") or []
+        ):
+            return True
+    return False
+
+
 def verify_assistant_claims(session: Any, text: str) -> list[ClaimViolation]:
     """Return unsupported user-visible execution claims.
 
@@ -106,6 +124,7 @@ def verify_assistant_claims(session: Any, text: str) -> list[ClaimViolation]:
         and frozen_count <= 0
         and not artifacts
         and not evidence_completion_supported
+        and not _has_any_successful_tool_memory(session)
     ):
         violations.append(
             ClaimViolation("completion_without_evidence", "没有成功工具结果或冻结结果支持完成声明")

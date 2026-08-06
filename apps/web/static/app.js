@@ -209,6 +209,10 @@
         if (data.status === "ready") {
           stopMechanismPoll();
           applyMechanismReady(data);
+        } else if (["cancel_requested", "cancelled"].includes(data.status)) {
+          stopMechanismPoll();
+          setPdfButtonState("idle");
+          appendLog("INFO", "机制 PDF 任务已取消。", "Mechanism PDF job cancelled.");
         } else if (data.status === "error") {
           stopMechanismPoll();
           setPdfButtonState("error");
@@ -1562,6 +1566,9 @@
   const agentInput = document.getElementById("agentInput");
   const agentSendBtn = document.getElementById("agentSendBtn");
   const agentSendShortcut = document.getElementById("agentSendShortcut");
+  const agentStopBtn = document.getElementById("agentStopBtn");
+  const agentGuideBtn = document.getElementById("agentGuideBtn");
+  const agentQueueRail = document.getElementById("agentQueueRail");
   const agentWelcome = document.getElementById("agentWelcome");
   const agentStreamBeam = document.getElementById("agentStreamBeam");
   const agentNewChatBtn = document.getElementById("agentNewChatBtn");
@@ -1571,6 +1578,10 @@
   const isMacPlatform =
     /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "") ||
     (navigator.userAgentData && navigator.userAgentData.platform === "macOS");
+
+  // Hoist busy flag above the shortcut-label helper so the immediate init call
+  // below does not hit the let TDZ.
+  let agentBusy = false;
 
   function applyAgentSendShortcutLabel() {
     if (!agentSendShortcut) return;
@@ -1593,6 +1604,7 @@
   const profileInfoBuild = document.getElementById("profileInfoBuild");
   const profileInfoClientId = document.getElementById("profileInfoClientId");
   const profileInfoClientEdit = document.getElementById("profileInfoClientEdit");
+  const profileClassicModeBtn = document.getElementById("profileClassicModeBtn");
   const agentHistoryCloseBtn = document.getElementById("agentHistoryCloseBtn");
   const agentSettingsPanel = document.getElementById("agentSettingsPanel");
   const agentSettingsBody = document.getElementById("agentSettingsBody");
@@ -1628,9 +1640,14 @@
       ? window.MolMindClientIdentity.clientId
       : "anonymous";
   const AGENT_SESSION_KEY = `${LEGACY_AGENT_SESSION_KEY}:${AGENT_CLIENT_ID}`;
+  const AGENT_DRAFT_KEY = `molmind:agent_drafts:v1:${AGENT_CLIENT_ID}`;
+  const AGENT_DRAFT_LIMIT = 50;
   let agentSessionId = null;
-  let agentBusy = false;
   let activeTurn = null;
+  // Streaming may grow the transcript without taking control away from the
+  // reader. This flag is intentionally driven by the user's scroll position.
+  let agentShouldFollow = true;
+  let agentProgrammaticScroll = false;
   let agentUploadInProgress = false;
   const ACTIVE_AGENT_RUN_STATUSES = new Set(["queued", "running", "cancel_requested"]);
   const agentRunStateBySession = new Map();
@@ -1642,6 +1659,158 @@
    */
   const agentStreams = new Map();
   let agentStreamSeq = 0;
+  let agentQueueCount = 0;
+  let agentPendingTurns = [];
+  /** @type {{ key: string, kind: string, text: string, attachment_ids: string[], attachments?: object[] }[]} */
+  let agentOptimisticTurns = [];
+  /** @type {Map<string, { filename: string, kind: string }>} */
+  const agentAttachmentMetaById = new Map();
+  let agentDraftTimer = null;
+
+  function rememberAttachmentMeta(meta) {
+    if (!meta || typeof meta !== "object") return;
+    const id = String(meta.attachment_id || "");
+    if (!id) return;
+    agentAttachmentMetaById.set(id, {
+      filename: String(meta.filename || "attachment"),
+      kind: String(meta.kind || attachmentKindLabel(meta.filename || "")).toLowerCase(),
+    });
+  }
+
+  function resolveQueueAttachments(card) {
+    if (Array.isArray(card.attachments) && card.attachments.length) {
+      return card.attachments
+        .map((item) => ({
+          attachment_id: String((item && item.attachment_id) || ""),
+          filename: String((item && item.filename) || ""),
+          kind: String((item && item.kind) || ""),
+        }))
+        .filter((item) => item.filename || item.attachment_id);
+    }
+    return (card.attachment_ids || [])
+      .map((id) => {
+        const key = String(id || "");
+        const meta = agentAttachmentMetaById.get(key);
+        return {
+          attachment_id: key,
+          filename: (meta && meta.filename) || key,
+          kind: (meta && meta.kind) || "",
+        };
+      })
+      .filter((item) => item.attachment_id);
+  }
+
+  /** Chips for a live ask painted from an already-active / promoted Run. */
+  function resolveRunAskAttachments(run) {
+    if (!run || typeof run !== "object") return [];
+    if (Array.isArray(run.attachment_summaries) && run.attachment_summaries.length) {
+      return run.attachment_summaries
+        .map((item) => ({
+          attachment_id: String((item && item.attachment_id) || ""),
+          filename: String((item && item.filename) || ""),
+          kind: String((item && item.kind) || ""),
+        }))
+        .filter((item) => item.filename || item.attachment_id);
+    }
+    const ids = (run.input && run.input.attachment_ids) || [];
+    return resolveQueueAttachments({ attachment_ids: ids });
+  }
+
+  function readAgentDrafts() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(AGENT_DRAFT_KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeAgentDrafts(drafts) {
+    try {
+      const entries = Object.entries(drafts || {})
+        .sort((a, b) => Number((b[1] || {}).updatedAt || 0) - Number((a[1] || {}).updatedAt || 0))
+        .slice(0, AGENT_DRAFT_LIMIT);
+      localStorage.setItem(AGENT_DRAFT_KEY, JSON.stringify(Object.fromEntries(entries)));
+    } catch {
+      /* private browsing / quota: the textarea remains the in-memory fallback */
+    }
+  }
+
+  function persistAgentDraft(sessionId = agentSessionId || "__new__") {
+    if (!sessionId || !agentInput) return;
+    const drafts = readAgentDrafts();
+    const text = String(agentInput.value || "");
+    if (!text) {
+      delete drafts[sessionId];
+    } else {
+      drafts[sessionId] = {
+        text: text.slice(0, 50_000),
+        selectionStart: agentInput.selectionStart || 0,
+        selectionEnd: agentInput.selectionEnd || 0,
+        updatedAt: Date.now(),
+      };
+    }
+    writeAgentDrafts(drafts);
+  }
+
+  function scheduleAgentDraftSave() {
+    if (agentDraftTimer) clearTimeout(agentDraftTimer);
+    agentDraftTimer = setTimeout(() => {
+      agentDraftTimer = null;
+      persistAgentDraft();
+    }, 200);
+  }
+
+  function restoreAgentDraft(sessionId) {
+    if (!agentInput) return;
+    const draft = readAgentDrafts()[sessionId || "__new__"] || null;
+    agentInput.value = draft && typeof draft.text === "string" ? draft.text : "";
+    resizeAgentInput();
+    if (draft) {
+      const start = Math.min(Number(draft.selectionStart || 0), agentInput.value.length);
+      const end = Math.min(Number(draft.selectionEnd || start), agentInput.value.length);
+      requestAnimationFrame(() => agentInput.setSelectionRange(start, end));
+    }
+  }
+
+  function migrateNewAgentDraft(sessionId) {
+    if (!sessionId) return;
+    persistAgentDraft("__new__");
+    const drafts = readAgentDrafts();
+    if (drafts.__new__ && !drafts[sessionId]) drafts[sessionId] = drafts.__new__;
+    delete drafts.__new__;
+    writeAgentDrafts(drafts);
+  }
+
+  function consumeAgentDraft(submittedText) {
+    if (!agentInput) return;
+    if (
+      submittedText != null &&
+      String(agentInput.value || "").trim() !== String(submittedText || "").trim()
+    ) {
+      return;
+    }
+    clearAgentInput();
+  }
+
+  function clearAgentInput() {
+    if (!agentInput) return;
+    if (agentDraftTimer) {
+      clearTimeout(agentDraftTimer);
+      agentDraftTimer = null;
+    }
+    agentInput.value = "";
+    persistAgentDraft();
+    resizeAgentInput();
+  }
+
+  function restoreAgentInputText(text) {
+    if (!agentInput) return;
+    if (String(agentInput.value || "").trim()) return;
+    agentInput.value = String(text || "");
+    persistAgentDraft();
+    resizeAgentInput();
+  }
 
   function apiErrorMessage(body, fallback) {
     const detail = body && body.detail;
@@ -1667,7 +1836,18 @@
 
   function isCurrentAgentSessionBusy() {
     const local = agentSessionId ? agentStreams.get(agentSessionId) : null;
-    return !!(local && local.running) || isAgentRunActive(currentAgentRun());
+    if (local && local.running) return true;
+    if (isAgentRunActive(currentAgentRun())) return true;
+    // Backend may already be terminal while the previous turn's typewriter is
+    // still draining — keep treating that as busy so new prompts enqueue.
+    if (
+      activeTurn &&
+      typeof activeTurn.isStreamPending === "function" &&
+      activeTurn.isStreamPending()
+    ) {
+      return true;
+    }
+    return false;
   }
 
   function assertAgentSessionMutable(message) {
@@ -1702,34 +1882,462 @@
 
   /** Keep in-memory session id and localStorage cache in sync. */
   function setAgentSessionId(sid) {
+    const previous = agentSessionId;
+    if (previous && previous !== sid) persistAgentDraft(previous);
     agentSessionId = sid || null;
     writeCachedAgentSessionId(agentSessionId);
+    if (previous !== agentSessionId) {
+      agentOptimisticTurns = [];
+      recomputeAgentQueueCount();
+      restoreAgentDraft(agentSessionId);
+    }
   }
 
   function syncAgentBusyUi() {
     const cur = agentSessionId ? agentStreams.get(agentSessionId) : null;
-    const busy = !!(cur && cur.running) || isAgentRunActive(currentAgentRun());
+    const busy =
+      !!(cur && cur.running) ||
+      isAgentRunActive(currentAgentRun()) ||
+      !!(
+        activeTurn &&
+        typeof activeTurn.isStreamPending === "function" &&
+        activeTurn.isStreamPending()
+      );
     agentBusy = busy;
     setStreaming(busy);
-    if (agentSendBtn) agentSendBtn.disabled = busy;
-    if (agentFileInput) agentFileInput.disabled = busy || agentUploadInProgress;
-    if (agentUploadBtn) {
-      agentUploadBtn.setAttribute("aria-disabled", String(busy || agentUploadInProgress));
-      agentUploadBtn.title = busy ? "当前回复完成后可上传附件" : agentUploadInProgress ? "附件上传中" : "上传附件";
+    if (agentSendBtn) {
+      agentSendBtn.disabled = busy && agentQueueCount >= 3;
+      agentSendBtn.type = "submit";
+      applyAgentSendShortcutLabel();
     }
-    if (agentNewChatBtn) agentNewChatBtn.disabled = busy;
+    if (agentSendShortcut) {
+      agentSendShortcut.classList.remove("hidden");
+    }
+    if (agentStopBtn) {
+      agentStopBtn.classList.toggle("hidden", !busy);
+      agentStopBtn.hidden = !busy;
+      agentStopBtn.disabled = false;
+    }
+    if (agentGuideBtn) {
+      agentGuideBtn.classList.add("hidden");
+      agentGuideBtn.hidden = true;
+    }
+    if (agentFileInput) agentFileInput.disabled = agentUploadInProgress;
+    if (agentUploadBtn) {
+      agentUploadBtn.setAttribute("aria-disabled", String(agentUploadInProgress));
+      agentUploadBtn.title = agentUploadInProgress ? "附件上传中" : "上传附件";
+    }
+    if (agentNewChatBtn) agentNewChatBtn.disabled = false;
     if (agentHistoryClearBtn) agentHistoryClearBtn.disabled = busy;
     if (agentAttachRail) {
       agentAttachRail.querySelectorAll(".mm-attach-chip-remove").forEach((button) => {
-        button.disabled = busy;
-        button.title = busy ? "当前回复完成后可移除附件" : "移除附件";
+        button.disabled = false;
+        button.title = "移除附件";
       });
     }
     if (RunStatus) {
       if (busy) RunStatus.setVisible(true);
       else RunStatus.setVisible(false);
     }
+    paintAgentQueueRail();
   }
+
+  function shortQueueText(s, max = 36) {
+    const t = String(s || "").replace(/\s+/g, " ").trim();
+    if (!t) return "";
+    if (t.length <= max) return t;
+    return t.slice(0, Math.max(0, max - 1)) + "…";
+  }
+
+  function recomputeAgentQueueCount() {
+    const serverNormal = agentPendingTurns.filter((item) => item.kind !== "guidance").length;
+    const optimisticNormal = agentOptimisticTurns.filter((item) => item.kind !== "guidance").length;
+    agentQueueCount = serverNormal + optimisticNormal;
+  }
+
+  function pushOptimisticQueueTurn({
+    kind = "queue",
+    text = "",
+    attachment_ids = [],
+    attachments = [],
+  } = {}) {
+    const key = `opt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    agentOptimisticTurns.push({
+      key,
+      kind: kind === "guidance" ? "guidance" : "queue",
+      text: String(text || ""),
+      attachment_ids: Array.isArray(attachment_ids) ? attachment_ids.slice() : [],
+      attachments: Array.isArray(attachments) ? attachments.slice() : [],
+    });
+    recomputeAgentQueueCount();
+    syncAgentBusyUi();
+    return key;
+  }
+
+  function removeOptimisticQueueTurn(key, { paint = true } = {}) {
+    if (!key) return;
+    const before = agentOptimisticTurns.length;
+    agentOptimisticTurns = agentOptimisticTurns.filter((item) => item.key !== key);
+    if (agentOptimisticTurns.length === before) return;
+    recomputeAgentQueueCount();
+    if (paint) syncAgentBusyUi();
+  }
+
+  function renderAgentQueue(turns, limit = 3) {
+    agentPendingTurns = Array.isArray(turns) ? turns.slice() : [];
+    recomputeAgentQueueCount();
+    void limit;
+    syncAgentBusyUi();
+  }
+
+  function paintAgentQueueRail() {
+    if (!agentQueueRail) return;
+    // Only show server-queued prompts (max 3 normal + optional guidance), never live input draft.
+    // Optimistic placeholders cover the network gap after send clears the input.
+    const turns = agentPendingTurns.slice();
+    const guidance = turns.filter((item) => item.kind === "guidance");
+    const normal = turns
+      .filter((item) => item.kind !== "guidance")
+      .slice(0, 3);
+    const cards = [];
+    guidance.forEach((turn, index) => {
+      cards.push({
+        key: String(turn.turn_id || `guide-${index}`),
+        kind: "guidance",
+        text: String(turn.text || ""),
+        turn_id: String(turn.turn_id || ""),
+        attachment_ids: turn.attachment_ids || [],
+        attachments: turn.attachments || [],
+      });
+    });
+    normal.forEach((turn, index) => {
+      cards.push({
+        key: String(turn.turn_id || `turn-${index}`),
+        kind: "queue",
+        text: String(turn.text || ""),
+        turn_id: String(turn.turn_id || ""),
+        attachment_ids: turn.attachment_ids || [],
+        attachments: turn.attachments || [],
+      });
+    });
+    agentOptimisticTurns.forEach((turn) => {
+      cards.push({
+        key: turn.key,
+        kind: turn.kind === "guidance" ? "guidance" : "queue",
+        text: String(turn.text || ""),
+        turn_id: "",
+        attachment_ids: turn.attachment_ids || [],
+        attachments: turn.attachments || [],
+        optimistic: true,
+      });
+    });
+
+    agentQueueRail.innerHTML = "";
+    if (!cards.length) {
+      agentQueueRail.classList.add("hidden");
+      agentQueueRail.classList.remove("is-visible");
+      agentQueueRail.setAttribute("aria-hidden", "true");
+      return;
+    }
+
+    agentQueueRail.classList.remove("hidden");
+    agentQueueRail.classList.add("is-visible");
+    agentQueueRail.setAttribute("aria-hidden", "false");
+    cards.forEach((card) => {
+      const row = document.createElement("div");
+      if (card.optimistic) {
+        row.className =
+          "mm-run-inv-item mm-run-inv-item--pending mm-queue-card mm-queue-card--loading";
+        row.dataset.kind = card.kind;
+        row.dataset.optimistic = "1";
+        row.setAttribute("aria-busy", "true");
+        row.setAttribute("aria-label", card.kind === "guidance" ? "指引提交中" : "排队提交中");
+
+        const iconWrap = document.createElement("span");
+        iconWrap.className = "mm-run-inv-icon-wrap mm-queue-skel-icon";
+        iconWrap.setAttribute("aria-hidden", "true");
+
+        const meta = document.createElement("span");
+        meta.className = "mm-run-inv-meta mm-queue-skel-meta";
+        meta.innerHTML =
+          '<span class="mm-queue-skel-line mm-queue-skel-line--sm" aria-hidden="true"></span>' +
+          '<span class="mm-queue-skel-line mm-queue-skel-line--lg" aria-hidden="true"></span>';
+
+        row.append(iconWrap, meta);
+        agentQueueRail.appendChild(row);
+        return;
+      }
+
+      const statusClass = card.kind === "guidance" ? "active" : "pending";
+      row.className = `mm-run-inv-item mm-run-inv-item--${statusClass} mm-queue-card`;
+      row.dataset.kind = card.kind;
+      if (card.turn_id) row.dataset.turnId = card.turn_id;
+
+      const main = document.createElement("div");
+      main.className = "mm-queue-card-main";
+
+      const iconWrap = document.createElement("span");
+      iconWrap.className = "mm-run-inv-icon-wrap";
+      const iconName = card.kind === "guidance" ? "sparkles" : "list-plain";
+      iconWrap.innerHTML = `<span class="mm-icon mm-icon--${iconName} mm-icon--md" aria-hidden="true"></span>`;
+
+      const meta = document.createElement("span");
+      meta.className = "mm-run-inv-meta";
+      const kind = document.createElement("span");
+      kind.className = "mm-run-inv-kind";
+      kind.textContent = card.kind === "guidance" ? "指引中" : "排队";
+      const name = document.createElement("span");
+      name.className = "mm-run-inv-name";
+      const full = String(card.text || "");
+      const label = shortQueueText(full, 32);
+      name.textContent = label;
+      if (full) {
+        // Always expose the full prompt on hover — CSS ellipsis may clip even
+        // when shortQueueText did not truncate.
+        name.title = full;
+        meta.title = full;
+        row.title = full;
+      }
+      meta.append(kind, name);
+
+      const side = document.createElement("span");
+      side.className = "mm-run-inv-side";
+      if (card.kind === "guidance") {
+        const badge = document.createElement("span");
+        badge.className = "mm-run-inv-badge mm-run-inv-badge--done";
+        badge.textContent = "处理中";
+        side.appendChild(badge);
+      } else {
+        const actions = document.createElement("span");
+        actions.className = "mm-queue-actions";
+
+        const setActionsDisabled = (disabled) => {
+          sendBtn.disabled = disabled;
+          editBtn.disabled = disabled;
+          deleteBtn.disabled = disabled;
+        };
+
+        const sendBtn = document.createElement("button");
+        sendBtn.type = "button";
+        sendBtn.className = "mm-queue-icon-btn";
+        sendBtn.setAttribute("aria-label", "发送指引");
+        sendBtn.title = "打断当前任务，并按这条提示词重新规划";
+        sendBtn.innerHTML = '<span class="mm-icon mm-icon--send mm-icon--sm" aria-hidden="true"></span>';
+        sendBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setActionsDisabled(true);
+          try {
+            await promotePromptAsGuidance(card);
+          } catch (error) {
+            setActionsDisabled(false);
+            showAgentToast(error.message || "发送失败");
+          }
+        });
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "mm-queue-icon-btn";
+        editBtn.setAttribute("aria-label", "修改排队");
+        editBtn.title = "取回输入框修改（会移出排队）";
+        editBtn.innerHTML = '<span class="mm-icon mm-icon--pencil mm-icon--sm" aria-hidden="true"></span>';
+        editBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setActionsDisabled(true);
+          try {
+            await editQueuedPrompt(card);
+          } catch (error) {
+            setActionsDisabled(false);
+            showAgentToast(error.message || "取回失败");
+          }
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "mm-queue-icon-btn mm-queue-icon-btn--danger";
+        deleteBtn.setAttribute("aria-label", "删除排队");
+        deleteBtn.title = "从排队中删除这条提示词";
+        deleteBtn.innerHTML = '<span class="mm-icon mm-icon--trash mm-icon--sm" aria-hidden="true"></span>';
+        deleteBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setActionsDisabled(true);
+          try {
+            await removeQueuedPrompt(card);
+          } catch (error) {
+            setActionsDisabled(false);
+            showAgentToast(error.message || "删除失败");
+          }
+        });
+
+        actions.append(sendBtn, editBtn, deleteBtn);
+        side.appendChild(actions);
+      }
+
+      main.append(iconWrap, meta, side);
+      row.appendChild(main);
+
+      const attachments = resolveQueueAttachments(card);
+      if (attachments.length) {
+        const attachRow = document.createElement("div");
+        attachRow.className = "mm-queue-attach-row";
+        attachments.forEach((att) => {
+          const chip = document.createElement("span");
+          chip.className = "mm-queue-attach-chip";
+          const filename = String(att.filename || att.attachment_id || "附件");
+          chip.title = filename;
+          const kindLabel = attachmentKindLabel(filename);
+          chip.innerHTML =
+            '<span class="mm-icon mm-icon--file-txt mm-icon--sm" aria-hidden="true"></span>' +
+            `<span class="mm-queue-attach-kind">${kindLabel}</span>` +
+            `<span class="mm-queue-attach-name"></span>`;
+          chip.querySelector(".mm-queue-attach-name").textContent = filename;
+          attachRow.appendChild(chip);
+        });
+        row.appendChild(attachRow);
+      }
+
+      agentQueueRail.appendChild(row);
+    });
+  }
+
+  async function promotePromptAsGuidance(card) {
+    const text = String((card && card.text) || "").trim();
+    if (!text) {
+      showAgentToast("请先输入补充指引");
+      return;
+    }
+    if (card && card.kind === "queue" && card.turn_id && agentSessionId) {
+      const resp = await fetch(
+        `/api/agent/sessions/${agentSessionId}/turns/${encodeURIComponent(card.turn_id)}`,
+        { method: "DELETE" }
+      );
+      if (!resp.ok && resp.status !== 409) {
+        throw new Error(
+          apiErrorMessage(await resp.json().catch(() => ({})), "无法提升为指引")
+        );
+      }
+    }
+    await submitBusyAgentTurn(text, "guidance");
+    showAgentToast("指引已收到，正在停止当前步骤并重新规划");
+  }
+
+  async function removeQueuedPrompt(card) {
+    const turnId = String((card && card.turn_id) || "");
+    if (!turnId || !agentSessionId) {
+      showAgentToast("无法删除该排队项");
+      return;
+    }
+    const resp = await fetch(
+      `/api/agent/sessions/${agentSessionId}/turns/${encodeURIComponent(turnId)}`,
+      { method: "DELETE" }
+    );
+    if (!resp.ok) {
+      throw new Error(
+        apiErrorMessage(await resp.json().catch(() => ({})), "删除失败")
+      );
+    }
+    await refreshAgentQueue(agentSessionId);
+  }
+
+  async function editQueuedPrompt(card) {
+    const text = String((card && card.text) || "");
+    const turnId = String((card && card.turn_id) || "");
+    if (!turnId || !agentSessionId) {
+      showAgentToast("无法取回该排队项");
+      return;
+    }
+    const resp = await fetch(
+      `/api/agent/sessions/${agentSessionId}/turns/${encodeURIComponent(turnId)}`,
+      { method: "DELETE" }
+    );
+    if (!resp.ok) {
+      throw new Error(
+        apiErrorMessage(await resp.json().catch(() => ({})), "取回失败")
+      );
+    }
+    if (agentInput) {
+      if (agentDraftTimer) {
+        clearTimeout(agentDraftTimer);
+        agentDraftTimer = null;
+      }
+      agentInput.value = text;
+      persistAgentDraft();
+      resizeAgentInput();
+      agentInput.focus();
+      const cursor = agentInput.value.length;
+      try {
+        agentInput.setSelectionRange(cursor, cursor);
+      } catch {
+        /* ignore */
+      }
+    }
+    await refreshAgentQueue(agentSessionId);
+  }
+
+  async function refreshAgentQueue(sessionId = agentSessionId) {
+    if (!sessionId) {
+      renderAgentQueue([]);
+      return null;
+    }
+    try {
+      const resp = await fetch(`/api/agent/sessions/${sessionId}/turns`, { cache: "no-store" });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (agentSessionId === sessionId) {
+        setAgentRunSnapshot(sessionId, data.active_run || null);
+        (data.turns || []).forEach((turn) => {
+          (turn.attachments || []).forEach((att) => rememberAttachmentMeta(att));
+        });
+        const active = data.active_run;
+        if (active) {
+          (active.attachment_summaries || []).forEach((att) => rememberAttachmentMeta(att));
+        }
+        renderAgentQueue(data.turns || [], data.queue_limit || 3);
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  document.addEventListener("molmind:retry-agent-run", async (event) => {
+    const runId = String((event.detail && event.detail.runId) || "");
+    const button = event.detail && event.detail.button;
+    const turn = event.detail && event.detail.turn;
+    const sessionId = agentSessionId;
+    if (!runId || !sessionId) return;
+    // Belt-and-suspenders: clear answer body even if the click handler already did.
+    if (turn && typeof turn.resetAnswer === "function") {
+      turn.resetAnswer();
+    } else if (button && button.closest) {
+      const body = button.closest(".mm-turn")?.querySelector(".mm-turn-answer-body");
+      if (body) body.innerHTML = "";
+    }
+    try {
+      const response = await fetch(
+        `/api/agent/sessions/${sessionId}/runs/${encodeURIComponent(runId)}/retry`,
+        { method: "POST" }
+      );
+      if (!response.ok) {
+        throw new Error(
+          apiErrorMessage(await response.json().catch(() => ({})), "重试失败")
+        );
+      }
+      const retry = await response.json();
+      showAgentToast("已创建检查点重试 Run");
+      setAgentRunSnapshot(sessionId, retry);
+      if (turn && turn.root && turn.root.isConnected) {
+        await followActiveRunWithLiveTurn(sessionId, retry, { existingTurn: turn });
+      } else {
+        await loadAgentSession(sessionId);
+      }
+    } catch (error) {
+      if (button) button.disabled = false;
+      showAgentToast(error.message || "重试失败");
+    }
+  });
 
   function isStreamEntryActive(sid, entry) {
     return !!entry && agentStreams.get(sid) === entry && entry.running;
@@ -1747,6 +2355,7 @@
 
   /** Stop painting into the current DOM without cancelling background generation. */
   function detachAgentUi() {
+    dismissInstallRequestFloat();
     finishTurn();
     syncAgentBusyUi();
   }
@@ -1797,8 +2406,27 @@
     }
   }
 
-  function agentScrollBottom() {
-    if (agentChatScroll) agentChatScroll.scrollTop = agentChatScroll.scrollHeight;
+  function agentIsNearBottom() {
+    if (!agentChatScroll) return true;
+    return agentChatScroll.scrollTop + agentChatScroll.clientHeight >= agentChatScroll.scrollHeight - 36;
+  }
+
+  if (agentChatScroll) {
+    const releaseAgentProgrammaticScroll = () => { agentProgrammaticScroll = false; };
+    agentChatScroll.addEventListener("wheel", releaseAgentProgrammaticScroll, { passive: true });
+    agentChatScroll.addEventListener("touchstart", releaseAgentProgrammaticScroll, { passive: true });
+    agentChatScroll.addEventListener("scroll", () => {
+      if (!agentProgrammaticScroll) agentShouldFollow = agentIsNearBottom();
+    }, { passive: true });
+  }
+
+  function agentScrollBottom({ force = false } = {}) {
+    if (force) agentShouldFollow = true;
+    if (agentChatScroll && agentShouldFollow) {
+      agentProgrammaticScroll = true;
+      agentChatScroll.scrollTop = agentChatScroll.scrollHeight;
+      requestAnimationFrame(() => { agentProgrammaticScroll = false; });
+    }
     if (TurnRail) TurnRail.syncActive();
   }
 
@@ -1836,6 +2464,157 @@
       agentToastTimer = null;
     }, 2000);
   }
+
+  window.addEventListener("molmind:agent-toast", (event) => {
+    showAgentToast(event.detail && event.detail.message);
+  });
+
+  let installFloatEl = null;
+  let installFloatBusy = false;
+
+  function dismissInstallRequestFloat() {
+    if (installFloatEl && installFloatEl.parentNode) {
+      installFloatEl.classList.remove("mm-install-float--open");
+      const node = installFloatEl;
+      installFloatEl = null;
+      setTimeout(() => node.remove(), 220);
+    }
+    installFloatBusy = false;
+  }
+
+  function installRequestSkills(detail) {
+    if (Array.isArray(detail && detail.skills) && detail.skills.length) {
+      return detail.skills
+        .map((item) => ({
+          skill_id: String((item && item.skill_id) || "").trim(),
+          title: String((item && (item.title || item.skill_id)) || "").trim(),
+          description: String((item && item.description) || "").trim(),
+        }))
+        .filter((item) => item.skill_id);
+    }
+    const skillId = String((detail && detail.skill_id) || "").trim();
+    if (!skillId) return [];
+    return [
+      {
+        skill_id: skillId,
+        title: String((detail && (detail.title || detail.label)) || skillId).trim(),
+        description: String((detail && detail.description) || "").trim(),
+      },
+    ];
+  }
+
+  function showInstallRequestFloat(detail) {
+    const skills = installRequestSkills(detail);
+    if (!skills.length) return;
+    const host = document.getElementById("agentChatMain") || document.body;
+    dismissInstallRequestFloat();
+
+    const titles = skills.map((s) => s.title || s.skill_id).join("、");
+    const mask = document.createElement("div");
+    mask.className = "mm-install-float";
+    mask.setAttribute("role", "dialog");
+    mask.setAttribute("aria-modal", "true");
+    mask.setAttribute("aria-label", "安装请求");
+    mask.innerHTML = `
+      <div class="mm-install-float-card">
+        <div class="mm-install-float-head">
+          <span class="mm-icon mm-icon--puzzle mm-icon--md" aria-hidden="true"></span>
+          <div class="mm-install-float-titles">
+            <div class="mm-install-float-kicker">安装请求</div>
+            <div class="mm-install-float-title"></div>
+          </div>
+        </div>
+        <p class="mm-install-float-summary"></p>
+        <ul class="mm-install-float-list"></ul>
+        <p class="mm-install-float-error" aria-live="polite" hidden></p>
+        <div class="mm-install-float-actions">
+          <button type="button" class="mm-install-float-cancel">暂不安装</button>
+          <button type="button" class="mm-install-float-ok">确认安装并继续</button>
+        </div>
+      </div>
+    `;
+    mask.querySelector(".mm-install-float-title").textContent = titles;
+    mask.querySelector(".mm-install-float-summary").textContent =
+      (detail && detail.summary) ||
+      `确认后将安装「${titles}」并立即重试本轮请求。`;
+    const list = mask.querySelector(".mm-install-float-list");
+    skills.forEach((skill) => {
+      const li = document.createElement("li");
+      const name = document.createElement("strong");
+      name.textContent = skill.title || skill.skill_id;
+      li.appendChild(name);
+      if (skill.description) {
+        const desc = document.createElement("span");
+        desc.textContent = skill.description;
+        li.appendChild(desc);
+      } else {
+        const id = document.createElement("span");
+        id.textContent = skill.skill_id;
+        li.appendChild(id);
+      }
+      list.appendChild(li);
+    });
+
+    const cancelBtn = mask.querySelector(".mm-install-float-cancel");
+    const okBtn = mask.querySelector(".mm-install-float-ok");
+    const errorEl = mask.querySelector(".mm-install-float-error");
+    const close = () => dismissInstallRequestFloat();
+    cancelBtn.addEventListener("click", close);
+    mask.addEventListener("click", (event) => {
+      if (event.target === mask) close();
+    });
+
+    okBtn.addEventListener("click", async () => {
+      if (installFloatBusy) return;
+      installFloatBusy = true;
+      okBtn.disabled = true;
+      cancelBtn.disabled = true;
+      okBtn.textContent = "安装中…";
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+      try {
+        for (let i = 0; i < 50 && isCurrentAgentSessionBusy(); i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        const sessionId = await ensureAgentSession();
+        if (!SettingsUI || typeof SettingsUI.scpInstall !== "function") {
+          throw new Error("安装能力不可用");
+        }
+        for (const skill of skills) {
+          await SettingsUI.scpInstall(sessionId, skill.skill_id);
+        }
+        try {
+          await refreshAgentSettings();
+        } catch {
+          /* settings drawer may be closed */
+        }
+        if (MentionUI && sessionId) {
+          MentionUI.refresh(sessionId).catch(() => {});
+        }
+        const retryText = String((detail && detail.retry_text) || "").trim();
+        showAgentToast(`已安装「${titles}」，正在继续…`);
+        dismissInstallRequestFloat();
+        if (retryText) {
+          await sendAgentMessage(retryText);
+        }
+      } catch (error) {
+        installFloatBusy = false;
+        okBtn.disabled = false;
+        cancelBtn.disabled = false;
+        okBtn.textContent = "确认安装并继续";
+        errorEl.hidden = false;
+        errorEl.textContent = (error && error.message) || "安装失败，请重试";
+      }
+    });
+
+    host.appendChild(mask);
+    installFloatEl = mask;
+    requestAnimationFrame(() => mask.classList.add("mm-install-float--open"));
+  }
+
+  document.addEventListener("molmind:install-request", (event) => {
+    showInstallRequestFloat(event.detail || {});
+  });
 
   function renderAgentDrawerLoading(rootEl, kind) {
     if (!rootEl) return;
@@ -1911,7 +2690,16 @@
       : "";
   }
 
-  function setAgentAttachment(filename, { pending } = {}) {
+  function attachmentKindLabel(filename) {
+    const name = String(filename || "").toLowerCase();
+    if (name.endsWith(".sdf")) return "SDF";
+    if (name.endsWith(".pdf")) return "PDF";
+    if (/\.(png|jpe?g|webp|gif)$/.test(name)) return "IMG";
+    if (/\.(txt|md|csv|tsv|json|docx?)$/.test(name)) return "DOC";
+    return "FILE";
+  }
+
+  function setAgentAttachment(filename, { pending, attachmentId } = {}) {
     if (!agentAttachRail) return;
     agentAttachRail.innerHTML = "";
     if (agentFileLabel && !agentUploadInProgress) agentFileLabel.textContent = "上传附件";
@@ -1922,6 +2710,7 @@
     const chip = document.createElement("div");
     chip.className = "mm-attach-chip";
     chip.title = filename;
+    if (attachmentId) chip.dataset.attachmentId = attachmentId;
 
     const iconEl = document.createElement("span");
     iconEl.className = "mm-icon mm-icon--file-txt mm-icon--md mm-attach-chip-icon";
@@ -1931,9 +2720,10 @@
     const meta = document.createElement("div");
     meta.className = "mm-attach-chip-meta";
     meta.innerHTML = `
-      <span class="mm-attach-chip-kind">SDF</span>
+      <span class="mm-attach-chip-kind"></span>
       <span class="mm-attach-chip-name"></span>
     `;
+    meta.querySelector(".mm-attach-chip-kind").textContent = attachmentKindLabel(filename);
     meta.querySelector(".mm-attach-chip-name").textContent = filename;
     chip.appendChild(meta);
 
@@ -1957,12 +2747,16 @@
   }
 
   async function removeAgentAttachment() {
-    if (!assertAgentSessionMutable("当前回复完成后可移除附件")) return;
     if (!agentSessionId) {
       setAgentAttachment(null);
       return;
     }
-    const resp = await fetch(`/api/agent/sessions/${agentSessionId}/upload`, {
+    const stagedChip = agentAttachRail && agentAttachRail.querySelector(".mm-attach-chip[data-attachment-id]");
+    const attachmentId = stagedChip && stagedChip.dataset.attachmentId;
+    const endpoint = attachmentId
+      ? `/api/agent/sessions/${agentSessionId}/turn-attachments/${attachmentId}`
+      : `/api/agent/sessions/${agentSessionId}/upload`;
+    const resp = await fetch(endpoint, {
       method: "DELETE",
     });
     if (!resp.ok) {
@@ -1990,6 +2784,7 @@
     const resp = await fetch("/api/agent/sessions", { method: "POST" });
     if (!resp.ok) throw new Error("无法创建 Agent 会话");
     const data = await resp.json();
+    migrateNewAgentDraft(data.session_id);
     setAgentSessionId(data.session_id);
     if (HistoryUI) HistoryUI.registerSession(data.session_id);
     updateSessionMeta(agentSessionId);
@@ -2009,7 +2804,6 @@
 
   async function startNewAgentChat() {
     if (HistoryUI) HistoryUI.closeAll(agentChatRoot);
-    if (!assertAgentSessionMutable("当前回复完成后可新建对话")) return;
     if (isAgentNewConversation()) {
       showAgentToast("已经在新对话中");
       return;
@@ -2021,7 +2815,17 @@
     await ensureAgentSession();
   }
 
-  async function renderAgentSessionTranscript(sessionId) {
+  function sessionHasLiveAsk(sessionId) {
+    return (
+      !!sessionId &&
+      agentSessionId === sessionId &&
+      activeTurn &&
+      activeTurn.root &&
+      activeTurn.root.isConnected
+    );
+  }
+
+  async function renderAgentSessionTranscript(sessionId, { preserveLive = false } = {}) {
     const resp = await fetch(`/api/agent/sessions/${sessionId}`);
     if (!resp.ok) throw new Error("无法打开会话");
     const detail = await resp.json();
@@ -2032,73 +2836,224 @@
     detail._execution_events = evData.events || [];
     setAgentRunSnapshot(sessionId, detail.active_run);
 
+    // Live send/follow already owns the DOM. Boot-time loadAgentSession can finish
+    // *after* the user already painted a first ask — wiping here made the chat
+    // look empty until a hard refresh rebuilt from durable messages.
+    if (
+      sessionHasLiveAsk(sessionId) ||
+      (preserveLive && agentStreams.get(sessionId)?.running)
+    ) {
+      return detail;
+    }
+
     if (Render && agentMessages) Render.clearMessages(agentMessages);
     const pendingSdf =
       detail.sdf_ui_pending && detail.has_sdf
         ? detail.sdf_filename || "library.sdf"
         : null;
+    const stagedDraft = (detail.staged_attachments || [])
+      .filter((item) => item && item.state === "draft")
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
     const hasContent =
       (detail.messages || []).length > 0 ||
       (detail.artifacts || []).length > 0 ||
-      !!pendingSdf;
+      !!pendingSdf ||
+      !!stagedDraft;
     setAgentEmpty(!hasContent);
-    setAgentAttachment(pendingSdf);
+    if (stagedDraft) {
+      setAgentAttachment(stagedDraft.filename || "attachment.sdf", {
+        attachmentId: stagedDraft.attachment_id,
+      });
+    } else {
+      setAgentAttachment(pendingSdf);
+    }
     updateSessionMeta(sessionId, detail.title || "");
 
     if (!(Render && agentMessages)) return detail;
 
-    const userMsgs = (detail.messages || []).filter((m) => m.role === "user");
-    const events = evData.events || [];
+    const parseMs =
+      (Render.parseTimeMs && Render.parseTimeMs.bind(Render)) ||
+      ((value) => {
+        const t = Date.parse(String(value || ""));
+        return Number.isFinite(t) ? t : null;
+      });
 
-    let u = 0;
-    let needUser = true;
-    let batch = [];
-    let turn = null;
+    // Older interrupted streams could persist the same user message twice
+    // (once at reservation and once at dispatch). Collapse only consecutive
+    // exact duplicates during replay so historical transcripts do not create
+    // shifted/empty answer cards; the durable event log remains untouched.
+    const userMsgs = [];
+    (detail.messages || [])
+      .filter((m) => m.role === "user")
+      .forEach((message) => {
+        const previous = userMsgs[userMsgs.length - 1];
+        if (
+          previous &&
+          String(previous.text || "") === String(message.text || "") &&
+          JSON.stringify(previous.attachments || []) ===
+            JSON.stringify(message.attachments || []) &&
+          String(previous.run_id || "") === String(message.run_id || "")
+        ) {
+          return;
+        }
+        userMsgs.push(message);
+      });
+
+    const events = evData.events || [];
     const isTurnStart = (event) =>
       ["thinking", "plan", "assistant", "error", "run_interrupted"].includes(
         event && event.type
       );
-    const eventTime = (event) => {
-      const value = Date.parse(event && event.occurred_at ? event.occurred_at : "");
-      return Number.isFinite(value) ? value : undefined;
-    };
-    const flush = () => {
-      if (!batch.length) return;
-      // Some runtime bookkeeping events precede the actual thinking/plan
-      // event. They are not a user turn and must not create an empty box.
-      if (!turn) {
-        batch = [];
-        return;
-      }
-      Render.replayEventsIntoTurn(turn, batch);
-      turn = null;
-      batch = [];
+    const eventTime = (event) => parseMs(event && event.occurred_at);
+
+    // Group durable events by run_id (first-seen order), then sort each turn
+    // by the earliest known timestamp so queue auto-drain cannot scramble DOM order.
+    // Legacy events without run_id keep the old done-boundary batching.
+    const runOrder = [];
+    const eventsByRun = new Map();
+    const anonymousBatches = [];
+    let anonymousBatch = [];
+    const flushAnonymous = () => {
+      if (!anonymousBatch.length) return;
+      anonymousBatches.push(anonymousBatch);
+      anonymousBatch = [];
     };
     events.forEach((ev) => {
-      if (needUser && isTurnStart(ev) && u < userMsgs.length) {
-        flush();
-        const um = userMsgs[u++];
-        turn = Render.beginTurn(agentMessages, {
-          text: um.text || "",
-          attachments: um.attachments || [],
-          startedAt: eventTime(ev),
-        });
-        needUser = false;
+      const rid = String((ev && ev.run_id) || "");
+      if (!rid) {
+        anonymousBatch.push(ev);
+        if (ev && ev.type === "done") flushAnonymous();
+        return;
       }
-      batch.push(ev);
-      if (ev.type === "done") {
-        flush();
-        needUser = true;
+      flushAnonymous();
+      if (!eventsByRun.has(rid)) {
+        eventsByRun.set(rid, []);
+        runOrder.push(rid);
       }
+      eventsByRun.get(rid).push(ev);
     });
-    flush();
-    while (u < userMsgs.length) {
-      const um = userMsgs[u++];
-      Render.beginTurn(agentMessages, {
+    flushAnonymous();
+
+    const usedUserIdx = new Set();
+    const claimUserMessage = (runId, fallbackText) => {
+      const rid = String(runId || "");
+      if (rid) {
+        const byId = userMsgs.findIndex(
+          (msg, idx) => !usedUserIdx.has(idx) && String(msg.run_id || "") === rid
+        );
+        if (byId >= 0) {
+          usedUserIdx.add(byId);
+          return userMsgs[byId];
+        }
+      }
+      const want = String(fallbackText || "").trim();
+      if (want) {
+        const byText = userMsgs.findIndex(
+          (msg, idx) => !usedUserIdx.has(idx) && String(msg.text || "").trim() === want
+        );
+        if (byText >= 0) {
+          usedUserIdx.add(byText);
+          return userMsgs[byText];
+        }
+      }
+      const next = userMsgs.findIndex((_, idx) => !usedUserIdx.has(idx));
+      if (next >= 0) {
+        usedUserIdx.add(next);
+        return userMsgs[next];
+      }
+      return null;
+    };
+
+    const turnPlans = [];
+    const pushPlanFromBatch = (runId, batch) => {
+      if (!batch || !batch.length) return;
+      if (!batch.some(isTurnStart)) return;
+      const um = claimUserMessage(runId, "");
+      if (!um) return;
+      const times = [parseMs(um.created_at), ...batch.map(eventTime)].filter(
+        (t) => t != null
+      );
+      const startedAt = times.length ? Math.min(...times) : Date.now();
+      turnPlans.push({
+        startedAt,
+        runId: String(runId || ""),
         text: um.text || "",
         attachments: um.attachments || [],
+        events: batch,
       });
+    };
+
+    runOrder.forEach((runId) => pushPlanFromBatch(runId, eventsByRun.get(runId) || []));
+    anonymousBatches.forEach((batch) => pushPlanFromBatch("", batch));
+
+    // User messages that never received execution events (e.g. still starting).
+    const maxTimed = turnPlans.reduce(
+      (max, plan) => Math.max(max, Number(plan.startedAt) || 0),
+      0
+    );
+    let orphanOffset = 0;
+    userMsgs.forEach((um, idx) => {
+      if (usedUserIdx.has(idx)) return;
+      const created = parseMs(um.created_at);
+      turnPlans.push({
+        startedAt: created != null ? created : maxTimed + ++orphanOffset,
+        runId: String(um.run_id || ""),
+        text: um.text || "",
+        attachments: um.attachments || [],
+        events: [],
+      });
+    });
+
+    // Active run may exist before `_prepare_turn` persists the user message.
+    const active = detail.active_run;
+    if (active && isAgentRunActive(active)) {
+      const activeRunId = String(active.run_id || "");
+      const already = turnPlans.some(
+        (plan) => activeRunId && plan.runId === activeRunId
+      );
+      if (!already) {
+        const askText =
+          String(active.display_text || "").trim() ||
+          String((active.input && active.input.text) || "").trim();
+        if (askText) {
+          turnPlans.push({
+            startedAt: parseMs(active.started_at) ?? Date.now(),
+            runId: activeRunId,
+            text: askText,
+            attachments: resolveRunAskAttachments(active),
+            events: [],
+          });
+        }
+      }
     }
+
+    turnPlans.forEach((plan, index) => {
+      plan.order = index;
+    });
+    turnPlans.sort((a, b) => {
+      const dt = a.startedAt - b.startedAt;
+      if (dt) return dt;
+      // Second-precision server timestamps can collide under fast queue drain;
+      // keep plan construction order (run/event discovery order) as tie-break.
+      return (a.order || 0) - (b.order || 0);
+    });
+
+    turnPlans.forEach((plan) => {
+      const turn = Render.beginTurn(agentMessages, {
+        text: plan.text,
+        attachments: plan.attachments,
+        startedAt: plan.startedAt,
+        runId: plan.runId,
+      });
+      if (plan.events && plan.events.length) {
+        Render.replayEventsIntoTurn(turn, plan.events);
+      }
+    });
+
+    if (typeof Render.sortTurnsByTime === "function") {
+      Render.sortTurnsByTime(agentMessages);
+    }
+
     const turns = agentMessages.querySelectorAll(".mm-turn");
     const lastTurn = turns.length ? turns[turns.length - 1] : null;
     const artifactsEl = lastTurn && lastTurn.querySelector(".mm-turn-artifacts");
@@ -2111,17 +3066,33 @@
       Render.appendArtifactCard(artifactsEl || agentMessages, card);
     });
     if (TurnRail) TurnRail.rebuild();
-    agentScrollBottom();
+    agentScrollBottom({ force: true });
     return detail;
   }
 
   async function loadAgentSession(sessionId) {
+    // Same-session live send already owns the transcript — only refresh metadata.
+    if (sessionHasLiveAsk(sessionId) || agentStreams.get(sessionId)?.running) {
+      try {
+        const detail = await renderAgentSessionTranscript(sessionId, {
+          preserveLive: true,
+        });
+        renderAgentQueue(detail.pending_turns || [], detail.queue_limit || 3);
+        await refreshAgentQueue(sessionId);
+        syncAgentBusyUi();
+        return detail;
+      } catch {
+        /* fall through to a full load */
+      }
+    }
+
     // Detach UI only — do not abort the previous session's HTTP stream.
     detachAgentUi();
     if (Render && agentMessages) Render.clearMessages(agentMessages);
 
     setAgentSessionId(sessionId);
     const detail = await renderAgentSessionTranscript(sessionId);
+    renderAgentQueue(detail.pending_turns || [], detail.queue_limit || 3);
     if (!isAgentRunActive(detail && detail.active_run)) {
       await applyCatalogPrefs(sessionId, (detail && detail.installed_catalog) || []);
     }
@@ -2151,6 +3122,16 @@
       startRecoveredAgentRunFollow(sessionId, detail);
     }
     syncAgentBusyUi();
+    await refreshAgentQueue(sessionId);
+    if (
+      agentSessionId === sessionId &&
+      !agentStreams.get(sessionId)?.running &&
+      !isAgentRunActive(currentAgentRun(sessionId)) &&
+      agentPendingTurns.length
+    ) {
+      // Opening a session with durable queued turns — drain after transcript paint.
+      await continueAgentQueueFollow(sessionId);
+    }
     if (MentionUI) MentionUI.refresh(sessionId).catch(() => {});
   }
 
@@ -2227,6 +3208,14 @@
           }
           const data = await resp.json();
           const events = data.events || [];
+          const latestRunId = String((data.active_run && data.active_run.run_id) || "");
+          if (latestRunId && latestRunId !== entry.runId) {
+            entry.runId = latestRunId;
+            if (agentSessionId === sessionId && RunStatus) {
+              RunStatus.reset();
+              RunStatus.restore([], data.active_run);
+            }
+          }
           events.forEach((event) => {
             afterSeq = Math.max(afterSeq, Number(event.seq || 0));
             if (
@@ -2238,8 +3227,11 @@
             }
           });
           setAgentRunSnapshot(sessionId, data.active_run || null);
+          if (agentSessionId === sessionId) refreshAgentQueue(sessionId);
           if (events.length && agentSessionId === sessionId) {
-            const refreshed = await renderAgentSessionTranscript(sessionId);
+            const refreshed = await renderAgentSessionTranscript(sessionId, {
+              preserveLive: true,
+            });
             setAgentRunSnapshot(sessionId, refreshed.active_run || null);
           }
           syncAgentBusyUi();
@@ -2259,10 +3251,17 @@
           try {
             const refreshed = await renderAgentSessionTranscript(sessionId);
             setAgentRunSnapshot(sessionId, refreshed.active_run || null);
+            await refreshAgentQueue(sessionId);
             if (isAgentRunActive(refreshed.active_run)) {
-              startRecoveredAgentRunFollow(sessionId, refreshed);
-            } else if (RunStatus) {
-              RunStatus.finalize();
+              // Prefer a live ask/answer box for the newly activated Run so the
+              // queue drain feels like a normal user send (not a silent re-fetch).
+              await followActiveRunWithLiveTurn(sessionId, refreshed.active_run);
+            } else {
+              // Current run ended; wait briefly then pick up the next queued turn.
+              await continueAgentQueueFollow(sessionId);
+              if (RunStatus && !isCurrentAgentSessionBusy()) {
+                RunStatus.finalize();
+              }
             }
           } catch {
             /* keep the last durable snapshot visible */
@@ -2273,12 +3272,339 @@
     })();
   }
 
+  async function promoteNextQueuedTurn(sessionId) {
+    const resp = await fetch(`/api/agent/sessions/${sessionId}/turns/next`, {
+      method: "POST",
+    });
+    if (!resp.ok) {
+      throw new Error(
+        apiErrorMessage(await resp.json().catch(() => ({})), "无法启动排队任务")
+      );
+    }
+    return resp.json();
+  }
+
+  function activeRunAskText(run) {
+    if (!run || typeof run !== "object") return "";
+    const display = String(run.display_text || "").trim();
+    if (display) return display;
+    return String((run.input && run.input.text) || "").trim();
+  }
+
+  function lastTurnAskText() {
+    if (!agentMessages) return "";
+    const turns = agentMessages.querySelectorAll(".mm-turn");
+    const last = turns.length ? turns[turns.length - 1] : null;
+    return last ? String(last.getAttribute("data-turn-text") || "") : "";
+  }
+
+  function findTurnApiByRunId(runId) {
+    const rid = String(runId || "");
+    if (!rid || !agentMessages) return null;
+    if (
+      activeTurn &&
+      activeTurn.root &&
+      activeTurn.root.isConnected &&
+      String(activeTurn.runId || activeTurn.root.getAttribute("data-run-id") || "") === rid
+    ) {
+      return activeTurn;
+    }
+    return null;
+  }
+
+  function runStartedAtMs(run) {
+    if (!run) return Date.now();
+    const parseMs =
+      (Render && Render.parseTimeMs) ||
+      ((value) => {
+        const t = Date.parse(String(value || ""));
+        return Number.isFinite(t) ? t : null;
+      });
+    return (
+      parseMs(run.started_at) ??
+      parseMs(run.created_at) ??
+      Date.now()
+    );
+  }
+
+  /**
+   * Follow an already-active Run by painting a live ask/answer box immediately,
+   * then applying durable events into that turn (same UX as a normal send).
+   * Pass existingTurn to reuse a cleared turn (e.g. checkpoint retry).
+   */
+  async function followActiveRunWithLiveTurn(sessionId, run, { existingTurn = null } = {}) {
+    if (!sessionId || !run || !Render || !agentMessages) return;
+    if (agentSessionId !== sessionId) return;
+    if (agentStreams.get(sessionId)?.running) return;
+
+    const runId = String(run.run_id || "");
+    let ownedTurn = existingTurn && existingTurn.root && existingTurn.root.isConnected
+      ? existingTurn
+      : null;
+    if (!ownedTurn) {
+      ownedTurn = findTurnApiByRunId(runId);
+    }
+    if (!ownedTurn) {
+      const askText = activeRunAskText(run);
+      // Transcript recovery may have already painted this ask; reuse that node.
+      const existingRoot = runId
+        ? Array.from(agentMessages.querySelectorAll(".mm-turn")).find(
+            (el) => el.getAttribute("data-run-id") === runId
+          )
+        : null;
+      if (existingRoot) {
+        // Prefer recovered follow into the durable transcript rather than a
+        // second live box that would land out of chronological order.
+        startRecoveredAgentRunFollow(sessionId, {
+          active_run: run,
+          _execution_events: [],
+        });
+        return;
+      }
+      if (askText && lastTurnAskText() === askText) {
+        startRecoveredAgentRunFollow(sessionId, {
+          active_run: run,
+          _execution_events: [],
+        });
+        return;
+      }
+
+      setAgentEmpty(false);
+      finishTurn();
+      ownedTurn = Render.beginTurn(agentMessages, {
+        text: askText,
+        attachments: resolveRunAskAttachments(run),
+        live: true,
+        onScroll: agentScrollBottom,
+        startedAt: runStartedAtMs(run),
+        runId,
+      });
+      if (typeof Render.sortTurnsByTime === "function") {
+        Render.sortTurnsByTime(agentMessages);
+      }
+    } else if (typeof ownedTurn.resetAnswer === "function") {
+      // Ensure interrupted error / retry chrome is gone before new events arrive.
+      ownedTurn.resetAnswer();
+    }
+    activeTurn = ownedTurn;
+    if (TurnRail) TurnRail.rebuild();
+    agentScrollBottom({ force: true });
+
+    const entry = startSessionStream(sessionId);
+    entry.recovered = true;
+    entry.runId = String(run.run_id || "");
+    let afterSeq = Math.max(0, Number(run.last_event_seq || 0));
+    setAgentRunSnapshot(sessionId, run);
+    if (RunStatus) {
+      RunStatus.reset();
+      RunStatus.restore([], run);
+      RunStatus.setReconnectState(false);
+    }
+    syncAgentBusyUi();
+
+    try {
+      while (isStreamEntryActive(sessionId, entry)) {
+        await waitForAgentPoll(500, entry.controller.signal);
+        let resp;
+        try {
+          resp = await fetch(
+            `/api/agent/sessions/${sessionId}/events?after_seq=${afterSeq}`,
+            { signal: entry.controller.signal, cache: "no-store" }
+          );
+        } catch (error) {
+          if (error && error.name === "AbortError") throw error;
+          if (agentSessionId === sessionId && RunStatus) {
+            RunStatus.setReconnectState(true);
+          }
+          await waitForAgentPoll(1200, entry.controller.signal);
+          continue;
+        }
+        if (resp.status === 404) {
+          setAgentRunSnapshot(sessionId, null);
+          break;
+        }
+        if (!resp.ok) {
+          if (agentSessionId === sessionId && RunStatus) {
+            RunStatus.setReconnectState(true);
+          }
+          await waitForAgentPoll(1200, entry.controller.signal);
+          continue;
+        }
+        const data = await resp.json();
+        const events = data.events || [];
+        const latestRunId = String((data.active_run && data.active_run.run_id) || "");
+        if (latestRunId && latestRunId !== entry.runId) {
+          // A newer Run replaced this one (guidance / recovery). Stop painting here.
+          entry.runId = latestRunId;
+          setAgentRunSnapshot(sessionId, data.active_run || null);
+          break;
+        }
+        let sawTerminal = false;
+        for (const event of events) {
+          afterSeq = Math.max(afterSeq, Number(event.seq || 0));
+          if (
+            agentSessionId === sessionId &&
+            RunStatus &&
+            (!entry.runId || String(event.run_id || "") === entry.runId)
+          ) {
+            RunStatus.applyEvent(event);
+          }
+          if (
+            canPaintStream(sessionId, entry, ownedTurn) &&
+            (!entry.runId || !event.run_id || String(event.run_id) === entry.runId)
+          ) {
+            ownedTurn.applyEvent(event);
+            if (event.type === "done" || event.type === "error") {
+              sawTerminal = true;
+              await finishTurnAfterStream(ownedTurn);
+            }
+            agentScrollBottom();
+          } else if (event.type === "done" || event.type === "error") {
+            sawTerminal = true;
+          }
+        }
+        setAgentRunSnapshot(sessionId, data.active_run || null);
+        if (agentSessionId === sessionId) refreshAgentQueue(sessionId);
+        syncAgentBusyUi();
+        if (sawTerminal || !isAgentRunActive(currentAgentRun(sessionId))) break;
+      }
+    } catch (error) {
+      if (!(error && error.name === "AbortError") && agentSessionId === sessionId) {
+        if (RunStatus) RunStatus.setReconnectState(true);
+        showAgentToast("执行仍在后台，连接恢复后将继续同步");
+      }
+    } finally {
+      if (agentStreams.get(sessionId) === entry) {
+        entry.running = false;
+        agentStreams.delete(sessionId);
+      }
+      if (agentSessionId === sessionId) {
+        try {
+          await refreshAgentQueue(sessionId);
+        } catch {
+          /* ignore */
+        }
+        if (isAgentRunActive(currentAgentRun(sessionId))) {
+          // Still running (e.g. switched run id) — recover via durable transcript.
+          try {
+            const refreshed = await renderAgentSessionTranscript(sessionId);
+            if (isAgentRunActive(refreshed.active_run)) {
+              startRecoveredAgentRunFollow(sessionId, refreshed);
+            }
+          } catch {
+            /* keep live turn visible */
+          }
+        } else {
+          await continueAgentQueueFollow(sessionId);
+          if (RunStatus && !isCurrentAgentSessionBusy()) {
+            RunStatus.finalize();
+          }
+        }
+      }
+      syncAgentBusyUi();
+      if (TurnRail) TurnRail.rebuild();
+      agentScrollBottom();
+    }
+  }
+
+  async function continueAgentQueueFollow(sessionId) {
+    if (!sessionId) return;
+    // Wait for the previous turn's streaming UI to settle, then explicitly
+    // promote the next queued Turn and paint ask/answer like a normal send.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (agentSessionId !== sessionId) return;
+      if (agentStreams.get(sessionId)?.running) return;
+      await waitForAgentPoll(attempt === 0 ? 350 : 500);
+      if (agentSessionId !== sessionId) return;
+      if (agentStreams.get(sessionId)?.running) return;
+
+      try {
+        await refreshAgentQueue(sessionId);
+      } catch {
+        continue;
+      }
+      if (agentSessionId !== sessionId) return;
+
+      if (isAgentRunActive(currentAgentRun(sessionId))) {
+        await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
+        return;
+      }
+      if (!agentPendingTurns.length) return;
+
+      let started = null;
+      try {
+        started = await promoteNextQueuedTurn(sessionId);
+      } catch (error) {
+        if (attempt >= 7) {
+          showAgentToast(error.message || "排队任务启动失败");
+          return;
+        }
+        continue;
+      }
+      if (agentSessionId !== sessionId) return;
+      try {
+        await refreshAgentQueue(sessionId);
+      } catch {
+        /* queue rail is best-effort */
+      }
+      if (started && started.started && started.active_run) {
+        await followActiveRunWithLiveTurn(sessionId, started.active_run);
+        return;
+      }
+      if (isAgentRunActive(currentAgentRun(sessionId))) {
+        await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
+        return;
+      }
+      if (!agentPendingTurns.length) return;
+    }
+  }
+
+  const AGENT_ATTACHMENT_EXTS = [
+    ".sdf",
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".txt",
+    ".md",
+    ".csv",
+    ".tsv",
+    ".json",
+    ".doc",
+    ".docx",
+  ];
+
+  function isAllowedAgentAttachment(file) {
+    const name = String((file && file.name) || "").toLowerCase();
+    return AGENT_ATTACHMENT_EXTS.some((ext) => name.endsWith(ext));
+  }
+
   async function uploadAgentSdf(file) {
-    if (!assertAgentSessionMutable("当前回复完成后可上传附件")) return;
+    if (!isAllowedAgentAttachment(file)) {
+      throw new Error("支持的附件：.sdf / .pdf / 图片 / 文本与文档");
+    }
     const sid = await ensureAgentSession();
     const fd = new FormData();
     fd.append("file", file);
-    const resp = await fetch(`/api/agent/sessions/${sid}/upload`, {
+    const staged = isCurrentAgentSessionBusy();
+    const isSdf = /\.sdf$/i.test(file.name || "");
+    if (staged && agentAttachRail) {
+      const previous = agentAttachRail.querySelector(".mm-attach-chip[data-attachment-id]");
+      if (previous && previous.dataset.attachmentId) {
+        await fetch(
+          `/api/agent/sessions/${sid}/turn-attachments/${previous.dataset.attachmentId}`,
+          { method: "DELETE" }
+        ).catch(() => {});
+      }
+    }
+    // Idle SDF binds the session library; other types (and busy uploads) are turn-scoped.
+    const endpoint =
+      staged || !isSdf
+        ? `/api/agent/sessions/${sid}/turn-attachments`
+        : `/api/agent/sessions/${sid}/upload`;
+    const resp = await fetch(endpoint, {
       method: "POST",
       body: fd,
     });
@@ -2287,8 +3613,17 @@
       throw new Error(apiErrorMessage(err, "上传失败"));
     }
     const data = await resp.json();
-    const name = data.sdf_filename || file.name;
-    afterAgentSdfAttached(name);
+    const name = data.sdf_filename || (data.attachment && data.attachment.filename) || file.name;
+    if (data.attachment) {
+      rememberAttachmentMeta(data.attachment);
+      setAgentAttachment(name, { attachmentId: data.attachment.attachment_id });
+      setAgentEmpty(false);
+      showAgentToast(
+        staged ? "附件已暂存，将随下一条消息进入排队一并发送" : "附件已添加，发送消息时一并提交"
+      );
+    } else {
+      afterAgentSdfAttached(name);
+    }
     if (agentFileInput) agentFileInput.value = "";
   }
 
@@ -2300,7 +3635,7 @@
       agentUploadBtn.setAttribute("aria-disabled", String(uploading));
       agentUploadBtn.title = uploading ? "附件上传中" : "上传附件";
     }
-    if (agentFileInput) agentFileInput.disabled = uploading || isCurrentAgentSessionBusy();
+    if (agentFileInput) agentFileInput.disabled = uploading;
     if (agentFileLabel) agentFileLabel.textContent = uploading ? "上传中…" : "上传附件";
   }
 
@@ -2324,6 +3659,7 @@
   function closeDemoSdfPop() {
     if (!demoPopMask) return;
     if (agentDemoSdfBtn) agentDemoSdfBtn.setAttribute("aria-expanded", "false");
+    if (agentUploadBtn) agentUploadBtn.setAttribute("aria-expanded", "false");
     if (typeof demoPopMask._cleanupKey === "function") {
       try {
         demoPopMask._cleanupKey();
@@ -2352,15 +3688,41 @@
   }
 
   async function attachDemoSdfToSession() {
-    if (!assertAgentSessionMutable("当前回复完成后可加入试用库")) return;
     showAgentToast("正在加载试用库…");
     const sid = await ensureAgentSession();
-    const resp = await fetch(`/api/agent/sessions/${sid}/demo-sdf`, { method: "POST" });
+    // While the current turn UI is still settling, stage as a turn attachment so
+    // the file rides the queue with the next prompt.
+    const stage = isCurrentAgentSessionBusy();
+    const resp = await fetch(
+      `/api/agent/sessions/${sid}/demo-sdf${stage ? "?stage=1" : ""}`,
+      { method: "POST" }
+    );
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(apiErrorMessage(err, "试用库加载失败"));
     }
     const data = await resp.json();
+    if (data.attachment) {
+      rememberAttachmentMeta(data.attachment);
+      setAgentAttachment(data.attachment.filename || demoSdfName, {
+        attachmentId: data.attachment.attachment_id,
+      });
+      setAgentEmpty(false);
+      showAgentToast(
+        stage
+          ? "附件已暂存，将随下一条消息进入排队一并发送"
+          : "附件已添加，发送消息时一并提交"
+      );
+      showAttachmentClarify([
+        {
+          kind: "sdf",
+          filename: data.attachment.filename || demoSdfName,
+          attachment_id: data.attachment.attachment_id,
+        },
+      ]);
+      agentScrollBottom();
+      return;
+    }
     afterAgentSdfAttached(data.sdf_filename || demoSdfName);
     showAgentToast("已作为附件加入当前对话");
   }
@@ -2380,14 +3742,15 @@
     closeDemoSdfPop();
     await refreshDemoSdfInfo();
     if (agentDemoSdfBtn) agentDemoSdfBtn.setAttribute("aria-expanded", "true");
+    if (agentUploadBtn) agentUploadBtn.setAttribute("aria-expanded", "true");
     const name = demoSdfName || DEMO_SDF_FALLBACK_NAME;
     const mask = document.createElement("div");
     mask.className = "mm-demo-pop-mask";
     mask.setAttribute("role", "presentation");
     mask.innerHTML = `
-      <div class="mm-demo-pop" role="dialog" aria-modal="true" aria-label="试用样例库">
+      <div class="mm-demo-pop" role="dialog" aria-modal="true" aria-label="可选试用样例库">
         <div class="mm-demo-pop-head">
-          <h3 class="mm-demo-pop-title">试用样例库</h3>
+          <h3 class="mm-demo-pop-title">可选试用样例库</h3>
           <p class="mm-demo-pop-sub">${
             demoSdfSource.startsWith("data/")
               ? "TargetMol 现货产品参考全库（约 2.3 万条），可直接试用或下载"
@@ -2409,16 +3772,17 @@
               <span class="mm-demo-pop-item-hint">保存到本地</span>
             </span>
           </button>
+          <button type="button" class="mm-demo-pop-item" data-action="upload">
+            <span class="mm-icon mm-icon--upload mm-icon--md mm-demo-pop-item-icon" aria-hidden="true"></span>
+            <span class="mm-demo-pop-item-body">
+              <span class="mm-demo-pop-item-label">上传其他附件</span>
+              <span class="mm-demo-pop-item-hint">.sdf / PDF / 图片 / 文档</span>
+            </span>
+          </button>
         </div>
       </div>
     `;
     const dialog = mask.querySelector(".mm-demo-pop");
-    const tryBtn = mask.querySelector('[data-action="try"]');
-    if (tryBtn && isCurrentAgentSessionBusy()) {
-      tryBtn.disabled = true;
-      const hint = tryBtn.querySelector(".mm-demo-pop-item-hint");
-      if (hint) hint.textContent = "当前回复完成后可加入";
-    }
     dialog.addEventListener("click", (e) => e.stopPropagation());
     mask.addEventListener("click", () => closeDemoSdfPop());
     mask.querySelector('[data-action="try"]').addEventListener("click", async (e) => {
@@ -2437,6 +3801,11 @@
       e.preventDefault();
       downloadDemoSdf();
       closeDemoSdfPop();
+    });
+    mask.querySelector('[data-action="upload"]').addEventListener("click", (e) => {
+      e.preventDefault();
+      closeDemoSdfPop();
+      if (agentFileInput) agentFileInput.click();
     });
     const onKey = (e) => {
       if (e.key === "Escape") {
@@ -2460,7 +3829,11 @@
       const filename = (nameEl && nameEl.textContent) || "";
       if (!filename) return;
       const kind = ((kindEl && kindEl.textContent) || "sdf").trim().toLowerCase() || "sdf";
-      chips.push({ kind, filename });
+      chips.push({
+        kind,
+        filename,
+        attachment_id: chip.dataset.attachmentId || "",
+      });
     });
     return chips;
   }
@@ -2494,7 +3867,7 @@
     const { title, choices } = clarifyChoicesForAttachment(primary);
     setAgentEmpty(false);
     // Remove previous pending clarify cards so we don't stack duplicates.
-    agentMessages.querySelectorAll(".mm-prompt-suggest--clarify").forEach((el) => el.remove());
+    dismissAttachmentClarify();
 
     const box = document.createElement("div");
     box.className = "mm-prompt-suggest mm-prompt-suggest--clarify";
@@ -2521,8 +3894,16 @@
     });
     box.appendChild(list);
     agentMessages.appendChild(box);
-    agentScrollBottom();
+    agentShouldFollow = true;
+    agentScrollBottom({ force: true });
     if (agentInput) agentInput.focus();
+  }
+
+  function dismissAttachmentClarify() {
+    if (!agentMessages) return;
+    agentMessages
+      .querySelectorAll(".mm-prompt-suggest--clarify")
+      .forEach((el) => el.remove());
   }
 
   function shouldWarnSnapshotFallback(attachments, text) {
@@ -2534,10 +3915,26 @@
 
   async function sendAgentMessage(text) {
     if (!Render) return;
-    // Only block if *this* visible session is already streaming.
+    // User chose to send instead of picking a quick prompt — drop the clarify card.
+    dismissAttachmentClarify();
+    dismissInstallRequestFloat();
+    const submitted = String(text || "").trim();
+    if (!submitted) return;
+
     if (isCurrentAgentSessionBusy()) {
-      showAgentToast("当前回复完成后再发送");
-      return;
+      if (agentQueueCount >= 3) {
+        showAgentToast("排队已满（最多 3 条），请等待或将某条提升为指引");
+        return;
+      }
+      try {
+        // Kick off submit first so the optimistic queue card paints before the input clears.
+        const pending = submitBusyAgentTurn(submitted, "queue");
+        clearAgentInput();
+        return await pending;
+      } catch (error) {
+        restoreAgentInputText(submitted);
+        throw error;
+      }
     }
 
     const pendingChips = getPendingAgentAttachments();
@@ -2545,6 +3942,31 @@
     let ownedTurn = null;
     let streamSid = null;
     let entry = null;
+    clearAgentInput();
+    // Paint the ask immediately — before create-session / catalog sync — so the
+    // first message never waits on the network, and a racing boot-time session
+    // load cannot leave the user staring at an empty welcome screen.
+    setAgentEmpty(false);
+    finishTurn();
+    agentShouldFollow = true;
+    ownedTurn = Render.beginTurn(agentMessages, {
+      text: submitted,
+      attachments: pendingChips,
+      live: true,
+      onScroll: agentScrollBottom,
+      startedAt: Date.now(),
+    });
+    activeTurn = ownedTurn;
+    if (shouldWarnSnapshotFallback(pendingChips, submitted)) {
+      ownedTurn.appendAssistant(
+        "提示：若附件中的分子未命中本地证据快照，本轮会转入本地补洞与结构计算；生成 CSV 的耗时可能明显增加，请耐心等待。",
+        { instant: true }
+      );
+    }
+    if (pendingChips.length) setAgentAttachment(null, { pending: false });
+    if (TurnRail) TurnRail.rebuild();
+    agentScrollBottom({ force: true });
+
     try {
       streamSid = await ensureAgentSession();
       entry = startSessionStream(streamSid);
@@ -2554,30 +3976,11 @@
         RunStatus.setVisible(true);
       }
       syncAgentBusyUi();
-      setAgentEmpty(false);
-      finishTurn();
-
-      ownedTurn = Render.beginTurn(agentMessages, {
-        text,
-        attachments: pendingChips,
-        live: true,
-        onScroll: agentScrollBottom,
-      });
-      activeTurn = ownedTurn;
-      if (shouldWarnSnapshotFallback(pendingChips, text)) {
-        ownedTurn.appendAssistant(
-          "提示：若附件中的分子未命中本地证据快照，本轮会转入本地补洞与结构计算；生成 CSV 的耗时可能明显增加，请耐心等待。",
-          { instant: true }
-        );
-      }
-      if (pendingChips.length) setAgentAttachment(null, { pending: false });
-      if (TurnRail) TurnRail.rebuild();
-      agentScrollBottom();
 
       const resp = await fetch(`/api/agent/sessions/${streamSid}/message/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: submitted }),
         signal,
       });
       if (!isStreamEntryActive(streamSid, entry)) return;
@@ -2585,12 +3988,18 @@
         const err = await resp.json().catch(() => ({}));
         throw new Error(apiErrorMessage(err, `请求失败 (${resp.status})`));
       }
+      // Input was cleared at send start; keep draft store in sync.
+      persistAgentDraft();
       entry.runId = resp.headers.get("X-MolMind-Run-ID") || "";
       if (entry.runId) {
         setAgentRunSnapshot(streamSid, {
           run_id: entry.runId,
           status: "running",
         });
+        if (ownedTurn && ownedTurn.root) {
+          ownedTurn.runId = entry.runId;
+          ownedTurn.root.setAttribute("data-run-id", entry.runId);
+        }
       }
 
       const reader = resp.body.getReader();
@@ -2628,10 +4037,14 @@
           }
           if (ev.run_id && !entry.runId) entry.runId = String(ev.run_id);
           if (ev.type === "done") {
+            const prior = currentAgentRun(streamSid) || {};
+            const doneStatus = String(ev.status || "").trim();
             setAgentRunSnapshot(streamSid, {
-              ...(currentAgentRun(streamSid) || {}),
-              run_id: String(ev.run_id || entry.runId || ""),
-              status: String(ev.status || "succeeded"),
+              ...prior,
+              run_id: String(ev.run_id || entry.runId || prior.run_id || ""),
+              // Prefer explicit backend status; do not invent succeeded over a
+              // prior failed/interrupted snapshot when the event omits status.
+              status: doneStatus || String(prior.status || "succeeded"),
             });
           }
           if (agentSessionId === streamSid && isStreamEntryActive(streamSid, entry) && RunStatus) {
@@ -2659,7 +4072,19 @@
       const aborted =
         (entry && entry.controller.signal.aborted) ||
         (err && err.name === "AbortError");
-      if (aborted || !isStreamEntryActive(streamSid, entry)) return;
+      const accepted = !!(entry && entry.runId);
+      if (!aborted && !accepted) {
+        restoreAgentInputText(submitted);
+        // Optimistic ask was painted before the network; remove it on hard fail.
+        if (ownedTurn && ownedTurn.root && ownedTurn.root.isConnected) {
+          ownedTurn.root.remove();
+        }
+        if (activeTurn === ownedTurn) activeTurn = null;
+        setAgentEmpty(isAgentNewConversation());
+        if (TurnRail) TurnRail.rebuild();
+        syncAgentBusyUi();
+      }
+      if (aborted || !entry || !isStreamEntryActive(streamSid, entry)) return;
       if (canPaintStream(streamSid, entry, ownedTurn)) {
         if (typeof ownedTurn.abortStream === "function") ownedTurn.abortStream();
         ownedTurn.appendAssistant(`错误：${err.message || err}`, { error: true });
@@ -2672,7 +4097,7 @@
         entry.running = false;
         entry.onComplete = null;
         agentStreams.delete(streamSid);
-        if (agentSessionId === streamSid) {
+        if (agentSessionId === streamSid && (!ownedTurn || !ownedTurn.root.isConnected)) {
           try {
             const refreshed = await renderAgentSessionTranscript(streamSid);
             setAgentRunSnapshot(streamSid, refreshed.active_run || null);
@@ -2681,6 +4106,7 @@
           }
         }
         syncAgentBusyUi();
+        await refreshAgentQueue(streamSid);
         if (typeof onComplete === "function") {
           try {
             await onComplete();
@@ -2699,9 +4125,96 @@
             /* ignore */
           }
         }
+        // Drain queued Turns as normal user sends after the current run settles.
+        if (agentSessionId === streamSid) {
+          await continueAgentQueueFollow(streamSid);
+        }
       }
       if (TurnRail) TurnRail.rebuild();
       agentScrollBottom();
+    }
+  }
+
+  async function submitBusyAgentTurn(text, mode) {
+    const pending = getPendingAgentAttachments();
+    const attachmentIds = pending.map((item) => item.attachment_id).filter(Boolean);
+    const attachments = pending.map((item) => ({
+      attachment_id: item.attachment_id || "",
+      filename: item.filename || "",
+      kind: item.kind || "",
+    }));
+    // Paint an empty loading card immediately so clearing the input does not feel like a failed send.
+    const optimisticKey = pushOptimisticQueueTurn({
+      kind: mode === "guidance" ? "guidance" : "queue",
+      text,
+      attachment_ids: attachmentIds,
+      attachments,
+    });
+    try {
+      const sid = await ensureAgentSession();
+      const idempotencyKey =
+        (window.crypto && typeof window.crypto.randomUUID === "function")
+          ? window.crypto.randomUUID()
+          : `turn-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const resp = await fetch(`/api/agent/sessions/${sid}/turns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          mode: mode === "guidance" ? "guidance" : "queue",
+          attachment_ids: attachmentIds,
+          idempotency_key: idempotencyKey,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(err, `请求失败 (${resp.status})`));
+      }
+      const accepted = await resp.json();
+      consumeAgentDraft(text);
+      if (pending.length) setAgentAttachment(null, { pending: false });
+      // Drop placeholder before refresh paint to avoid a duplicate flash.
+      removeOptimisticQueueTurn(optimisticKey, { paint: false });
+      await refreshAgentQueue(sid);
+      return accepted;
+    } catch (error) {
+      removeOptimisticQueueTurn(optimisticKey);
+      throw error;
+    }
+  }
+
+  async function interruptCurrentAgentRun() {
+    const sid = agentSessionId;
+    if (!sid || !isCurrentAgentSessionBusy()) return;
+    const run = currentAgentRun(sid);
+    const stream = agentStreams.get(sid);
+    const runId = String((run && run.run_id) || (stream && stream.runId) || "");
+    if (!runId) {
+      showAgentToast("没有可停止的任务");
+      return;
+    }
+    if (agentStopBtn) agentStopBtn.disabled = true;
+    try {
+      const resp = await fetch(
+        `/api/agent/sessions/${sid}/runs/${encodeURIComponent(runId)}/interrupt`,
+        { method: "POST" }
+      );
+      if (!resp.ok) {
+        throw new Error(
+          apiErrorMessage(await resp.json().catch(() => ({})), "停止失败")
+        );
+      }
+      setAgentRunSnapshot(sid, {
+        ...(run || {}),
+        run_id: runId,
+        status: "cancel_requested",
+      });
+      showAgentToast("正在停止当前任务");
+    } catch (error) {
+      showAgentToast(error.message || "停止失败");
+    } finally {
+      if (agentStopBtn) agentStopBtn.disabled = false;
+      syncAgentBusyUi();
     }
   }
 
@@ -2802,10 +4315,6 @@
     agentFileInput.addEventListener("change", async () => {
       const file = agentFileInput.files && agentFileInput.files[0];
       if (!file || agentUploadInProgress) return;
-      if (!assertAgentSessionMutable("当前回复完成后可上传附件")) {
-        agentFileInput.value = "";
-        return;
-      }
       setAgentUploadState(true);
       try {
         await uploadAgentSdf(file);
@@ -2852,15 +4361,25 @@
         }
         return;
       }
-      if (agentInput) {
-        agentInput.value = "";
-        resizeAgentInput();
+      try {
+        await sendAgentMessage(text);
+      } catch (error) {
+        showAgentToast(error.message || "发送失败，草稿已保留");
       }
-      await sendAgentMessage(text);
+    });
+  }
+  if (agentStopBtn) {
+    agentStopBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await interruptCurrentAgentRun();
     });
   }
   if (agentInput) {
-    agentInput.addEventListener("input", resizeAgentInput);
+    agentInput.addEventListener("input", () => {
+      resizeAgentInput();
+      scheduleAgentDraftSave();
+    });
     agentInput.addEventListener("keydown", (e) => {
       const composing = e.isComposing || e.keyCode === 229;
       if (MentionUI && MentionUI.isOpen()) {
@@ -2887,6 +4406,25 @@
     });
     resizeAgentInput();
   }
+  window.addEventListener("pagehide", () => persistAgentDraft());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "hidden") return;
+    persistAgentDraft();
+    // Background tabs throttle setTimeout; finish typewriters immediately so
+    // waitForStream / queue drain can continue without the window focused.
+    if (activeTurn && typeof activeTurn.abortStream === "function") {
+      activeTurn.abortStream();
+    }
+    if (Render && typeof Render.flushLiveReveals === "function") {
+      Render.flushLiveReveals();
+    }
+    syncAgentBusyUi();
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== AGENT_DRAFT_KEY || !agentSessionId || !agentInput) return;
+    const incoming = readAgentDrafts()[agentSessionId];
+    if (!agentInput.value && incoming && incoming.text) restoreAgentDraft(agentSessionId);
+  });
   if (MentionUI && agentInput) {
     const sendWrap = agentInput.closest(".mm-send-wrapper") || agentInput.parentElement;
     MentionUI.attach({
@@ -2896,6 +4434,12 @@
     });
   }
   if (agentNewChatBtn) agentNewChatBtn.addEventListener("click", () => startNewAgentChat());
+  if (agentUploadBtn) {
+    agentUploadBtn.addEventListener("click", () => {
+      if (demoPopMask) closeDemoSdfPop();
+      else openDemoSdfPop();
+    });
+  }
   if (agentDemoSdfBtn) {
     agentDemoSdfBtn.addEventListener("click", () => {
       if (demoPopMask) closeDemoSdfPop();
@@ -3035,6 +4579,13 @@
         });
       });
     }
+    if (profileClassicModeBtn) {
+      profileClassicModeBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        closeProfileInfo();
+        setWorkMode("classic");
+      });
+    }
     profileInfoModal.querySelectorAll("[data-profile-close]").forEach((el) => {
       el.addEventListener("click", closeProfileInfo);
     });
@@ -3090,6 +4641,8 @@
         // Session may have been deleted or expired — fall back to welcome.
         setAgentSessionId(null);
       }
+    } else {
+      restoreAgentDraft(null);
     }
     if (window.MolMindAgentTour) {
       window.MolMindAgentTour.maybeStart();

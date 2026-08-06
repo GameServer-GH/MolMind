@@ -39,6 +39,7 @@ def llm_plan_request(
     skills: dict[str, Any],
     capabilities: set[str],
     default_top_n: int = 10,
+    attachment_context: str = "",
 ) -> tuple[AgentPlan | None, str]:
     """Ask the conversational model for a bounded, registry-backed plan.
 
@@ -97,12 +98,19 @@ def llm_plan_request(
             "正在运行、已冻结，或虚构 TopN/耗时。"
             "解释已有冻结结果用 explain；不确定或缺少前置条件用 clarify。"
             "不得把科学评分、排名或实验结果编造成计划参数。"
+            "非 SDF 附件（PDF/图片/文档）只能作上下文提示，不能当作已绑定化合物库，"
+            "也不能据此选择 score_and_rank。"
+        )
+        attachment_block = (
+            f"\n附件上下文：\n{attachment_context}\n"
+            if str(attachment_context or "").strip()
+            else ""
         )
         user = (
             f"会话能力：{sorted(capabilities)}；会话默认 TopN：{int(default_top_n)}\n"
             f"技能目录：{json.dumps(available_skills, ensure_ascii=False)}\n"
             f"工具目录：{json.dumps(tool_catalog(tools, capabilities=capabilities), ensure_ascii=False)}\n"
-            f"最近对话：\n{history}\n用户本轮：{text}"
+            f"最近对话：\n{history}{attachment_block}\n用户本轮：{text}"
         )
         raw = chat_completion(settings, system=system, user=user).strip()
         match = re.search(r"\{[\s\S]*\}", raw)
@@ -134,15 +142,25 @@ def llm_plan_request(
             "llm" if not diagnostics else "llm;" + ";".join(diagnostics),
         )
     except Exception as exc:  # noqa: BLE001 - optional planner
+        from agent.runtime.cancellable_call import CallCancelled
+        from plugins.molmind_core.scientific.mechanism.llm_client import MechanismLLMError
+
+        if isinstance(exc, CallCancelled):
+            raise
+        if isinstance(exc, MechanismLLMError) and "cancelled" in str(exc).lower():
+            raise CallCancelled("llm cancelled") from exc
         return None, f"llm_unavailable:{type(exc).__name__}"
 
 
 def session_capabilities(session: Any) -> set[str]:
     """Return facts a tool contract may depend on; never infer user intent."""
+    from agent.memory.frozen_ranking import ensure_session_last_result, has_durable_freeze
+
     facts = {"session"}
     if getattr(session, "sdf_bytes", None):
         facts.add("sdf")
-    if getattr(session, "last_result", None) is not None:
+    # Prefer a hot or hydrated freeze object so same-turn export/PDF see the fact.
+    if ensure_session_last_result(session) is not None or has_durable_freeze(session):
         facts.add("frozen_result")
     if getattr(session, "last_mechanism_job_id", ""):
         facts.add("mechanism_job")

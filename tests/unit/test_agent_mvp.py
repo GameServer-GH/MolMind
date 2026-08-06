@@ -105,6 +105,23 @@ def test_parse_intent_chat_without_tools() -> None:
     assert intent.want_pdf is False
 
 
+def test_scp_offline_override_closes_one_turn_without_duplicate_user(tmp_path) -> None:
+    from agent.memory import FileRunStore
+    from agent.runtime.loop import AgentRuntime
+
+    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
+    session = runtime.create_session(client_id="scp_offline_test_0001")
+    session.installed_scp_skills["literature_research"] = {
+        "skill_id": "literature_research",
+        "enabled": True,
+        "tools": ["scp:Scholar-KG:query_paper"],
+    }
+    events = list(runtime.handle_message(session, "请查询 MASLD 最新文献，但不要联网"))
+    assert [event["type"] for event in events][-2:] == ["assistant", "done"]
+    assert [message["role"] for message in session.messages] == ["user", "assistant"]
+    assert sum(message["role"] == "user" for message in session.messages) == 1
+
+
 def test_parse_intent_only_proposes_tool_shape_for_ambiguous_top1_text() -> None:
     # Structural parsing is deliberately not the final dialog-act decision.
     intent = parse_intent("为啥top1是T19959")
@@ -229,21 +246,21 @@ def test_runtime_llm_classifies_ranking_followup_before_tools(
     from agent.memory import FileRunStore
     from agent.runtime.loop import AgentRuntime
 
-    def fake_decide(**kwargs):
-        assert kwargs["purpose"] == "agent_chat"
-        assert "execute_tools" in kwargs["allowed"]
-        assert "top1" in kwargs["user"].lower()
-        return "explain_ranking", "asks why prior rank"
+    # Ranking follow-ups are deterministic; the optional LLM classifier must
+    # not be required (and should not be consulted) for this boundary.
+    def boom(**kwargs):
+        raise AssertionError(f"llm_json_decision should not run: {kwargs}")
 
-    monkeypatch.setattr("agent.runtime.loop.llm_json_decision", fake_decide)
+    monkeypatch.setattr("agent.runtime.loop.llm_json_decision", boom)
     rt = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
     session = rt.create_session()
     intent = parse_intent("为啥top1是T19959")
+    assert intent.explain_ranking is True
     action, why = rt._classify_request_action(
         session, "为啥top1是T19959", intent
     )
     assert action == "explain_ranking"
-    assert why == "asks why prior rank"
+    assert why == "deterministic_frozen_ranking_followup"
 
 
 def test_runtime_llm_classifies_top_n_explanation_with_frozen_count(
@@ -293,7 +310,7 @@ def test_runtime_offline_fallback_keeps_ranking_question_read_only(
     intent = parse_intent(text)
     action, why = rt._classify_request_action(session, text, intent)
     assert action == "explain_ranking"
-    assert "structural_question_fallback" in why
+    assert why == "deterministic_frozen_ranking_followup"
 
 
 def test_parse_intent_explicit_top1_generation_still_runs_tools() -> None:
@@ -635,10 +652,13 @@ def test_active_run_blocks_session_mutations_and_survives_snapshot(tmp_path) -> 
 
     with pytest.raises(SessionBusyError):
         runtime.delete_session_when_idle(session.session_id)
-    assert root.joinpath(session.session_id, "meta.json").is_file()
+    reloaded = FileRunStore(root=root).get(session.session_id)
+    assert reloaded is not None
+    assert reloaded.active_run is not None
+    assert reloaded.active_run.get("run_id") == reserved["run_id"]
 
 
-def test_disk_reload_marks_orphaned_active_run_interrupted(tmp_path) -> None:
+def test_postgres_reload_keeps_live_run_under_lease_management(tmp_path) -> None:
     from agent.memory import FileRunStore
     from agent.runtime.loop import AgentRuntime
 
@@ -651,9 +671,9 @@ def test_disk_reload_marks_orphaned_active_run_interrupted(tmp_path) -> None:
     reloaded = reloaded_store.get(session.session_id)
     assert reloaded is not None
     assert reloaded.active_run is not None
+    assert reloaded.active_run["status"] in {"queued", "running", "cancel_requested"}
     assert reloaded.active_run["run_id"] == reserved["run_id"]
-    assert reloaded.active_run["status"] == "interrupted"
-    assert reloaded_store.read_events(session.session_id)[-1]["type"] == "run_interrupted"
+    assert reloaded_store.lease_managed is True
 
 
 def test_stream_events_expose_durable_run_identity(client: TestClient) -> None:

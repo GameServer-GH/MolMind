@@ -119,6 +119,9 @@ def _load_plugin_file(path: Path, *, catalog: bool) -> PluginSpec:
         requires=dict(raw.get("requires") or {}),
         limits=dict(raw.get("limits") or {}),
         tool_limits=tool_limits,
+        network_policy=dict(raw.get("network_policy") or {}),
+        capabilities=[item for item in (raw.get("capabilities") or []) if isinstance(item, dict)],
+        terminology=dict(raw.get("terminology") or {}),
     )
 
 
@@ -241,6 +244,36 @@ class AgentRegistry:
             raise KeyError(f"未知 Profile: {profile_id}")
         return self.profiles[profile_id]
 
+    def register_dynamic_tool(self, tool: ToolSpec) -> ToolSpec:
+        """Register an audited remote descriptor without mutating YAML files."""
+        if not tool.tool_id.startswith("scp:") or tool.plugin_id != "scp-hub":
+            raise ValueError("dynamic tools must use the scp namespace")
+        if tool.plugin_id not in self.plugins:
+            raise ValueError(f"tool owner plugin is not registered: {tool.plugin_id}")
+        tool.writes_selection = False
+        tool.dynamic = True
+        self.tools[tool.tool_id] = tool
+        return tool
+
+    def register_dynamic_skill(self, skill: SkillSpec) -> SkillSpec:
+        if skill.plugin_id != "scp-hub":
+            raise ValueError("dynamic SCP skills must belong to scp-hub")
+        missing = [tool_id for tool_id in skill.tools if tool_id not in self.tools]
+        if missing:
+            raise ValueError(f"skill references unregistered tools: {', '.join(missing)}")
+        self.skills[skill.skill_id] = skill
+        return skill
+
+    def unregister_dynamic_skill(self, skill_id: str) -> None:
+        skill = self.skills.get(skill_id)
+        if not skill or skill.plugin_id != "scp-hub": return
+        self.skills.pop(skill_id, None)
+        referenced = {tid for item in self.skills.values() for tid in item.tools}
+        for tool_id in skill.tools:
+            tool = self.tools.get(tool_id)
+            if tool and tool.dynamic and tool_id not in referenced:
+                self.tools.pop(tool_id, None)
+
     def list_catalog(self) -> list[PluginSpec]:
         return [p for p in self.plugins.values() if p.catalog]
 
@@ -361,6 +394,9 @@ class AgentRegistry:
                     "installed": p.plugin_id in installed,
                     "builtin": False,
                     "activation": "user_opt_in",
+                    "network_policy": p.network_policy,
+                    "capabilities": p.capabilities,
+                    "terminology": p.terminology,
                 }
             )
 
@@ -380,28 +416,11 @@ class AgentRegistry:
                     "catalog": p.catalog,
                     "can_uninstall": p.catalog and p.plugin_id in installed,
                     "install_target": p.plugin_id if p.catalog else None,
-                }
-            )
-
-        tools = []
-        for t in self.tools.values():
-            parent = self.plugins.get(t.plugin_id)
-            available = self._plugin_available(t.plugin_id, installed)
-            description = t.description or f"来自插件 {t.plugin_id} 的工具"
-            tools.append(
-                {
-                    "id": t.tool_id,
-                    "tool_id": t.tool_id,
-                    "title": t.title or t.tool_id.replace("_", " "),
-                    "description": description,
-                    "plugin_id": t.plugin_id,
-                    "risk": t.risk,
-                    "writes_selection": t.writes_selection,
-                    "installed": available,
-                    "builtin": bool(parent and parent.builtin),
-                    "catalog": bool(parent and parent.catalog),
-                    "can_uninstall": bool(parent and parent.catalog and t.plugin_id in installed),
-                    "install_target": t.plugin_id if parent and parent.catalog else None,
+                    "tools": list(p.tools),
+                    "skills": list(p.skills),
+                    "network_policy": p.network_policy,
+                    "capabilities": p.capabilities,
+                    "terminology": p.terminology,
                 }
             )
 
@@ -419,6 +438,7 @@ class AgentRegistry:
                     "description": s.description,
                     "plugin_id": s.plugin_id,
                     "tools": list(s.tools),
+                    "capability_ids": list(s.capability_ids),
                     "installed": is_installed,
                     "builtin": bool(parent and parent.builtin),
                     "catalog": bool(parent and parent.catalog),
@@ -438,7 +458,6 @@ class AgentRegistry:
             "builtin_plugins": [p.plugin_id for p in self.list_builtin()],
             "catalog": catalog,
             "plugins": plugins,
-            "tools": tools,
             "skills": skills,
             "budgets": profile.budgets,
             "policy": profile.policy,

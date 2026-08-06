@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Image tag (e.g. 0.2.2)
+        description: Image tag (e.g. 0.2.3)
         required: true
-        default: "0.2.2"
+        default: "0.2.3"
       push_latest:
         description: Also tag as latest
         type: boolean
