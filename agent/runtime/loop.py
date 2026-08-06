@@ -98,9 +98,20 @@ _DIRECT_DELIVERABLE_RE = re.compile(
     re.I,
 )
 _PENDING_TOP_N_REPLY_RE = re.compile(r"^\s*(?:top\s*)?(\d{1,3})\s*(?:个|名)?\s*$", re.I)
-_PENDING_AFFIRM_RE = re.compile(r"^\s*(?:需要|要|是|对|可以|好|好的|行|继续|开始|现在呢|现在可以了?)(?:[。！!？?])?\s*$", re.I)
-_PENDING_STATUS_RE = re.compile(r"(?:好了(?:吗|嘛)?|完成了?(?:吗|嘛)?|进度|开始了?(?:吗|嘛)?|还没好|怎么样了)", re.I)
 _PENDING_CANCEL_RE = re.compile(r"^\s*(?:取消|算了|不用了?|不要了?|停止)(?:[。！!])?\s*$", re.I)
+# Affirm/status synonym tables are LLM-down only (see _classify_pending_continuation).
+_PENDING_AFFIRM_RE = re.compile(
+    r"^\s*(?:"
+    r"需要|要|是|对|可以|好|好的|行|继续|开始|现在呢|现在可以了?"
+    r"|提供了|已经提供了?|已提供|已上传|上传了"
+    r"|(?:我)?(?:已经)?(?:提供|上传)了?.{0,40}"
+    r")(?:[。！!？?])?\s*$",
+    re.I,
+)
+_PENDING_STATUS_RE = re.compile(
+    r"(?:好了(?:吗|嘛)?|完成了?(?:吗|嘛)?|进度|开始了?(?:吗|嘛)?|还没好|怎么样了)",
+    re.I,
+)
 _COMPOUND_MAX_ITERATIONS = 3
 _BRANCH_ASSISTANT_CAPTURE: ContextVar[list[str] | None] = ContextVar(
     "molmind_branch_assistant_capture",
@@ -605,6 +616,7 @@ class AgentRuntime:
         text: str,
         *,
         top_n: int | None = None,
+        attachment_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Atomically reserve the one active Run allowed for a Session."""
         with self._state_lock(session_id):
@@ -614,10 +626,21 @@ class AgentRuntime:
             busy = self.session_busy_payload(session, operation="send_message")
             if busy:
                 raise SessionBusyError(busy)
+            ids = [str(item) for item in (attachment_ids or []) if str(item)]
+            for attachment_id in ids:
+                metadata = session.staged_attachments.get(attachment_id)
+                if not isinstance(metadata, dict) or metadata.get("state") not in {
+                    "draft",
+                    "queued",
+                }:
+                    raise ValueError(f"暂存附件不存在或不可用：{attachment_id}")
+            for attachment_id in ids:
+                session.staged_attachments[attachment_id]["state"] = "queued"
             session.active_run = self._new_active_run(
                 session,
                 text=text,
                 top_n=top_n,
+                attachment_ids=ids,
             )
             self.store.persist(session)
             return copy.deepcopy(session.active_run)
@@ -1595,6 +1618,29 @@ class AgentRuntime:
             },
         )
 
+    def _emit_live(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
+        """Emit a live-only event (token deltas) without durable persistence.
+
+        ``assistant_delta`` must not hit Postgres / transcript / claim checks —
+        only the final ``assistant`` event is durable.
+        """
+        kind = str(event.get("type") or "")
+        controller = self._run_controller(session)
+        if controller.interruption_requested and kind not in {
+            "tool_end",
+            "run_interrupted",
+            "done",
+            "error",
+        }:
+            raise RunInterrupted(controller.interrupt_reason or "user_guidance")
+        event.setdefault("run_id", controller.run_id)
+        event.setdefault("turn_id", controller.run_id)
+        event["live_only"] = True
+        active = session.active_run
+        if isinstance(active, dict) and str(active.get("run_id") or "") == controller.run_id:
+            active["heartbeat_at"] = utc_now()
+        return event
+
     def _emit(self, session: AgentSession, event: dict[str, Any]) -> dict[str, Any]:
         kind = str(event.get("type") or "")
         controller = self._run_controller(session)
@@ -2058,14 +2104,16 @@ class AgentRuntime:
 
             missing_sdf = not bool(session.sdf_bytes)
             missing_top_n = pending_action.get("top_n") is None
-            is_continuation = bool(
-                number_match
-                or _PENDING_AFFIRM_RE.fullmatch(compact)
-                or _PENDING_STATUS_RE.search(compact)
-            )
+            if number_match:
+                continuation_act, continuation_why = "continue", "structural_top_n_reply"
+            else:
+                continuation_act, continuation_why = self._classify_pending_continuation(
+                    session, compact, pending_action
+                )
+            is_continuation = continuation_act in {"continue", "status"}
             if is_continuation and (missing_sdf or missing_top_n):
                 self._prepare_turn(session, text)
-                if _PENDING_STATUS_RE.search(compact):
+                if continuation_act == "status":
                     prefix = "尚未启动工具调用；"
                 else:
                     prefix = "已续接你之前的导出请求；"
@@ -2079,6 +2127,13 @@ class AgentRuntime:
                     if missing
                 ]
                 session.messages.append({"role": "assistant", "text": reply})
+                yield self._emit(
+                    session,
+                    {
+                        "type": "thinking",
+                        "text": f"待办续接：{continuation_act}（{continuation_why}）",
+                    },
+                )
                 yield self._emit(session, {"type": "assistant", "text": reply})
                 yield self._emit(session, {"type": "done"})
                 self.store.persist(session)
@@ -2103,6 +2158,7 @@ class AgentRuntime:
                     top_n_min=lo,
                 )
                 session.pending_action = None
+                session.pending_goal = None
                 if not intent.top_n_over_limit:
                     resumed_steps: list[dict[str, Any]] = [
                         {"tool": "score_and_rank", "args": {"top_n": capped}}
@@ -2142,11 +2198,140 @@ class AgentRuntime:
                 yield from self._handle_intent(session, text, intent)
                 return
 
-            # A complete, explicit new deliverable supersedes the old one.
-            # Other substantive text is classified normally but does not
-            # silently erase the unfinished request.
-            if _DIRECT_DELIVERABLE_RE.search(compact):
+            # A complete structural deliverable supersedes the unfinished request.
+            # Do not use online keyword tables (_DIRECT_DELIVERABLE_RE); parse_intent
+            # product slots are the source of truth. Ranking follow-up candidates
+            # (wants_tools without csv/pdf/bundle) must not clear pending.
+            probe = parse_intent(
+                compact,
+                default_top_n=session.top_n,
+                top_n_min=lo,
+                top_n_max=hi,
+            )
+            if probe.wants_tools and (
+                probe.want_csv
+                or probe.want_pdf
+                or probe.want_reserve
+                or probe.want_bundle
+                or probe.force_rescreen
+            ):
                 session.pending_action = None
+
+        # Planner clarify for missing SDF historically only set pending_goal (chat),
+        # so short follow-ups like「提供了」never resumed. When the library is now
+        # bound, treat continuation the same as pending_action resume.
+        pending_goal = session.pending_goal
+        if (
+            isinstance(pending_goal, dict)
+            and pending_goal
+            and bool(session.sdf_bytes)
+            and not (
+                isinstance(session.pending_action, dict) and session.pending_action
+            )
+        ):
+            source = str(pending_goal.get("source_text") or "").strip()
+            compact_goal = (text or "").strip()
+            if source and not _PENDING_CANCEL_RE.fullmatch(compact_goal):
+                probe_goal = parse_intent(
+                    compact_goal,
+                    default_top_n=session.top_n,
+                    top_n_min=lo,
+                    top_n_max=hi,
+                )
+                new_deliverable = probe_goal.wants_tools and (
+                    probe_goal.want_csv
+                    or probe_goal.want_pdf
+                    or probe_goal.want_reserve
+                    or probe_goal.want_bundle
+                    or probe_goal.force_rescreen
+                )
+                if not new_deliverable:
+                    synthetic = {
+                        "source_text": source,
+                        "top_n": session.top_n,
+                        "missing_slots": [],
+                    }
+                    goal_act, goal_why = self._classify_pending_continuation(
+                        session, compact_goal, synthetic
+                    )
+                    if goal_act in {"continue", "status"}:
+                        source_intent = parse_intent(
+                            source,
+                            default_top_n=session.top_n,
+                            top_n_min=lo,
+                            top_n_max=hi,
+                        )
+                        if source_intent.wants_tools:
+                            yield self._emit(
+                                session,
+                                {
+                                    "type": "thinking",
+                                    "text": (
+                                        f"待确认目标续接：{goal_act}（{goal_why}）；"
+                                        f"会话已绑定 SDF「{session.sdf_filename or 'library.sdf'}」。"
+                                    ),
+                                },
+                            )
+                            if goal_act == "status":
+                                self._prepare_turn(session, text)
+                                reply = (
+                                    f"化合物库「{session.sdf_filename or 'library.sdf'}」"
+                                    "已绑定，此前的筛选/导出请求尚未启动。"
+                                    "回复「继续」即可按原目标执行。"
+                                )
+                                session.messages.append(
+                                    {"role": "assistant", "text": reply}
+                                )
+                                yield self._emit(
+                                    session, {"type": "assistant", "text": reply}
+                                )
+                                yield self._emit(session, {"type": "done"})
+                                self.store.persist(session)
+                                return
+                            session.pending_goal = None
+                            resumed = AgentIntent(
+                                want_csv=bool(source_intent.want_csv)
+                                or bool(source_intent.execution_requested),
+                                want_pdf=bool(source_intent.want_pdf),
+                                want_reserve=bool(source_intent.want_reserve),
+                                want_bundle=bool(source_intent.want_bundle),
+                                top_n=int(source_intent.top_n),
+                                raw_text=text,
+                                reason=(
+                                    f"续接待确认目标并已绑定 SDF："
+                                    f"{pending_goal.get('goal') or source}"
+                                ),
+                                skill_ids=tuple(
+                                    source_intent.skill_ids or ("masld_nominate",)
+                                ),
+                                wants_tools=True,
+                                requested_top_n=source_intent.requested_top_n,
+                                top_n_over_limit=bool(source_intent.top_n_over_limit),
+                                top_n_max=hi,
+                                top_n_min=lo,
+                                force_rescreen=bool(source_intent.force_rescreen),
+                                execution_requested=True,
+                            )
+                            yield self._emit(
+                                session,
+                                {
+                                    "type": "agent_plan",
+                                    "goal": str(pending_goal.get("goal") or source),
+                                    "action": "execute",
+                                    "steps": [
+                                        {
+                                            "tool": "score_and_rank",
+                                            "args": {"top_n": resumed.top_n},
+                                        }
+                                    ],
+                                    "expected_artifacts": (
+                                        ["nomination_csv"] if resumed.want_csv else []
+                                    ),
+                                    "diagnostics": ["resumed_from_pending_goal"],
+                                },
+                            )
+                            yield from self._handle_intent(session, text, resumed)
+                            return
 
         # First pass without skill-specific bounds; refine after intent known.
         intent = parse_intent(
@@ -2183,71 +2368,71 @@ class AgentRuntime:
         # model classify the dialog act before executing anything.  The
         # structural parser only supplies candidate parameters and a safe
         # offline fallback; it is not the source of truth for follow-ups.
+        # ranking_question_fallback / direct_deliverable regexes are LLM-down
+        # only (see _classify_request_action / _classify_execution_gate defaults).
         session.turn_execution_gate = None
         session.turn_execution_dialog_act = None
         if intent.wants_tools and not intent.mentions and not intent.query_evidence:
-            is_ranking_followup, ranking_molecule_id = ranking_question_fallback(text)
-            if is_ranking_followup:
-                # A ranking introduction/explanation is never an implicit
-                # request to export a similarly numbered TopN.  Route it
-                # before optional LLM planning, which otherwise sees the
-                # tool-shaped “top5” surface and may choose export.
-                action, why = "explain_ranking", "deterministic_frozen_ranking_followup"
-            else:
-                ranking_molecule_id = None
-                gate, gate_meta = self._classify_execution_gate(session, text, intent)
-                session.turn_execution_gate = gate
-                session.turn_execution_dialog_act = str(
-                    gate_meta.get("dialog_act") or ""
-                )
-                yield self._emit(
-                    session,
-                    {
-                        "type": "thinking",
-                        "text": (
-                            f"执行门控：{gate}"
-                            f"/{gate_meta.get('dialog_act', '')}"
-                            f"（{gate_meta.get('reason', '')}）"
-                        ),
-                    },
-                )
-                if gate == "block":
-                    dialog_act = str(gate_meta.get("dialog_act") or "discuss_only")
-                    if dialog_act in {"cancel_pending", "discuss_only", "defer_execute"}:
-                        session.pending_goal = None
-                        session.pending_action = None
-                        session.pending_top_confirm = None
+            ranking_molecule_id = None
+            gate, gate_meta = self._classify_execution_gate(session, text, intent)
+            session.turn_execution_gate = gate
+            session.turn_execution_dialog_act = str(
+                gate_meta.get("dialog_act") or ""
+            )
+            yield self._emit(
+                session,
+                {
+                    "type": "thinking",
+                    "text": (
+                        f"执行门控：{gate}"
+                        f"/{gate_meta.get('dialog_act', '')}"
+                        f"（{gate_meta.get('reason', '')}）"
+                    ),
+                },
+            )
+            if gate == "block":
+                dialog_act = str(gate_meta.get("dialog_act") or "discuss_only")
+                if dialog_act in {"cancel_pending", "discuss_only", "defer_execute"}:
+                    session.pending_goal = None
+                    session.pending_action = None
+                    session.pending_top_confirm = None
                     action, why = (
                         "chat",
                         f"execution_gate_block:{dialog_act}:{gate_meta.get('reason', '')}",
                     )
+                elif ranking_question_fallback(text)[0]:
+                    # Offline/clarify gate must not swallow ranking follow-ups;
+                    # request-action (LLM or structural fallback) owns explain.
+                    action, why = self._classify_request_action(session, text, intent)
                 else:
-                    if gate_meta.get("force_rescreen") or intent.force_rescreen:
-                        intent = replace(intent, force_rescreen=True)
-                        session.pending_goal = None
-                        session.pending_action = None
-                        session.pending_top_confirm = None
-                        if intent.requested_top_n is None:
-                            default_n = self._profile_default_top_n(session)
-                            session.top_n = default_n
-                            if intent.top_n != default_n:
-                                old_n = int(intent.top_n)
-                                intent = replace(
-                                    intent,
-                                    top_n=default_n,
-                                    reason=(
-                                        str(intent.reason or "").replace(
-                                            f"Top{old_n}", f"Top{default_n}"
-                                        )
-                                        or f"需要：Top{default_n} 候选 CSV"
-                                    ),
-                                )
-                    if _is_direct_deliverable_request(intent, text):
-                        action, why = "execute_tools", "deterministic_direct_deliverable"
-                    else:
-                        action, why = self._classify_request_action(
-                            session, text, intent
-                        )
+                    action, why = (
+                        "chat",
+                        f"execution_gate_block:{dialog_act}:{gate_meta.get('reason', '')}",
+                    )
+            else:
+                if gate_meta.get("force_rescreen") or intent.force_rescreen:
+                    intent = replace(intent, force_rescreen=True)
+                    session.pending_goal = None
+                    session.pending_action = None
+                    session.pending_top_confirm = None
+                    if intent.requested_top_n is None:
+                        default_n = self._profile_default_top_n(session)
+                        session.top_n = default_n
+                        if intent.top_n != default_n:
+                            old_n = int(intent.top_n)
+                            intent = replace(
+                                intent,
+                                top_n=default_n,
+                                reason=(
+                                    str(intent.reason or "").replace(
+                                        f"Top{old_n}", f"Top{default_n}"
+                                    )
+                                    or f"需要：Top{default_n} 候选 CSV"
+                                ),
+                            )
+                action, why = self._classify_request_action(session, text, intent)
+            if action == "explain_ranking":
+                _, ranking_molecule_id = ranking_question_fallback(text)
             if action != "execute_tools":
                 intent = replace(
                     intent,
@@ -2388,6 +2573,8 @@ class AgentRuntime:
             if role in {"user", "assistant"} and body:
                 history_lines.append(f"{role}: {body[:500]}")
         history = "\n".join(history_lines) if history_lines else "（无）"
+        # Offline bias only: when LLM is down, structural deliverable / discuss
+        # cues seed the default. Online LLM results always win over these regexes.
         direct = _is_direct_deliverable_request(intent, text)
         prefer_discuss = _offline_prefer_discuss(text)
         if direct and not prefer_discuss:
@@ -2525,7 +2712,7 @@ class AgentRuntime:
             "label": str(label or titles),
             "capability_id": str(capability_id or ""),
             "retry_text": str(retry_text or ""),
-            "summary": f"需要安装「{titles}」后才能继续本轮请求。",
+            "summary": f"需要安装「{titles}」后才能继续；安装成功即可在当前对话使用。",
         }
 
     def _yield_scp_install_request(
@@ -2553,7 +2740,7 @@ class AgentRuntime:
         ) or str(payload.get("label") or "对应科研能力")
         reply = (
             f"本轮需要「{titles}」。请在安装请求卡片中确认；"
-            "安装成功后会立即启用并自动重试你的请求。"
+            "安装成功后即可在当前对话继续，无需重新发送原请求。"
         )
         session.messages.append({"role": "assistant", "text": reply})
         yield emit(payload)
@@ -2575,7 +2762,7 @@ class AgentRuntime:
             title = label or meta["title"] or "该科研能力"
             return (
                 f"本轮需要「{title}」（`{meta['skill_id'] or skill_id}`）。"
-                "请确认安装请求卡片；安装成功后即可立即使用，不会用其它 Skill 代替。"
+                "请确认安装请求卡片；安装成功后即可在当前对话继续使用，不会用其它 Skill 代替。"
             )
         if reason.startswith("execution_gate_block:clarify") or reason == (
             "execution_gate_block:clarify"
@@ -2619,15 +2806,8 @@ class AgentRuntime:
         """Classify execute-vs-chat before a tool-shaped request is dispatched."""
         if frozen_ranking_mutation_requested(text):
             return "chat", "frozen_ranking_boundary_scp_cannot_rewrite_selection"
-        # Ranking follow-ups are structurally read-only and must not depend on
-        # optional LLM planners. Keep the audit reason stable for TaskRouter.
-        is_ranking_question, _ = ranking_question_fallback(text)
-        if is_ranking_question:
-            return "explain_ranking", "deterministic_frozen_ranking_followup"
-        # Online path: the LLM plans against the live registry rather than a
-        # fixed action prompt. Its output is schema- and precondition-checked
-        # inside ``llm_plan_request``. The legacy classifier below is retained
-        # only as an offline/compatibility fallback.
+        # Online: LLM decides execute vs explain vs chat. ranking_question_fallback
+        # is only used when the model is unavailable (see llm_ branch below).
         planned, plan_status = llm_plan_request(
             text=text,
             recent_messages=session.messages,
@@ -2636,6 +2816,8 @@ class AgentRuntime:
             capabilities=session_capabilities(session),
             default_top_n=session.top_n,
             attachment_context=self._attachment_context_text(session),
+            has_sdf=bool(session.sdf_bytes),
+            sdf_filename=str(session.sdf_filename or ""),
         )
         if planned is not None:
             if planned.action == "execute":
@@ -2643,12 +2825,64 @@ class AgentRuntime:
             if planned.action == "explain":
                 return "explain_ranking", f"{plan_status};{planned.rationale}"
             if planned.action == "clarify":
+                missing_slots: list[str] = []
+                if not session.sdf_bytes and (
+                    intent.want_csv
+                    or intent.want_pdf
+                    or intent.want_reserve
+                    or intent.want_bundle
+                    or intent.force_rescreen
+                    or intent.execution_requested
+                ):
+                    missing_slots.append("sdf")
                 session.pending_goal = {
                     "goal": planned.goal,
                     "rationale": planned.rationale,
                     "source_text": text,
                     "reason": "tool_contract_missing_parameters",
+                    "missing_slots": missing_slots,
                 }
+                # Persist an executable slot wait when the only blocker is SDF,
+                # so short follow-ups resume instead of falling through to chat.
+                if (
+                    not session.sdf_bytes
+                    and intent.wants_tools
+                    and (
+                        intent.want_csv
+                        or intent.want_pdf
+                        or intent.want_reserve
+                        or intent.want_bundle
+                        or intent.force_rescreen
+                        or intent.execution_requested
+                    )
+                    and not (
+                        isinstance(session.pending_action, dict)
+                        and session.pending_action
+                    )
+                ):
+                    top_n_val = (
+                        int(intent.top_n)
+                        if intent.requested_top_n is not None
+                        or intent.execution_requested
+                        else None
+                    )
+                    missing = ["sdf"]
+                    if top_n_val is None:
+                        missing.append("top_n")
+                    session.pending_action = {
+                        "kind": "deliverable",
+                        "status": "awaiting_slots",
+                        "want_csv": bool(intent.want_csv)
+                        or bool(intent.execution_requested),
+                        "want_pdf": bool(intent.want_pdf),
+                        "want_reserve": bool(intent.want_reserve),
+                        "want_bundle": bool(intent.want_bundle),
+                        "top_n": top_n_val,
+                        "requested_top_n": intent.requested_top_n,
+                        "skill_ids": list(intent.skill_ids or ("masld_nominate",)),
+                        "source_text": text,
+                        "missing_slots": missing,
+                    }
             return "chat", f"{plan_status};{planned.rationale}"
 
         history_lines: list[str] = []
@@ -2672,8 +2906,7 @@ class AgentRuntime:
                 "此类请求只解释冻结结果，不重新筛选；"
                 "chat=普通知识问答、澄清或能力咨询。"
                 "必须结合上下文判断：例如“top1”可以是输出数量，也可以是被询问的排名对象。"
-                "已有冻结结果时，含“解释/说明/为什么/为何/为啥/原因/理由”并指向 TopN"
-                " 的请求属于 explain_ranking，即使没有点名某个分子。"
+                "已有冻结结果时，指向具体名次/分子并追问原因或对比的请求属于 explain_ranking。"
                 "不要因为出现 plugin、skill、tool、top、候选、csv 等词就自动执行。"
             ),
             user=(
@@ -2703,6 +2936,62 @@ class AgentRuntime:
             return decision, why
         return "execute_tools", why
 
+    def _classify_pending_continuation(
+        self,
+        session: AgentSession,
+        text: str,
+        pending: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Classify a short reply against an unfinished pending_action.
+
+        Returns ``continue|status|other``. Cancel and bare TopN are handled by
+        structural regexes before this classifier. Affirm/status synonym tables
+        are offline-only defaults.
+        """
+        compact = str(text or "").strip()
+        if _PENDING_STATUS_RE.search(compact):
+            offline = "status"
+        elif _PENDING_AFFIRM_RE.fullmatch(compact):
+            offline = "continue"
+        else:
+            offline = "other"
+        missing = [
+            slot
+            for slot, present in (
+                ("sdf", bool(session.sdf_bytes)),
+                ("top_n", pending.get("top_n") is not None),
+            )
+            if not present
+        ]
+        decision, why = llm_json_decision(
+            system=(
+                "你在判断用户对「未完成的筛选/导出请求」的短回复。"
+                "只返回 JSON：{\"decision\":\"continue|status|other\",\"reason\":\"...\"}。"
+                "按语义原则判定，不要把表面用词当成口令白名单。"
+                "continue=用户在续接该未完成请求（确认还要做、催促补齐槽位、表示可以继续）；"
+                "status=用户在询问该请求是否已开始/完成/进度，而不是另起新话题；"
+                "other=取消以外的新需求、无关闲聊，或无法判断。"
+                "取消类短句由上游协议处理，不会进入本分类器。"
+            ),
+            user=(
+                f"未完成请求来源：{str(pending.get('source_text') or '')[:240]}；"
+                f"仍缺槽位：{', '.join(missing) or '无'}；"
+                f"已记录 TopN：{pending.get('top_n')!r}。\n"
+                f"用户本轮原文：{text}\n"
+                "请判定 decision。"
+            ),
+            allowed={"continue", "status", "other"},
+            default=offline,
+            purpose="agent_chat",
+            max_tokens=120,
+            timeout_sec=6.0,
+        )
+        if why.startswith("llm_"):
+            return offline, f"{why};structural_pending_fallback"
+        if decision in {"continue", "status", "other"}:
+            return decision, why
+        return offline, why
+
     def _classify_top_confirm(
         self, text: str, pending: dict[str, Any]
     ) -> tuple[str, str]:
@@ -2713,6 +3002,7 @@ class AgentRuntime:
             system=(
                 "你在判断用户是否同意把超出上限的 TopN 请求改为按上限输出。"
                 "只返回 JSON：{\"decision\":\"affirm|negate|other\",\"reason\":\"...\"}。"
+                "按语义原则判定，不要把表面用词当成口令白名单。"
                 "affirm=同意按上限；negate=拒绝/取消；other=另起新需求或无法判断。"
             ),
             user=(
@@ -3424,20 +3714,29 @@ class AgentRuntime:
 
         if intent.wants_tools and isinstance(session.pending_goal, dict):
             pending = session.pending_goal
-            reply = (
-                "你此前提出的筛选条件尚未映射为当前工具的可执行参数，因此我没有启动筛选。"
-                f"待确认目标：{pending.get('goal') or pending.get('source_text') or '筛选条件'}。\n\n"
-                "请明确选择：\n"
-                "1. 使用当前默认 MASLD 筛选配置生成 TopN；或\n"
-                "2. 继续只讨论这些条件；或\n"
-                "3. 提供已支持的参数配置后再执行。\n\n"
-                "在你确认前，我不会把这些条件静默替换成默认筛选。"
-            )
-            session.messages.append({"role": "assistant", "text": reply})
-            yield out({"type": "assistant", "text": reply})
-            yield out({"type": "done"})
-            self.store.persist(session)
-            return
+            missing_slots = [
+                str(slot)
+                for slot in (pending.get("missing_slots") or [])
+                if str(slot)
+            ]
+            # Stale clarify that only waited on the library: SDF is now bound.
+            if missing_slots == ["sdf"] and session.sdf_bytes:
+                session.pending_goal = None
+            else:
+                reply = (
+                    "你此前提出的筛选条件尚未映射为当前工具的可执行参数，因此我没有启动筛选。"
+                    f"待确认目标：{pending.get('goal') or pending.get('source_text') or '筛选条件'}。\n\n"
+                    "请明确选择：\n"
+                    "1. 使用当前默认 MASLD 筛选配置生成 TopN；或\n"
+                    "2. 继续只讨论这些条件；或\n"
+                    "3. 提供已支持的参数配置后再执行。\n\n"
+                    "在你确认前，我不会把这些条件静默替换成默认筛选。"
+                )
+                session.messages.append({"role": "assistant", "text": reply})
+                yield out({"type": "assistant", "text": reply})
+                yield out({"type": "done"})
+                self.store.persist(session)
+                return
 
         # 纯对话：用 LLM 回答（不强制 SDF）；失败再降级模板
         if not intent.wants_tools:
@@ -3472,6 +3771,7 @@ class AgentRuntime:
                 }
             )
             reply = None
+            streamed = False
             if intent.explain_ranking:
                 ensure_session_last_result(session)
                 reply = format_ranking_explanation(
@@ -3491,7 +3791,30 @@ class AgentRuntime:
                         "请先完成一轮筛选，或指明具体分子 ID 后再问。"
                     )
             if not reply:
-                reply = self._llm_chat_reply(session, text)
+                parts: list[str] = []
+                try:
+                    for delta in self._llm_chat_reply_stream(session, text):
+                        piece = str(delta or "")
+                        if not piece:
+                            continue
+                        parts.append(piece)
+                        streamed = True
+                        yield self._emit_live(
+                            session,
+                            {"type": "assistant_delta", "delta": piece},
+                        )
+                    reply = "".join(parts).strip()
+                except CallCancelled:
+                    raise
+                except RunInterrupted:
+                    raise
+                except Exception as exc:  # noqa: BLE001 — LLM optional
+                    if self._run_controller(session).interruption_requested:
+                        raise RunInterrupted("user_guidance") from exc
+                    reply = ""
+                if not reply:
+                    reply = self._chat_reply_fallback(session, text)
+                    streamed = False
             session.messages.append({"role": "assistant", "text": reply})
             yield out(
                 {
@@ -3499,7 +3822,8 @@ class AgentRuntime:
                     "task_id": "conversation",
                     "status": "succeeded",
                     "observation": {
-                        "summary": self._compact_observation(reply, limit=1200)
+                        "summary": self._compact_observation(reply, limit=1200),
+                        "streamed": streamed,
                     },
                 }
             )
@@ -3823,8 +4147,31 @@ class AgentRuntime:
         policy = getattr(plugin, "network_policy", {}) if plugin else {}
         return bool(isinstance(policy, dict) and policy.get("default_live", False))
 
+    def _scp_live_denied_reply(self, text: str) -> str:
+        """Explain why SCP live was blocked; align copy with default_live policy."""
+        if self._scp_live_disabled(text):
+            return (
+                "本轮消息已明确关闭联网，因此没有调用 SCP Hub，"
+                "也不会把模型生成内容冒充实时结果。"
+                "若要查询，请去掉「不要联网」等禁用表述，或写 `allow_live=true`。"
+            )
+        if self._scp_plugin_default_live():
+            # default_live=true 时，通常只有显式禁用才会落到这里；兜底文案仍说明授权方式。
+            return (
+                "当前 SCP 插件默认允许联网，但本轮未获得有效联网授权，"
+                "因此没有调用 SCP Hub，也不会把模型生成内容冒充实时结果。"
+                "若要查询，请确认未写禁用联网，或显式写 `allow_live=true`。"
+            )
+        return (
+            "这类问题可能需要实时科研资料；当前 SCP 插件默认不自动联网，"
+            "且本轮消息未授权联网，因此没有调用 SCP Hub，"
+            "也不会把模型生成内容冒充实时结果。"
+            "若要查询，请明确写「允许联网」或 `allow_live=true`。"
+        )
+
     @staticmethod
     def _scp_history_summary_requested(text: str) -> bool:
+        """Offline-only fallback for reuse dialog act."""
         raw = str(text or "")
         return bool(
             re.search(r"(?:基于|根据|汇总|总结).{0,8}(?:刚才|上一轮|之前).{0,8}(?:证据|结果|查询)", raw)
@@ -3833,6 +4180,7 @@ class AgentRuntime:
 
     @staticmethod
     def _scp_repeat_requested(text: str) -> bool:
+        """Offline-only fallback for repeat dialog act."""
         return bool(
             re.search(
                 r"(?:重新|再次|再执行|重跑|重复).{0,12}(?:相同|刚才|上一轮|之前).{0,12}(?:查询|机制|文献)",
@@ -3842,8 +4190,77 @@ class AgentRuntime:
 
     @staticmethod
     def _scp_cache_report_requested(text: str) -> bool:
+        """Offline-only fallback for cache_report dialog act."""
         raw = str(text or "").lower()
         return "缓存" in raw and bool(re.search(r"(?:命中|复用|哪些|来自|实时)", raw))
+
+    def _classify_scp_dialog_act(
+        self, session: AgentSession, text: str
+    ) -> tuple[str, dict[str, Any]]:
+        """LLM dialog act for SCP reuse/repeat/cache; regex only when LLM is down.
+
+        Does not decide allow_live — that remains a code-enforced protocol gate.
+        """
+        offline_act = "execute"
+        if self._scp_history_summary_requested(text):
+            offline_act = "reuse"
+        elif self._scp_repeat_requested(text):
+            offline_act = "repeat"
+        elif self._scp_cache_report_requested(text):
+            offline_act = "cache_report"
+        history_lines: list[str] = []
+        for message in session.messages[-6:]:
+            role = str(message.get("role") or "")
+            body = str(message.get("text") or "").strip()
+            if role in {"user", "assistant"} and body:
+                history_lines.append(f"{role}: {body[:400]}")
+        history = "\n".join(history_lines) if history_lines else "（无）"
+        data, status = llm_json_object(
+            system=(
+                "你是 MolMind 的 SCP 会话动作分类器。只返回 JSON："
+                '{"scp_dialog_act":"reuse|repeat|cache_report|execute",'
+                '"report_cache":false,"reason":"..."}。'
+                "按语义判定，不要把表面用词当口令白名单。"
+                "reuse=基于刚才/上一轮已校验的 SCP 证据做汇总，不重新调远程工具；"
+                "repeat=用上一轮科学问题重新执行查询（可再调工具）；"
+                "cache_report=正常执行且主要是要审计缓存命中/实时来源；"
+                "execute=普通 SCP 科研查询或执行。"
+                "report_cache=true 可与 repeat/execute 并存：回复需说明缓存命中与实时来源。"
+                "不要判定是否允许联网；联网授权由系统协议字段处理。"
+            ),
+            user=(
+                f"最近对话：\n{history}\n"
+                f"用户本轮原文：{text}\n"
+                "请判定 scp_dialog_act 与 report_cache。"
+            ),
+            default={
+                "scp_dialog_act": offline_act,
+                "report_cache": self._scp_cache_report_requested(text),
+                "reason": "offline_structural_fallback",
+            },
+            purpose="agent_chat",
+            max_tokens=160,
+            timeout_sec=8.0,
+        )
+        acts = {"reuse", "repeat", "cache_report", "execute"}
+        act = str(data.get("scp_dialog_act") or offline_act).strip().lower()
+        if act not in acts:
+            act = offline_act
+        report_cache = bool(data.get("report_cache"))
+        if act == "cache_report":
+            report_cache = True
+        reason = str(data.get("reason") or status or "llm").strip() or "llm"
+        if status != "ok":
+            # LLM-down: trust offline regex act + cache flag.
+            act = offline_act
+            report_cache = self._scp_cache_report_requested(text)
+            reason = f"{status};{reason}"
+        return act, {
+            "reason": reason,
+            "status": status,
+            "offline_act": offline_act,
+            "report_cache": report_cache,
+        }
 
     def _scp_previous_scientific_question(
         self, session: AgentSession
@@ -4308,7 +4725,9 @@ class AgentRuntime:
             self.store.persist(session)
             return True
         original_text = str(text or "")
-        if self._scp_history_summary_requested(original_text):
+        scp_act, scp_act_meta = self._classify_scp_dialog_act(session, original_text)
+        report_cache = bool(scp_act_meta.get("report_cache")) or scp_act == "cache_report"
+        if scp_act == "reuse":
             yield self._emit(
                 session,
                 {
@@ -4326,7 +4745,7 @@ class AgentRuntime:
             return True
         repeated_question = (
             self._scp_previous_scientific_question(session)
-            if self._scp_repeat_requested(original_text)
+            if scp_act == "repeat"
             else ""
         )
         routing_text = repeated_question or original_text
@@ -4369,7 +4788,7 @@ class AgentRuntime:
                     session,
                     {
                         "type": "assistant",
-                        "text": "这类问题可能需要实时科研资料；当前消息未授权联网，因此没有调用 SCP Hub，也不会把模型生成内容冒充实时结果。若要查询，请明确写「允许联网」或 `allow_live=true`。",
+                        "text": self._scp_live_denied_reply(original_text),
                     },
                 )
                 yield self._emit(session, {"type": "done"})
@@ -4449,7 +4868,7 @@ class AgentRuntime:
                     evidence_question=routing_text,
                     routes=multi_routes,
                     enabled_skill_ids=set(enabled),
-                    report_cache=self._scp_cache_report_requested(original_text),
+                    report_cache=report_cache,
                 )
             )
 
@@ -5915,87 +6334,9 @@ class AgentRuntime:
     def _llm_chat_reply(self, session: AgentSession, text: str) -> str:
         """Answer general questions with LLM; fall back to a short template."""
         try:
-            from plugins.molmind_core.scientific.mechanism.llm_client import (
-                MechanismLLMError,
-                chat_completion,
-                resolve_llm_settings,
+            return "".join(self._llm_chat_reply_stream(session, text)).strip() or (
+                self._chat_reply_fallback(session, text)
             )
-
-            settings = resolve_llm_settings({"enabled": True, "agent_chat": True}, purpose="agent_chat")
-            if not settings.ready:
-                return self._chat_reply_fallback(session, text)
-
-            # Slightly warmer, no cache — conversational Q&A.
-            settings = type(settings)(
-                enabled=settings.enabled,
-                model=settings.model,
-                base_url=settings.base_url,
-                api_key=settings.api_key,
-                temperature=0.4,
-                timeout_sec=max(settings.timeout_sec, 45.0),
-                max_tokens=min(max(settings.max_tokens, 1024), 2048),
-                cache_dir=settings.cache_dir,
-                use_cache=False,
-            )
-
-            has_sdf = bool(session.sdf_bytes)
-            name = session.sdf_filename or ""
-            attachment_context = self._attachment_context_text(session)
-            frozen_result = session.last_result
-            frozen_count = len(getattr(frozen_result, "top_molecules", None) or [])
-            frozen_run_id = str(getattr(frozen_result, "run_id", "") or "").strip()
-            frozen_context = (
-                f"本会话最近冻结结果：Top {frozen_count}"
-                + (f"，run_id={frozen_run_id}" if frozen_run_id else "")
-                if frozen_result is not None
-                else "本会话最近冻结结果：无"
-            )
-            active_resume = (session.active_run or {}).get("resume_context") or {}
-            context_window = build_context_window(
-                messages=session.messages[:-1],
-                working_memory=session.working_memory,
-                resume_context=active_resume,
-            )
-            history = context_window.history
-            working_context = context_window.working_memory
-            resume_context = context_window.resume_context
-            if context_window.summary != session.context_summary:
-                session.context_summary = context_window.summary
-                self.store.persist(session)
-
-            system = (
-                "你是 MolMind Agent，面向 MASLD 低毒降脂分子筛选的能力助手。"
-                "用简洁中文直接回答用户问题（化学概念、用法、流程等）。"
-                "不要编造具体筛选排名或虚构实验数据。"
-                "若用户追问已有排名，只解释最近对话中的冻结结果，"
-                "不要声称重新筛选或重新导出。"
-                "普通对话回复不得声称工具已经启动、即将立即启动或已经完成；"
-                "只有本轮真实工具事件才能支持这些执行状态。"
-                "若本轮属于普通对话但提到了已有筛选结果，只能使用下方提供的"
-                "冻结结果数量；不得沿用较早轮次的 TopN，也不得声称该结果不存在。"
-                "若用户其实想导出候选 CSV / 机制 PDF，可提示他们用自然语言描述产物；"
-                "不要只回复『不调用工具』这类空话。"
-                "当前会话绑定 SDF 时，本地 score_and_rank 工具可以执行实际筛选；"
-                "绝不能声称当前环境不具备筛选/排序能力，或要求用户改到外部工具链。"
-                "能力介绍只能承诺当前已注册流程：按默认 MASLD 配置筛选并排序、"
-                "导出候选 CSV、基于冻结榜单生成机制 PDF、解释冻结排名。"
-                "不得承诺任意属性统计、任意筛选阈值、指定靶点虚拟筛选或跨库对比，"
-                "除非当前工具事件已经明确提供该能力。"
-                "非 SDF 附件（PDF/图片/文档）仅作上下文参考，不能用于 score_and_rank，"
-                "也不能假装已经解析了 PDF/图片正文。"
-                f"当前会话附件：{'已绑定 ' + name if has_sdf else '无'}（仅本会话可用，不跨会话）。"
-                f"{frozen_context}。"
-                + (f"\n{attachment_context}" if attachment_context else "")
-            )
-            user = (
-                f"最近对话：\n{history}\n\n"
-                f"会话工作记忆（最近的调用、观察与 Loop 决策）：\n{working_context}\n\n"
-                f"若本轮由指引触发，以下是可审计的恢复上下文；只复用明确成功且输入未变化的结果：\n"
-                f"{resume_context}\n\n"
-                f"用户本轮：{text}\n\n"
-                "请直接回答本轮问题。"
-            )
-            return chat_completion(settings, system=system, user=user).strip()
         except CallCancelled:
             raise
         except Exception as exc:  # noqa: BLE001 — LLM optional
@@ -6003,19 +6344,203 @@ class AgentRuntime:
                 raise RunInterrupted("user_guidance") from exc
             return self._chat_reply_fallback(session, text)
 
+    def _llm_chat_reply_stream(
+        self, session: AgentSession, text: str
+    ) -> Iterator[str]:
+        """Yield token deltas for a conversational reply; records working memory once."""
+        from plugins.molmind_core.scientific.mechanism.llm_client import (
+            MechanismLLMError,
+            chat_completion_stream,
+            resolve_llm_settings,
+        )
+
+        settings = resolve_llm_settings(
+            {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+        )
+        if not settings.ready:
+            yield self._chat_reply_fallback(session, text)
+            return
+
+        # Slightly warmer, no cache — conversational Q&A.
+        settings = type(settings)(
+            enabled=settings.enabled,
+            model=settings.model,
+            base_url=settings.base_url,
+            api_key=settings.api_key,
+            temperature=0.4,
+            timeout_sec=max(settings.timeout_sec, 45.0),
+            max_tokens=min(max(settings.max_tokens, 1024), 2048),
+            cache_dir=settings.cache_dir,
+            use_cache=False,
+        )
+
+        has_sdf = bool(session.sdf_bytes)
+        name = session.sdf_filename or ""
+        attachment_context = self._attachment_context_text(session)
+        frozen_result = session.last_result
+        frozen_count = len(getattr(frozen_result, "top_molecules", None) or [])
+        frozen_run_id = str(getattr(frozen_result, "run_id", "") or "").strip()
+        frozen_context = (
+            f"本会话最近冻结结果：Top {frozen_count}"
+            + (f"，run_id={frozen_run_id}" if frozen_run_id else "")
+            if frozen_result is not None
+            else "本会话最近冻结结果：无"
+        )
+        active_resume = (session.active_run or {}).get("resume_context") or {}
+        context_window = build_context_window(
+            messages=session.messages[:-1],
+            working_memory=session.working_memory,
+            resume_context=active_resume,
+        )
+        history = context_window.history
+        working_context = context_window.working_memory
+        resume_context = context_window.resume_context
+        if context_window.summary != session.context_summary:
+            session.context_summary = context_window.summary
+            self.store.persist(session)
+
+        from agent.runtime.capability_context import (
+            build_capability_surface,
+            format_capability_surface_for_prompt,
+        )
+
+        capability_surface = build_capability_surface(
+            self.registry,
+            session,
+            scp_catalog=getattr(self.scp, "catalog", None),
+        )
+        capability_json = format_capability_surface_for_prompt(capability_surface)
+
+        system = (
+            "你是 MolMind Agent，面向 MASLD 低毒降脂分子筛选与科研旁证的能力助手。"
+            "用简洁中文直接回答用户问题。"
+            "回答能力/插件/技能/工具/MCP/Catalog 相关问题时，必须严格依据下方「当前能力面」；"
+            "区分三态：已启用、可安装未启用、不可用。禁止编造未列出的能力。"
+            "可安装的 SCP skill 需要用户确认安装后才能调用；安装成功后留在当前对话继续使用，"
+            "不要要求用户把原请求再发一遍。"
+            "不要声称「无法动态安装」或「只能使用固定不可扩展能力集」。"
+            "SCP / MCP 实时结果只作补充证据，不得改写或重算冻结主榜。"
+            "不要编造具体筛选排名或虚构实验数据。"
+            "若用户追问已有排名，只解释最近对话中的冻结结果，"
+            "不要声称重新筛选或重新导出。"
+            "普通对话回复不得声称工具已经启动、即将立即启动或已经完成；"
+            "只有本轮真实工具事件才能支持这些执行状态。"
+            "若本轮属于普通对话但提到了已有筛选结果，只能使用下方提供的"
+            "冻结结果数量；不得沿用较早轮次的 TopN，也不得声称该结果不存在。"
+            "若用户其实想导出候选 CSV / 机制 PDF，可提示他们用自然语言描述产物；"
+            "不要只回复『不调用工具』这类空话。"
+            "当前会话绑定 SDF 时，本地 score_and_rank 工具可以执行实际筛选；"
+            "绝不能声称当前环境不具备筛选/排序能力，或要求用户改到外部工具链。"
+            "若「当前会话附件」已绑定 SDF，或能力面 session_library.has_sdf=true，"
+            "严禁声称尚未绑定/缺少 SDF；应承认已绑定，并提示可继续筛选或导出。"
+            "说明提名 CSV 字段时，必须严格依据能力面 nomination_csv："
+            "schema_locked=true、user_selectable_columns=false；"
+            "只能引用 columns_preview 中的真实列名，可说明还有更多锁定列；"
+            "禁止编造 Rank/ID/SMILES/MASLD_Score/Toxicity_Risk/Note 等简化英文字段；"
+            "禁止声称「执行时可以指定附加列」。"
+            "讨论执行前可确认的选项时，只能使用 discussable_execution_options；"
+            "旁证 enrich 是另跑流程，不改变提名 CSV schema。"
+            "非 SDF 附件（PDF/图片/文档）仅作上下文参考，不能用于 score_and_rank，"
+            "也不能假装已经解析了 PDF/图片正文。"
+            f"当前会话附件：{'已绑定 ' + name if has_sdf else '无'}（仅本会话可用，不跨会话）。"
+            f"{frozen_context}。"
+            f"\n当前能力面（JSON）：{capability_json}"
+            + (f"\n{attachment_context}" if attachment_context else "")
+        )
+        user = (
+            f"最近对话：\n{history}\n\n"
+            f"会话工作记忆（最近的调用、观察与 Loop 决策）：\n{working_context}\n\n"
+            f"若本轮由指引触发，以下是可审计的恢复上下文；只复用明确成功且输入未变化的结果：\n"
+            f"{resume_context}\n\n"
+            f"用户本轮：{text}\n\n"
+            "请直接回答本轮问题。若在说明能力清单，按已启用 / 可安装 分层组织，"
+            "并提示用户如何启用未装项。"
+        )
+        try:
+            for delta in chat_completion_stream(settings, system=system, user=user):
+                if self._run_controller(session).interruption_requested:
+                    raise RunInterrupted("user_guidance")
+                yield delta
+        except MechanismLLMError:
+            raise
+        session.working_memory.append(
+            {
+                "kind": "capability_surface_answer",
+                "user_text": str(text or "")[:240],
+                "installed_plugin_ids": [
+                    item.get("plugin_id")
+                    for item in capability_surface.get("installed_plugins") or []
+                    if item.get("installed")
+                ],
+                "available_skill_ids": [
+                    item.get("skill_id")
+                    for item in capability_surface.get("available_skills") or []
+                ],
+                "installable_scp_skill_ids": [
+                    item.get("skill_id")
+                    for item in capability_surface.get("installable_scp_skills") or []
+                    if not item.get("enabled")
+                ],
+                "recorded_at_unix": int(time.time()),
+            }
+        )
+        session.working_memory = session.working_memory[-24:]
+
     def _chat_reply_fallback(self, session: AgentSession, text: str) -> str:
-        """Offline/LLM-fail path: one generic reply — no topic keyword tables."""
+        """Offline/LLM-fail path: surface-aware short reply."""
+        from agent.runtime.capability_context import build_capability_surface
+
         has_sdf = bool(session.sdf_bytes)
         name = session.sdf_filename or "化合物库.sdf"
+        surface = build_capability_surface(
+            self.registry,
+            session,
+            scp_catalog=getattr(self.scp, "catalog", None),
+        )
+        skill_titles = [
+            str(item.get("title") or item.get("skill_id") or "")
+            for item in surface.get("available_skills") or []
+        ][:4]
+        installable = [
+            str(item.get("title") or item.get("skill_id") or "")
+            for item in surface.get("installable_scp_skills") or []
+            if not item.get("enabled")
+        ][:4]
+        bits = []
+        if skill_titles:
+            bits.append("当前已启用：" + "、".join(skill_titles))
+        if installable:
+            bits.append(
+                "可安装（需确认）："
+                + "、".join(installable)
+                + "。确认安装后即可调用。"
+            )
+        surface_line = "；".join(bits)
+        csv_fact = surface.get("nomination_csv") or {}
+        csv_preview = list(csv_fact.get("columns_preview") or [])[:5]
+        asks_csv_schema = any(
+            token in str(text or "").lower()
+            for token in ("csv", "字段", "列名", "哪些列", "附加列")
+        )
         if has_sdf:
-            return (
+            base = (
                 f"收到。当前会话已绑定附件「{name}」（仅本会话可用）。"
                 "你可以继续问概念，或直接说：生成 top10 候选清单 csv。"
             )
-        return (
-            "收到。我可以回答化学/流程问题，也可以在你上传 .sdf 后帮你做筛选排序与机制报告。"
-            "试试问一个具体概念，或上传附件后说目标产物。"
-        )
+        else:
+            base = (
+                "收到。我可以回答化学/流程问题，也可以在你上传 .sdf 后帮你做筛选排序与机制报告。"
+                "试试问一个具体概念，或上传附件后说目标产物。"
+            )
+        parts = [base]
+        if surface_line:
+            parts.append(surface_line)
+        if asks_csv_schema and csv_preview:
+            parts.append(
+                "提名 CSV 列 schema 已锁定，不可自定义附加列；"
+                f"真实列示例：{' / '.join(csv_preview)} 等。"
+            )
+        return "\n".join(parts)
 
     def _execute_tool_adapter(
         self,

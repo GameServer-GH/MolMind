@@ -25,7 +25,10 @@ TOOL_META: dict[str, dict[str, str]] = {
     },
     "export_nomination": {
         "title": "导出候选清单",
-        "description": "将当前 TopN 筛选结果导出为 CSV / 清单文件，便于分析或下游使用。",
+        "description": (
+            "将当前冻结 TopN 导出为提名 CSV；列集合与顺序锁定（schema_locked），"
+            "不可按用户口头指定附加列；旁证 enrich 不改此 CSV schema。"
+        ),
     },
     "query_evidence": {
         "title": "查询证据",

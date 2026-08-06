@@ -9,7 +9,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import httpx
 
@@ -267,3 +267,148 @@ def chat_completion(
     if settings.use_cache:
         _write_cache(settings.cache_dir, key, model=settings.model, content=text)
     return text
+
+
+def chat_completion_stream(
+    settings: LLMSettings,
+    *,
+    system: str,
+    user: str,
+    cancel_event: Any = None,
+) -> Iterator[str]:
+    """Stream OpenAI-compatible chat completion deltas (``choices[].delta.content``).
+
+    Yields non-empty content chunks as they arrive. On cache hit (when enabled),
+    yields the full cached string once. Callers that need the complete reply
+    should join the yielded chunks.
+    """
+    if not settings.ready:
+        raise MechanismLLMError("LLM 未就绪（未启用或缺少 API Key）")
+
+    try:
+        from agent.runtime.cancellable_call import (
+            CallCancelled,
+            resolve_cancel_event,
+        )
+    except Exception:  # noqa: BLE001 — keep mechanism usable outside agent runtime
+        CallCancelled = RuntimeError  # type: ignore[misc, assignment]
+        resolve_cancel_event = lambda event=None: event  # noqa: E731
+
+    event = resolve_cancel_event(cancel_event)
+    if event is not None and event.is_set():
+        raise MechanismLLMError("LLM call cancelled")
+
+    key = _cache_key(settings.model, system, user, settings.temperature)
+    if settings.use_cache:
+        cached = _read_cache(settings.cache_dir, key)
+        if cached:
+            yield cached
+            return
+
+    url = f"{settings.base_url}/chat/completions"
+    payload = {
+        "model": settings.model,
+        "temperature": settings.temperature,
+        "max_tokens": settings.max_tokens,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.api_key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+
+    pieces: list[str] = []
+    saw_content = False
+    saw_reasoning = False
+
+    def _raise_if_cancelled() -> None:
+        if event is not None and event.is_set():
+            raise CallCancelled("LLM stream cancelled")
+
+    def _consume_sse_line(raw_line: str) -> Iterator[str]:
+        nonlocal saw_content, saw_reasoning
+        raw = str(raw_line or "").strip()
+        if not raw or raw.startswith(":"):
+            return
+        if not raw.startswith("data:"):
+            return
+        data = raw[5:].strip()
+        if not data or data == "[DONE]":
+            return
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise MechanismLLMError(f"流式响应解析失败: {exc}") from exc
+        try:
+            delta = chunk["choices"][0].get("delta") or {}
+        except (KeyError, IndexError, TypeError) as exc:
+            raise MechanismLLMError(f"流式响应缺少 delta: {exc}") from exc
+        if delta.get("reasoning_content"):
+            saw_reasoning = True
+        content = delta.get("content")
+        if not content:
+            return
+        piece = str(content)
+        if not piece:
+            return
+        saw_content = True
+        pieces.append(piece)
+        yield piece
+
+    try:
+        timeout = httpx.Timeout(
+            settings.timeout_sec,
+            connect=min(12.0, settings.timeout_sec),
+        )
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("POST", url, headers=headers, json=payload) as resp:
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPError as exc:
+                    # Drain error body so the connection closes cleanly.
+                    try:
+                        resp.read()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
+                # Byte/text iteration avoids waiting for the full body before the
+                # first yield (unlike some buffered line iterators behind proxies).
+                pending = ""
+                done = False
+                for text_chunk in resp.iter_text():
+                    _raise_if_cancelled()
+                    if not text_chunk:
+                        continue
+                    pending += text_chunk
+                    while "\n" in pending and not done:
+                        line, pending = pending.split("\n", 1)
+                        stripped = line.strip()
+                        if stripped == "data: [DONE]" or stripped.endswith("[DONE]"):
+                            done = True
+                            break
+                        yield from _consume_sse_line(line)
+                    if done:
+                        break
+                if not done and pending.strip():
+                    yield from _consume_sse_line(pending)
+    except CallCancelled as exc:
+        raise MechanismLLMError("LLM call cancelled") from exc
+    except httpx.HTTPError as exc:
+        raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
+
+    text = "".join(pieces).strip()
+    if not text:
+        if saw_reasoning and not saw_content:
+            raise MechanismLLMError(
+                "模型仅返回 reasoning_content、content 为空；"
+                "请增大 llm.max_tokens（推理模型需预留 reasoning 额度）"
+            )
+        raise MechanismLLMError("模型返回空内容")
+
+    if settings.use_cache:
+        _write_cache(settings.cache_dir, key, model=settings.model, content=text)

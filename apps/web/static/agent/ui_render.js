@@ -1157,6 +1157,10 @@
     } else if (type === "install_request") {
       turn.appendInstallOffer(ev);
       turn._pendingInstallRequest = { ...ev };
+    } else if (type === "assistant_delta") {
+      if (typeof turn.appendAssistantDelta === "function") {
+        turn.appendAssistantDelta(ev.delta || "");
+      }
     } else if (type === "assistant") {
       turn.appendAssistant(ev.text || "");
     } else if (type === "error") {
@@ -1256,11 +1260,31 @@
       let reveal = live ? createRevealQueue() : null;
       // History replay starts without a ticking clock; checkpoint retry re-enables it.
       let timingLive = !!live;
+      let tokenStreamBlock = null;
+      let tokenStreamEl = null;
+      let tokenStreamAcc = "";
       const tick = () => {
         if (typeof onScroll === "function") onScroll();
       };
       let trace = null;
       let finalized = false;
+
+      const clearTokenStream = () => {
+        tokenStreamBlock = null;
+        tokenStreamEl = null;
+        tokenStreamAcc = "";
+      };
+
+      const paintTokenStream = () => {
+        if (!tokenStreamBlock) return;
+        tokenStreamBlock.dataset.fullText = tokenStreamAcc;
+        if (tokenStreamEl) {
+          tokenStreamEl.innerHTML =
+            renderAssistantHtml(tokenStreamAcc) || escapeHtml(tokenStreamAcc);
+        } else {
+          finishAssistantBubble(tokenStreamBlock, tokenStreamAcc);
+        }
+      };
 
       const api = {
         id: turnId,
@@ -1282,16 +1306,42 @@
           }
           return trace;
         },
+        appendAssistantDelta(delta) {
+          const piece = String(delta || "");
+          if (!piece) return null;
+          // History / non-live turns ignore deltas; durable `assistant` paints later.
+          if (!timingLive) return null;
+          if (!tokenStreamBlock) {
+            const shell = buildStreamingAssistantShell();
+            tokenStreamBlock = shell.block;
+            tokenStreamEl = shell.streamEl;
+            tokenStreamAcc = "";
+            body.appendChild(tokenStreamBlock);
+          }
+          tokenStreamAcc += piece;
+          paintTokenStream();
+          tick();
+          return tokenStreamBlock;
+        },
         appendAssistant(text, opts) {
           const error = !!(opts && opts.error);
           const instant = !timingLive || !!(opts && opts.instant) || error;
           if (error) {
+            clearTokenStream();
             const block = buildAssistantBubble(text, opts);
             body.appendChild(block);
             tick();
             return block;
           }
           const full = String(text || "");
+          // True token stream already painted this bubble — finalize without typewriter.
+          if (tokenStreamBlock && timingLive) {
+            const block = tokenStreamBlock;
+            finishAssistantBubble(block, full);
+            clearTokenStream();
+            tick();
+            return block;
+          }
           if (instant || !reveal) {
             const block = buildAssistantBubble(full, opts);
             body.appendChild(block);
@@ -1350,6 +1400,8 @@
           return reveal ? reveal.whenIdle() : Promise.resolve();
         },
         isStreamPending() {
+          // Actively receiving token deltas (cursor still present).
+          if (tokenStreamBlock && tokenStreamEl && timingLive) return true;
           return !!(reveal && reveal.pending && !reveal.instant);
         },
         /** Clear answer body / thinking / artifacts so a checkpoint retry can paint fresh. */
@@ -1358,6 +1410,7 @@
             reveal.flush();
             liveRevealQueues.delete(reveal);
           }
+          clearTokenStream();
           body.innerHTML = "";
           if (trace) {
             if (typeof trace.destroy === "function") trace.destroy();
@@ -1378,10 +1431,26 @@
         finalize({ completedAt: nextCompletedAt } = {}) {
           if (finalized) return;
           finalized = true;
+          if (tokenStreamBlock) {
+            finishAssistantBubble(
+              tokenStreamBlock,
+              tokenStreamAcc || tokenStreamBlock.dataset.fullText || ""
+            );
+            clearTokenStream();
+          }
           if (trace) trace.finalize({ completedAt: nextCompletedAt });
         },
         abortStream() {
           if (reveal) reveal.flush();
+          if (tokenStreamBlock) {
+            // Seal the live shell but keep the block so late deltas / final
+            // assistant can update the same bubble instead of spawning another.
+            finishAssistantBubble(
+              tokenStreamBlock,
+              tokenStreamAcc || tokenStreamBlock.dataset.fullText || ""
+            );
+            tokenStreamEl = null;
+          }
           body.querySelectorAll("[data-full-text]").forEach((el) => {
             const full = el.dataset.fullText || "";
             if (el.classList.contains("mm-msg-assistant-block")) {

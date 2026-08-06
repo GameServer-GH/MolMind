@@ -40,6 +40,8 @@ def llm_plan_request(
     capabilities: set[str],
     default_top_n: int = 10,
     attachment_context: str = "",
+    has_sdf: bool = False,
+    sdf_filename: str = "",
 ) -> tuple[AgentPlan | None, str]:
     """Ask the conversational model for a bounded, registry-backed plan.
 
@@ -98,6 +100,8 @@ def llm_plan_request(
             "正在运行、已冻结，或虚构 TopN/耗时。"
             "解释已有冻结结果用 explain；不确定或缺少前置条件用 clarify。"
             "不得把科学评分、排名或实验结果编造成计划参数。"
+            "化合物库是否已绑定以「会话化合物库」字段为准；已绑定时不得再以缺少 SDF 为由 clarify。"
+            "提名 CSV 列 schema 锁定，不能把「指定附加列 / 自定义 CSV 字段」当作可执行参数或澄清项。"
             "非 SDF 附件（PDF/图片/文档）只能作上下文提示，不能当作已绑定化合物库，"
             "也不能据此选择 score_and_rank。"
         )
@@ -106,8 +110,14 @@ def llm_plan_request(
             if str(attachment_context or "").strip()
             else ""
         )
+        library_line = (
+            f"已绑定「{sdf_filename or 'library.sdf'}」"
+            if has_sdf
+            else "未绑定"
+        )
         user = (
             f"会话能力：{sorted(capabilities)}；会话默认 TopN：{int(default_top_n)}\n"
+            f"会话化合物库：{library_line}\n"
             f"技能目录：{json.dumps(available_skills, ensure_ascii=False)}\n"
             f"工具目录：{json.dumps(tool_catalog(tools, capabilities=capabilities), ensure_ascii=False)}\n"
             f"最近对话：\n{history}{attachment_block}\n用户本轮：{text}"

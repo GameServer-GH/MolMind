@@ -456,10 +456,9 @@ def ranking_question_fallback(text: str) -> tuple[bool, str | None]:
     """Conservative offline fallback for a question about an existing rank.
 
     ``top1`` is ambiguous: in “生成 top1” it is an output size, while in
-    “为啥 top1 是 T19959” it is the subject of a question.  Tool execution must
-    require the former dialog act; an explanatory follow-up stays read-only.
-    The runtime gives this narrow, read-only pattern precedence over optional
-    planning, so a phrase such as “介绍排名 Top5 的分子” cannot become export.
+    “为啥 top1 是 T19959” it is the subject of a question. Online routing must
+    use the Loop LLM classifiers; this helper is only for LLM-down paths and
+    for extracting molecule ids after an explain act is chosen.
     """
     raw = (text or "").strip()
     if not _RANKING_CONTEXT_RE.search(raw):
@@ -581,12 +580,13 @@ def parse_intent(
             **evidence_args,
         )
 
-    # Skill-surface tokens (deliverable / skill vocabulary), not dialog confirmations.
-    # Limits & confirmations live in plugin/skill YAML + runtime LLM classifiers.
+    # Skill-surface tokens: keep concrete deliverable / artifact names.
+    # Soft domain nouns (筛选/候选/机制/假说/报告) are not enough alone — they
+    # collide with inventory/meta questions. Force-rescreen is an exception.
     mentions_csv = any(
-        k in low for k in ("csv", "清单", "提名", "候选", "筛选", "top", "短名单")
-    )
-    mentions_pdf = any(k in low for k in ("pdf", "机制", "假说", "验证方案", "报告"))
+        k in low for k in ("csv", "清单", "top", "短名单", "提名")
+    ) or bool(_FORCE_RESCREEN_RE.search(raw))
+    mentions_pdf = any(k in low for k in ("pdf", "验证方案"))
     mentions_reserve = any(
         k in low
         for k in (
@@ -631,39 +631,36 @@ def parse_intent(
         k in low
         for k in ("生成", "帮我", "导出", "跑", "开始", "做一份", "出一份", "给我", "来一份")
     )
-    # Structured execution act (Intent extractor only — Router consumes the flag).
+    # Soft verbs alone must not open the tool lane; they only refine deliverable
+    # type after a strong product / explicit-run surface is present.
     execution_requested = bool(
-        soft_request or strong_product or _EXPLICIT_RUN_RE.search(raw)
+        strong_product or _EXPLICIT_RUN_RE.search(raw)
     )
 
-    # Ranking follow-ups are structured read-only acts and must not depend on
-    # wants_tools / soft deliverable verbs. Prefer explain even when the surface
-    # contains “topN” (strong_product), as long as ranking_question_fallback
-    # classifies the utterance as an explanatory follow-up.
+    # Ranking follow-ups may look like chat or tool surface. Do not decide
+    # explain_ranking here — Loop LLM (or offline ranking_question_fallback)
+    # owns the dialog act. Still mark wants_tools so Loop enters classification
+    # even when the utterance lacks csv/top product tokens (e.g. 「前 5 名」).
     is_ranking_followup, ranking_molecule_id = ranking_question_fallback(raw)
-    ranking_positions = extract_ranking_positions(raw) if is_ranking_followup else ()
-    ranking_position_subject = (
-        ranking_position_subject_fallback(raw) if is_ranking_followup else False
-    )
     if is_ranking_followup:
         return AgentIntent(
             want_csv=False,
             want_pdf=False,
             top_n=top_n,
             raw_text=raw,
-            reason="询问上一轮候选排名原因，不重新筛选或导出",
+            reason="ranking_followup_candidate",
             skill_ids=(),
-            wants_tools=False,
+            wants_tools=True,
             mentions=mentions,
             mention_action="",
             requested_top_n=requested_top_n,
             top_n_over_limit=False,
             top_n_max=int(top_n_max),
             top_n_min=int(top_n_min),
-            explain_ranking=True,
+            explain_ranking=False,
             ranking_molecule_id=ranking_molecule_id,
-            ranking_positions=ranking_positions,
-            ranking_position_subject=ranking_position_subject,
+            ranking_positions=extract_ranking_positions(raw),
+            ranking_position_subject=ranking_position_subject_fallback(raw),
             execution_requested=False,
         )
 

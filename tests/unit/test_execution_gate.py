@@ -7,45 +7,155 @@ from types import SimpleNamespace
 import pytest
 
 from agent.intent import parse_intent
-from agent.registry import get_registry
 from agent.runtime.loop import (
     AgentRuntime,
     _is_direct_deliverable_request,
     _offline_prefer_discuss,
 )
-from agent.runtime.task_router import TaskRouter
+from tests.unit.agent_test_support import make_runtime_stub, make_session
 
 
 def _runtime_stub() -> AgentRuntime:
-    """Build a runtime without touching Postgres-backed FileRunStore."""
-    rt = AgentRuntime.__new__(AgentRuntime)
-    rt.store = SimpleNamespace(
-        persist=lambda session: None,
-        create=lambda **kwargs: SimpleNamespace(),
-    )
-    rt.registry = get_registry()
-    rt.task_router = TaskRouter(rt.registry)
-    return rt
+    return make_runtime_stub()
 
 
 def _session(**kwargs):
-    base = {
-        "messages": [],
-        "last_result": None,
-        "pending_goal": None,
-        "pending_action": None,
-        "run_history": [],
-        "top_n": 10,
-    }
-    base.update(kwargs)
-    return SimpleNamespace(**base)
+    return make_session(**kwargs)
 
 
 def test_direct_deliverable_no_longer_bypasses_on_bare_screening_discuss() -> None:
     text = "先别跑筛选，只讨论筛选条件怎么设"
     intent = parse_intent(text)
-    assert intent.wants_tools is True
+    # Soft domain noun「筛选」alone is no longer a deliverable surface.
+    assert intent.wants_tools is False
     assert _is_direct_deliverable_request(intent, text) is False
+
+
+def test_pending_structural_deliverable_supersedes_without_direct_re(monkeypatch) -> None:
+    """New csv/top deliverable clears pending; ranking candidate does not."""
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+
+    from tests.unit.agent_test_support import MemRunStore
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: ("other", "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="pending_supersede_0001")
+    session.pending_action = {
+        "source_text": "导出候选分子列表为 CSV 文件",
+        "want_csv": True,
+        "top_n": None,
+        "missing_slots": ["sdf", "top_n"],
+    }
+
+    # Ranking follow-up must keep the unfinished export pending.
+    list(runtime.handle_message(session, "为啥top1是T19959"))
+    assert session.pending_action is not None
+    assert session.pending_action.get("source_text") == "导出候选分子列表为 CSV 文件"
+
+    # Structural deliverable supersedes the old unfinished request (may open a
+    # fresh pending for its own missing slots).
+    list(runtime.handle_message(session, "生成 top10 候选清单 csv"))
+    assert session.pending_action is not None
+    assert session.pending_action.get("source_text") != "导出候选分子列表为 CSV 文件"
+    assert int(session.pending_action.get("requested_top_n") or 0) == 10
+
+
+def test_scp_live_denied_reply_aligns_with_default_live(monkeypatch) -> None:
+    from tests.unit.agent_test_support import make_runtime_stub
+
+    rt = make_runtime_stub()
+    disabled = rt._scp_live_denied_reply("查询文献，不要联网")
+    assert "明确关闭联网" in disabled
+    assert "不要联网" in disabled or "allow_live=true" in disabled
+
+    # Force default_live=false path.
+    monkeypatch.setattr(rt, "_scp_plugin_default_live", lambda: False)
+    offline = rt._scp_live_denied_reply("查询 MASLD 最新文献")
+    assert "默认不自动联网" in offline
+    assert "允许联网" in offline
+
+    monkeypatch.setattr(rt, "_scp_plugin_default_live", lambda: True)
+    monkeypatch.setattr(rt, "_scp_live_disabled", lambda _text: False)
+    fallback = rt._scp_live_denied_reply("查询文献")
+    assert "默认允许联网" in fallback
+
+
+def test_classify_pending_continuation_uses_llm_online(monkeypatch) -> None:
+    from agent.runtime.loop import AgentRuntime
+
+    rt = _runtime_stub()
+    pending = {
+        "source_text": "导出候选分子列表为 CSV 文件",
+        "want_csv": True,
+        "top_n": None,
+        "missing_slots": ["sdf", "top_n"],
+    }
+    session = _session(pending_action=pending, sdf_bytes=None)
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: ("continue", "user affirms unfinished export"),
+    )
+    act, why = rt._classify_pending_continuation(session, "可以继续吗？", pending)
+    assert act == "continue"
+    assert "affirms" in why or why == "user affirms unfinished export"
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: ("status", "asking progress"),
+    )
+    act, why = rt._classify_pending_continuation(session, "开始了没有", pending)
+    assert act == "status"
+
+
+def test_classify_pending_continuation_falls_back_offline(monkeypatch) -> None:
+    rt = _runtime_stub()
+    pending = {"source_text": "导出 CSV", "top_n": None}
+    session = _session(pending_action=pending)
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    act, why = rt._classify_pending_continuation(session, "需要", pending)
+    assert act == "continue"
+    assert "structural_pending_fallback" in why
+
+    act, why = rt._classify_pending_continuation(session, "好了嘛？", pending)
+    assert act == "status"
+    assert "structural_pending_fallback" in why
+
+    act, why = rt._classify_pending_continuation(session, "顺便问下 MASLD 是什么", pending)
+    assert act == "other"
+
+
+def test_soft_screening_noun_does_not_open_tool_lane() -> None:
+    chat = parse_intent("帮我介绍一下筛选能力有哪些")
+    assert chat.wants_tools is False
+    assert chat.execution_requested is False
+
+    mechanism_chat = parse_intent("MASLD 的机制假说是什么")
+    assert mechanism_chat.wants_tools is False
+
+
+def test_force_rescreen_still_opens_csv_surface() -> None:
+    intent = parse_intent("忽略之前条件，按默认配置重新筛选")
+    assert intent.force_rescreen is True
+    assert intent.want_csv is True
+    assert intent.wants_tools is True
 
 
 def test_direct_deliverable_still_matches_explicit_topn_run() -> None:
@@ -66,19 +176,26 @@ def test_bundle_alias_候选包() -> None:
     assert "masld_export_bundle" in intent.skill_ids
 
 
-def test_front_rank_span_is_ranking_explain() -> None:
-    intent = parse_intent("前 5 名里哪个更适合继续推进？")
-    assert intent.explain_ranking is True
+def test_front_rank_span_is_ranking_candidate_not_parse_explain() -> None:
+    """parse_intent marks a ranking candidate; dialog act stays for Loop/offline."""
+    from agent.intent import extract_ranking_positions, ranking_question_fallback
+
+    text = "前 5 名里哪个更适合继续推进？"
+    intent = parse_intent(text)
+    assert intent.explain_ranking is False
+    assert intent.wants_tools is True
+    assert intent.reason == "ranking_followup_candidate"
     assert intent.ranking_positions == (1, 2, 3, 4, 5)
-    assert intent.wants_tools is False
+    is_rank, _ = ranking_question_fallback(text)
+    assert is_rank is True
+    assert extract_ranking_positions(text) == (1, 2, 3, 4, 5)
 
 
 @pytest.mark.parametrize(
     ("text", "dialog_act", "gate"),
     [
-        # These are tool-shaped after Intent (contain screening vocabulary) and
-        # must be stopped by the LLM gate—not by a pause-phrase table.
-        ("先别跑筛选，只讨论筛选条件怎么设", "discuss_only", "block"),
+        # Tool-shaped surfaces (TopN / force-rescreen); gate decides execute vs discuss.
+        ("先别跑，只讨论条件；输出 Top10 候选清单 csv", "discuss_only", "block"),
         ("按默认配置重新筛选", "execute_now", "allow"),
         ("帮我跑一轮 MASLD 低毒降脂筛选，输出 Top10", "execute_now", "allow"),
         ("忽略之前条件，按默认配置重新筛选", "execute_now", "allow"),
@@ -110,6 +227,11 @@ def test_execution_gate_uses_llm_principles_not_phrase_table(
     assert meta["dialog_act"] == dialog_act
 
 
+def test_bare_screening_discuss_stays_chat_without_gate() -> None:
+    intent = parse_intent("先别跑筛选，只讨论筛选条件怎么设")
+    assert intent.wants_tools is False
+
+
 def test_non_tool_defer_phrases_stay_chat_without_gate() -> None:
     """Utterances without deliverable surface never enter the tool path."""
     for text in (
@@ -137,7 +259,7 @@ def test_gate_block_rewrites_tool_intent_before_router(monkeypatch) -> None:
         ),
     )
     rt = _runtime_stub()
-    text = "先别跑筛选，只讨论筛选条件怎么设"
+    text = "先别跑，只讨论条件；输出 Top10 候选清单 csv"
     intent = parse_intent(text)
     assert intent.wants_tools is True
     gate, meta = rt._classify_execution_gate(_session(), text, intent)
@@ -202,14 +324,54 @@ def test_need_screen_forced_on_rescreen_flag(monkeypatch) -> None:
     assert meta["force_rescreen"] is True
 
 
+def test_online_allow_still_calls_request_action_not_direct_bypass(monkeypatch) -> None:
+    """After gate=allow, online path must classify via LLM — not direct_deliverable."""
+    from agent.runtime.planning import AgentPlan
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (
+            {
+                "dialog_act": "execute_now",
+                "execution_gate": "allow",
+                "force_rescreen": False,
+                "reason": "online_allow",
+            },
+            "ok",
+        ),
+    )
+    calls: list[str] = []
+
+    def fake_plan(**kwargs):
+        calls.append("plan")
+        return (
+            AgentPlan(goal="生成 CSV", action="execute", rationale="明确交付物"),
+            "llm",
+        )
+
+    monkeypatch.setattr("agent.runtime.loop.llm_plan_request", fake_plan)
+    rt = _runtime_stub()
+    text = "帮我跑一轮 MASLD 低毒降脂筛选，输出 Top10"
+    intent = parse_intent(text)
+    assert _is_direct_deliverable_request(intent, text) is True
+    gate, _meta = rt._classify_execution_gate(_session(), text, intent)
+    assert gate == "allow"
+    action, why = rt._classify_request_action(_session(), text, intent)
+    assert action == "execute_tools"
+    assert why.startswith("llm;")
+    assert calls == ["plan"]
+
+
 def test_offline_gate_blocks_discuss_shaped_tool_surface(monkeypatch) -> None:
     monkeypatch.setattr(
         "agent.runtime.loop.llm_json_object",
         lambda **kwargs: (kwargs["default"], "llm_not_ready"),
     )
     rt = _runtime_stub()
-    text = "先别跑筛选，只讨论筛选条件怎么设"
+    # Deliverable surface first; discuss cue must be last for offline bias.
+    text = "输出 Top10 候选清单 csv\n先别跑，只讨论条件"
     intent = parse_intent(text)
+    assert intent.wants_tools is True
     gate, meta = rt._classify_execution_gate(_session(), text, intent)
     assert gate == "block"
     assert meta["dialog_act"] == "discuss_only"
@@ -325,7 +487,7 @@ def test_attach_sdf_same_bytes_preserves_freeze() -> None:
 
 
 def test_offline_prefer_discuss_on_compound_message() -> None:
-    text = "你好\n解释一下 MASLD 是什么\n先别跑筛选，只讨论筛选条件怎么设"
+    text = "你好\n解释一下 MASLD 是什么\n输出 Top10 候选清单 csv\n先别跑，只讨论条件"
     assert _offline_prefer_discuss(text) is True
     intent = parse_intent(text)
     assert intent.wants_tools is True
@@ -338,7 +500,7 @@ def test_offline_gate_discuss_bias_when_llm_unavailable(monkeypatch) -> None:
         lambda **kwargs: (kwargs["default"], "llm_unavailable:MechanismLLMError"),
     )
     rt = _runtime_stub()
-    text = "你好\n解释一下 MASLD 是什么\n先别跑筛选，只讨论筛选条件怎么设"
+    text = "你好\n解释一下 MASLD 是什么\n输出 Top10 候选清单 csv\n先别跑，只讨论条件"
     intent = parse_intent(text)
     gate, meta = rt._classify_execution_gate(_session(), text, intent)
     assert gate == "block"

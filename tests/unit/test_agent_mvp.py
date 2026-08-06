@@ -126,8 +126,9 @@ def test_parse_intent_only_proposes_tool_shape_for_ambiguous_top1_text() -> None
     # Structural parsing is deliberately not the final dialog-act decision.
     intent = parse_intent("为啥top1是T19959")
     assert intent.wants_tools is True
-    assert intent.want_csv is True
     assert intent.explain_ranking is False
+    assert intent.reason == "ranking_followup_candidate"
+    assert intent.execution_requested is False
 
 
 def test_extract_ranking_positions_preserves_each_named_rank() -> None:
@@ -138,12 +139,13 @@ def test_extract_ranking_positions_preserves_each_named_rank() -> None:
     assert ranking_position_subject_fallback("top11为啥没有进榜") is True
 
 
-def test_pending_csv_request_resumes_across_short_slot_replies(monkeypatch, tmp_path) -> None:
+def test_pending_csv_request_resumes_across_short_slot_replies(monkeypatch) -> None:
     """Regression for the exported “需要 → 10” session that became chat."""
     from types import SimpleNamespace
 
-    from agent.memory import FileRunStore
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
     def molecule(index: int) -> SimpleNamespace:
         return SimpleNamespace(
@@ -176,13 +178,32 @@ def test_pending_csv_request_resumes_across_short_slot_replies(monkeypatch, tmp_
         )
 
     monkeypatch.setattr("agent.runtime.loop.run_score_and_rank", fake_run)
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
 
-    first = list(runtime.handle_message(session, "导出候选分子列表为 CSV 文件"))
-    assert "tool_start" not in [event.get("type") for event in first]
-    assert session.pending_action is not None
-    assert set(session.pending_action["missing_slots"]) == {"sdf", "top_n"}
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="pending_resume_0001")
+    session.pending_action = {
+        "source_text": "导出候选分子列表为 CSV 文件",
+        "want_csv": True,
+        "want_pdf": False,
+        "want_reserve": False,
+        "want_bundle": False,
+        "skill_ids": ["masld_nominate"],
+        "top_n": None,
+        "requested_top_n": None,
+        "missing_slots": ["sdf", "top_n"],
+    }
 
     runtime.attach_sdf(session, filename="library.sdf", content=b"fake sdf")
     now = list(runtime.handle_message(session, "现在呢"))
@@ -208,13 +229,23 @@ def test_pending_csv_request_resumes_across_short_slot_replies(monkeypatch, tmp_
     assert session.last_run_id == "mm-pending-top10"
 
 
-def test_pending_action_status_does_not_claim_execution(tmp_path) -> None:
-    from agent.memory import FileRunStore
+def test_pending_action_status_does_not_claim_execution(monkeypatch) -> None:
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
-    list(runtime.handle_message(session, "导出候选分子列表为 CSV 文件"))
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="pending_status_0001")
+    session.pending_action = {
+        "source_text": "导出候选分子列表为 CSV 文件",
+        "want_csv": True,
+        "top_n": None,
+        "missing_slots": ["sdf", "top_n"],
+    }
 
     events = list(runtime.handle_message(session, "好了嘛？"))
     reply = next(event["text"] for event in events if event.get("type") == "assistant")
@@ -223,7 +254,162 @@ def test_pending_action_status_does_not_claim_execution(tmp_path) -> None:
     assert "tool_start" not in [event.get("type") for event in events]
 
 
+def test_pending_goal_resumes_after_sdf_provided(monkeypatch) -> None:
+    """Clarify-only pending_goal + later SDF bind must resume, not re-claim missing SDF."""
+    from types import SimpleNamespace
+
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
+
+    def molecule(index: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            molecule_id=f"T{index:05d}",
+            selection_score=0.6 - index / 1000,
+            competition_scoring_version="organizer-relative-effect-novelty-v1",
+            final_score=0.6 - index / 1000,
+            lipid_score=0.4,
+            tox_risk=0.2,
+            novelty_score=0.7,
+            lipid_rationale="药效团: aromatic ring",
+            selection_tier="similarity_strict",
+        )
+
+    def fake_run(_path, *, top_n, **_kwargs):
+        top = [molecule(index) for index in range(1, top_n + 1)]
+        return SimpleNamespace(
+            run_id="mm-pending-goal-top10",
+            output_count=top_n,
+            selection_sha256="selection-goal",
+            reserve_selection_sha256="reserve-goal",
+            config=SimpleNamespace(config_hash="config-goal", reserve_n=20),
+            input_sha256="input-goal",
+            source_filename="library.sdf",
+            top_molecules=top,
+            reserve_molecules=[],
+            scored_molecules=top,
+            to_csv_text=lambda: "molecule_id\n" + "\n".join(m.molecule_id for m in top) + "\n",
+            to_reserve_csv_text=lambda: "molecule_id\n",
+        )
+
+    monkeypatch.setattr("agent.runtime.loop.run_score_and_rank", fake_run)
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="pending_goal_sdf_0001")
+    session.pending_goal = {
+        "goal": "启动 MASLD 低毒降脂筛选并输出 Top10 候选分子",
+        "reason": "tool_contract_missing_parameters",
+        "rationale": "当前会话未检测到已绑定的 SDF 文件",
+        "source_text": "帮我跑一轮 MASLD 低毒降脂筛选，输出 Top10",
+        "missing_slots": ["sdf"],
+    }
+    runtime.attach_sdf(session, filename="T001.sdf", content=b"fake sdf")
+
+    events = list(runtime.handle_message(session, "提供了"))
+    plan = next(event for event in events if event.get("type") == "agent_plan")
+    assert "resumed_from_pending_goal" in (plan.get("diagnostics") or [])
+    starts = [event["tool"] for event in events if event.get("type") == "tool_start"]
+    assert "score_and_rank" in starts
+    assert session.pending_goal is None
+    assistant_texts = [
+        str(event.get("text") or "")
+        for event in events
+        if event.get("type") == "assistant"
+    ]
+    assert not any("尚未绑定" in text or "未检测到" in text for text in assistant_texts)
+
+
+def test_idle_message_binds_staged_sdf_attachment(monkeypatch) -> None:
+    """Idle /message path must bind turn-scoped SDF chips into session.sdf_bytes."""
+    from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+
+    store = MemRunStore()
+    runtime = AgentRuntime(store=store)
+    session = runtime.create_session(client_id="att_bind_0001")
+    staged = store.stage_attachment(
+        session,
+        filename="library.sdf",
+        content=b"Molfile content",
+        media_type="chemical/x-mdl-sdfile",
+    )
+    reserved = runtime.reserve_session_run(
+        session.session_id,
+        "提供了",
+        attachment_ids=[staged["attachment_id"]],
+    )
+    assert reserved["input"]["attachment_ids"] == [staged["attachment_id"]]
+    list(
+        runtime.handle_reserved_session_message(
+            session.session_id,
+            reserved["run_id"],
+            "提供了",
+        )
+    )
+    session = runtime.get_session(session.session_id)
+    assert session is not None
+    assert session.sdf_bytes == b"Molfile content"
+    assert session.sdf_filename == "library.sdf"
+
+
+def test_install_request_copy_does_not_promise_auto_retry(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+    from plugins.molmind_core.scientific.mechanism import llm_client
+    from tests.unit.agent_test_support import MemRunStore
+
+    monkeypatch.setattr(
+        llm_client,
+        "resolve_llm_settings",
+        lambda *args, **kwargs: SimpleNamespace(
+            ready=False, enabled=False, model="", base_url="", api_key="",
+            temperature=0, timeout_sec=5, max_tokens=400, cache_dir="", use_cache=False,
+        ),
+    )
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="scp_install_copy_0001", client_id="scp_install_copy_0001")
+    session.installed_scp_skills = {
+        "mechanism_research": {"skill_id": "mechanism_research", "enabled": True, "tools": []}
+    }
+    events = list(runtime.handle_message(session, "查询 MASLD 最新文献，允许联网"))
+    req = next(event for event in events if event.get("type") == "install_request")
+    assert "重试" not in str(req.get("summary") or "")
+    assistant = next(event for event in events if event.get("type") == "assistant")
+    text = str(assistant.get("text") or "")
+    assert "自动重试" not in text
+    assert "当前对话" in text
+
+
 def test_pending_action_survives_store_reload(tmp_path) -> None:
+    pytest.importorskip("psycopg")
     from agent.memory import FileRunStore
     from agent.runtime.loop import AgentRuntime
 
@@ -240,27 +426,35 @@ def test_pending_action_survives_store_reload(tmp_path) -> None:
     assert set(reloaded.pending_action["missing_slots"]) == {"sdf", "top_n"}
 
 
-def test_runtime_llm_classifies_ranking_followup_before_tools(
+def test_runtime_llm_classifies_ranking_followup_via_plan(
     monkeypatch, tmp_path
 ) -> None:
-    from agent.memory import FileRunStore
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from agent.runtime.planning import AgentPlan
 
-    # Ranking follow-ups are deterministic; the optional LLM classifier must
-    # not be required (and should not be consulted) for this boundary.
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (
+            AgentPlan(goal="解释排名", action="explain", rationale="追问冻结 Top1"),
+            "llm",
+        ),
+    )
+
     def boom(**kwargs):
-        raise AssertionError(f"llm_json_decision should not run: {kwargs}")
+        raise AssertionError(f"legacy llm_json_decision should not run: {kwargs}")
 
     monkeypatch.setattr("agent.runtime.loop.llm_json_decision", boom)
-    rt = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = rt.create_session()
+    rt = AgentRuntime(store=_mem_store())
+    session = AgentSession(session_id="rank_followup_0001")
     intent = parse_intent("为啥top1是T19959")
-    assert intent.explain_ranking is True
+    assert intent.explain_ranking is False
+    assert intent.wants_tools is True
     action, why = rt._classify_request_action(
         session, "为啥top1是T19959", intent
     )
     assert action == "explain_ranking"
-    assert why == "deterministic_frozen_ranking_followup"
+    assert why.startswith("llm;")
 
 
 def test_runtime_llm_classifies_top_n_explanation_with_frozen_count(
@@ -268,8 +462,13 @@ def test_runtime_llm_classifies_top_n_explanation_with_frozen_count(
 ) -> None:
     from types import SimpleNamespace
 
-    from agent.memory import FileRunStore
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
 
     def fake_decide(**kwargs):
         assert "最近冻结主榜数量：15" in kwargs["user"]
@@ -277,8 +476,8 @@ def test_runtime_llm_classifies_top_n_explanation_with_frozen_count(
         return "explain_ranking", "explains frozen Top15"
 
     monkeypatch.setattr("agent.runtime.loop.llm_json_decision", fake_decide)
-    rt = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = rt.create_session()
+    rt = AgentRuntime(store=_mem_store())
+    session = AgentSession(session_id="rank_top15_0001")
     session.last_result = SimpleNamespace(top_molecules=[object()] * 15)
     intent = parse_intent("解释一下 Top15")
     action, _ = rt._classify_request_action(session, "解释一下 Top15", intent)
@@ -298,19 +497,35 @@ def test_runtime_llm_classifies_top_n_explanation_with_frozen_count(
 def test_runtime_offline_fallback_keeps_ranking_question_read_only(
     text: str, monkeypatch, tmp_path
 ) -> None:
-    from agent.memory import FileRunStore
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
 
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
     monkeypatch.setattr(
         "agent.runtime.loop.llm_json_decision",
         lambda **kwargs: ("execute_tools", "llm_not_ready"),
     )
-    rt = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = rt.create_session()
+    rt = AgentRuntime(store=_mem_store())
+    session = AgentSession(session_id="rank_offline_0001")
     intent = parse_intent(text)
     action, why = rt._classify_request_action(session, text, intent)
     assert action == "explain_ranking"
-    assert why == "deterministic_frozen_ranking_followup"
+    assert "structural_question_fallback" in why
+
+
+def _mem_store():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        persist=lambda session: None,
+        set_title=lambda session, text: None,
+        append_event=lambda session, event: event,
+        create=lambda **kwargs: None,
+        get=lambda session_id: None,
+    )
 
 
 def test_parse_intent_explicit_top1_generation_still_runs_tools() -> None:

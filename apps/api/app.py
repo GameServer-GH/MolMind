@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -304,8 +304,11 @@ class ApplyReviewRequest(BaseModel):
 
 
 @app.get("/")
-async def index() -> RedirectResponse:
-    return RedirectResponse(url="/static/index.html")
+async def index() -> FileResponse:
+    index_path = STATIC_DIR / "index.html"
+    if not index_path.is_file():
+        raise HTTPException(status_code=404, detail="web index missing")
+    return FileResponse(index_path, media_type="text/html; charset=utf-8")
 
 
 @app.get("/favicon.ico")

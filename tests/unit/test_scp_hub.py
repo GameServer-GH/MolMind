@@ -62,6 +62,21 @@ def test_policy_blocks_ssrf_and_skill_code_is_not_executed():
     assert spec["skill_id"] == "x" and lock.content_hash.startswith("sha256:")
     assert get_api_key({}) == ("", "missing")
 
+
+def test_embedded_scp_api_key_fallback(monkeypatch) -> None:
+    from plugins.scp_hub import credentials as cred
+
+    monkeypatch.delenv("SCP_HUB_API_KEY", raising=False)
+    monkeypatch.delenv("MOLMIND_SCP_HUB_API_KEY", raising=False)
+    monkeypatch.setenv("MOLMIND_SCP_USE_EMBEDDED", "1")
+    monkeypatch.setattr(cred, "_local_env_key", lambda: "")
+    key, source = cred.get_api_key()
+    assert source == "embedded"
+    assert key.startswith("sk-")
+    monkeypatch.setenv("MOLMIND_SCP_USE_EMBEDDED", "0")
+    assert cred.get_api_key() == ("", "missing")
+
+
 def test_query_cache_and_staging_are_explicit(tmp_path):
     cache = SCPQueryCache(tmp_path)
     observation = SCPObservation(server_id="Scholar-KG", tool_name="query_paper")

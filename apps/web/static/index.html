@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="./favicon.png" type="image/png" sizes="24x24" />
+  <link rel="icon" href="/static/favicon.png" type="image/png" sizes="24x24" />
   <title>MolMind · 分子思维</title>
-  <link href="./vendor/tailwindcss/tailwind.css" rel="stylesheet" />
-  <link href="./vendor/fonts/inter/inter.css" rel="stylesheet" />
-  <link href="./vendor/fonts/material-symbols/material-symbols.css" rel="stylesheet" />
+  <link href="/static/vendor/tailwindcss/tailwind.css" rel="stylesheet" />
+  <link href="/static/vendor/fonts/inter/inter.css" rel="stylesheet" />
+  <link href="/static/vendor/fonts/material-symbols/material-symbols.css" rel="stylesheet" />
   <style>
     body {
       background-color: #e8eaed;
@@ -336,11 +336,11 @@
       overflow: hidden;
     }
   </style>
-  <link href="./agent/agent_chat.css?v=mm-install-offer-row-1" rel="stylesheet" />
-  <link href="./agent/agent_icons.css?v=mm-agent-stop-1" rel="stylesheet" />
-  <link href="./agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
-  <link href="./agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
-  <link href="./agent/confirm.css?v=mm-agent-client-switch-1" rel="stylesheet" />
+  <link href="/static/agent/agent_chat.css?v=mm-install-title-row-1" rel="stylesheet" />
+  <link href="/static/agent/agent_icons.css?v=mm-agent-stop-1" rel="stylesheet" />
+  <link href="/static/agent/agent_fullscreen.css?v=mm-agent-drawer-2" rel="stylesheet" />
+  <link href="/static/agent/tour/tour.css?v=mm-agent-clarify-1" rel="stylesheet" />
+  <link href="/static/agent/confirm.css?v=mm-agent-client-switch-1" rel="stylesheet" />
 </head>
 <body class="text-on-background font-sans antialiased min-h-screen flex flex-col overflow-x-hidden mm-body-agent">
 
@@ -893,15 +893,15 @@
     window.MOLMIND_MECHANISM_STATUS = (jobId) =>
       `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
   </script>
-  <script src="./agent/client_identity.js?v=mm-agent-client-switch-3"></script>
-  <script src="./agent/ui_render.js?v=mm-install-float-1"></script>
-  <script src="./agent/ui_turn_rail.js?v=mm-agent-turn-replay-1"></script>
-  <script src="./agent/ui_history.js?v=mm-agent-capability-audit-3"></script>
-  <script src="./agent/ui_settings.js?v=mm-install-float-1"></script>
-  <script src="./agent/ui_mention.js?v=mm-agent-mention-4"></script>
-  <script src="./agent/ui_run_status.js?v=mm-agent-run-6"></script>
-  <script src="./agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
-  <script src="./agent/tour/ui_tour.js?v=mm-tour-v3-1"></script>
-  <script src="./app.js?v=mm-install-float-1"></script>
+  <script src="/static/agent/client_identity.js?v=mm-agent-client-switch-3"></script>
+  <script src="/static/agent/ui_render.js?v=mm-token-stream-2"></script>
+  <script src="/static/agent/ui_turn_rail.js?v=mm-agent-turn-replay-1"></script>
+  <script src="/static/agent/ui_history.js?v=mm-agent-capability-audit-3"></script>
+  <script src="/static/agent/ui_settings.js?v=mm-install-float-1"></script>
+  <script src="/static/agent/ui_mention.js?v=mm-agent-mention-4"></script>
+  <script src="/static/agent/ui_run_status.js?v=mm-token-stream-2"></script>
+  <script src="/static/agent/tour/TourGuide.js?v=mm-agent-hist-3"></script>
+  <script src="/static/agent/tour/ui_tour.js?v=mm-tour-v3-1"></script>
+  <script src="/static/app.js?v=mm-queue-promote-3"></script>
 </body>
 </html>

@@ -633,6 +633,21 @@
         return;
       }
 
+      if (type === "assistant_delta") {
+        if (!phase || phase === "思考中" || /理解问题|计划/.test(String(phase))) {
+          phase = "生成回复";
+        }
+        if (steps.length >= 2 && /对话|回复|问答|理解问题/.test(steps.map((s) => s.desc).join(" "))) {
+          for (let i = 0; i < steps.length - 1; i++) {
+            if (steps[i].status !== "error") steps[i].status = "done";
+          }
+          stepIndex = steps.length - 1;
+          if (steps[stepIndex]) steps[stepIndex].status = "active";
+        }
+        paint();
+        return;
+      }
+
       if (type === "assistant") {
         // Chat: move to last step (“生成对话回复”) then complete.
         if (steps.length >= 2 && /对话|回复|问答|理解问题/.test(steps.map((s) => s.desc).join(" "))) {

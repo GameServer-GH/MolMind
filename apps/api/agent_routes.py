@@ -114,6 +114,9 @@ def _demo_sdf_path() -> Path:
 class MessageBody(BaseModel):
     text: str = Field(..., min_length=1)
     top_n: Optional[int] = None
+    # Idle /message/stream must accept turn-scoped chips the same way /turns does;
+    # otherwise demo/upload staging never binds into the session library.
+    attachment_ids: list[str] = Field(default_factory=list, max_length=8)
 
 
 class TurnBody(BaseModel):
@@ -1135,9 +1138,12 @@ async def message_stream(
             session_id,
             body.text,
             top_n=body.top_n,
+            attachment_ids=body.attachment_ids,
         )
     except SessionBusyError as exc:
         raise _busy_conflict(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     run_id = str(reserved_run["run_id"])
 
     loop = asyncio.get_running_loop()

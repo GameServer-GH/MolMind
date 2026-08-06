@@ -2208,18 +2208,56 @@
       showAgentToast("请先输入补充指引");
       return;
     }
-    if (card && card.kind === "queue" && card.turn_id && agentSessionId) {
+    const turnId = String((card && card.turn_id) || "");
+    const sid = agentSessionId || (await ensureAgentSession());
+    const expectedInterrupt = isCurrentAgentSessionBusy();
+
+    // Take the item out of the visible queue immediately — do not paint a new
+    // optimistic "排队" loading card (that reads as a normal enqueue flash).
+    if (card && card.kind === "queue" && turnId) {
+      agentPendingTurns = agentPendingTurns.filter(
+        (item) => String(item.turn_id || "") !== turnId
+      );
+      recomputeAgentQueueCount();
+      syncAgentBusyUi();
       const resp = await fetch(
-        `/api/agent/sessions/${agentSessionId}/turns/${encodeURIComponent(card.turn_id)}`,
+        `/api/agent/sessions/${sid}/turns/${encodeURIComponent(turnId)}`,
         { method: "DELETE" }
       );
-      if (!resp.ok && resp.status !== 409) {
+      if (!resp.ok && resp.status !== 409 && resp.status !== 404) {
+        await refreshAgentQueue(sid);
         throw new Error(
           apiErrorMessage(await resp.json().catch(() => ({})), "无法提升为指引")
         );
       }
     }
-    await submitBusyAgentTurn(text, "guidance");
+
+    const accepted = await submitBusyAgentTurn(text, "guidance", {
+      optimistic: false,
+    });
+    const disposition = String((accepted && accepted.disposition) || "");
+    const active =
+      (await refreshAgentQueue(sid))?.active_run ||
+      currentAgentRun(sid) ||
+      (disposition === "started" ? accepted : null);
+
+    if (disposition === "started" || (active && isAgentRunActive(active))) {
+      // Server had no active Run (common when only the typewriter is still
+      // draining). Treat as a direct send and paint the live ask/answer box.
+      if (active && isAgentRunActive(active)) {
+        setAgentRunSnapshot(sid, active);
+        if (!agentStreams.get(sid)?.running) {
+          await followActiveRunWithLiveTurn(sid, active);
+        }
+      }
+      showAgentToast(
+        expectedInterrupt
+          ? "当前步骤已结束，已直接发送该提示词"
+          : "已发送该提示词"
+      );
+      return;
+    }
+
     showAgentToast("指引已收到，正在停止当前步骤并重新规划");
   }
 
@@ -2471,8 +2509,42 @@
 
   let installFloatEl = null;
   let installFloatBusy = false;
+  /** Session id waiting for install/UI settle before auto-promoting queued turns. */
+  let agentQueueFollowDeferred = null;
+  /** True while continueAgentQueueFollow is actively trying to promote. */
+  let agentQueueFollowActive = false;
 
-  function dismissInstallRequestFloat() {
+  function isInstallRequestOpen() {
+    return !!(installFloatEl && installFloatEl.isConnected);
+  }
+
+  function isAgentStreamUiPending() {
+    return !!(
+      activeTurn &&
+      typeof activeTurn.isStreamPending === "function" &&
+      activeTurn.isStreamPending()
+    );
+  }
+
+  function hasAgentQueueWaiting() {
+    return agentPendingTurns.length > 0 || agentOptimisticTurns.length > 0;
+  }
+
+  /**
+   * Direct idle send is only safe when nothing else owns the turn lifecycle.
+   * Otherwise always enqueue via mode=queue and let /turns/next promote in order.
+   */
+  function shouldEnqueueAgentSend() {
+    return (
+      isCurrentAgentSessionBusy() ||
+      hasAgentQueueWaiting() ||
+      isInstallRequestOpen() ||
+      agentQueueFollowActive ||
+      !!agentQueueFollowDeferred
+    );
+  }
+
+  function dismissInstallRequestFloat({ resumeQueue = true } = {}) {
     if (installFloatEl && installFloatEl.parentNode) {
       installFloatEl.classList.remove("mm-install-float--open");
       const node = installFloatEl;
@@ -2480,6 +2552,16 @@
       setTimeout(() => node.remove(), 220);
     }
     installFloatBusy = false;
+    if (resumeQueue) {
+      resumeAgentQueueFollowAfterGate();
+    }
+  }
+
+  function resumeAgentQueueFollowAfterGate() {
+    const sid = agentQueueFollowDeferred || agentSessionId;
+    if (!sid || isInstallRequestOpen()) return;
+    agentQueueFollowDeferred = null;
+    continueAgentQueueFollow(sid).catch(() => {});
   }
 
   function installRequestSkills(detail) {
@@ -2507,7 +2589,11 @@
     const skills = installRequestSkills(detail);
     if (!skills.length) return;
     const host = document.getElementById("agentChatMain") || document.body;
-    dismissInstallRequestFloat();
+    // Replace any prior float without releasing the queue hold.
+    dismissInstallRequestFloat({ resumeQueue: false });
+    if (agentSessionId && hasAgentQueueWaiting()) {
+      agentQueueFollowDeferred = agentSessionId;
+    }
 
     const titles = skills.map((s) => s.title || s.skill_id).join("、");
     const mask = document.createElement("div");
@@ -2529,14 +2615,14 @@
         <p class="mm-install-float-error" aria-live="polite" hidden></p>
         <div class="mm-install-float-actions">
           <button type="button" class="mm-install-float-cancel">暂不安装</button>
-          <button type="button" class="mm-install-float-ok">确认安装并继续</button>
+          <button type="button" class="mm-install-float-ok">确认安装</button>
         </div>
       </div>
     `;
     mask.querySelector(".mm-install-float-title").textContent = titles;
     mask.querySelector(".mm-install-float-summary").textContent =
       (detail && detail.summary) ||
-      `确认后将安装「${titles}」并立即重试本轮请求。`;
+      `确认后将安装「${titles}」，即可在当前对话继续使用。`;
     const list = mask.querySelector(".mm-install-float-list");
     skills.forEach((skill) => {
       const li = document.createElement("li");
@@ -2591,17 +2677,17 @@
         if (MentionUI && sessionId) {
           MentionUI.refresh(sessionId).catch(() => {});
         }
-        const retryText = String((detail && detail.retry_text) || "").trim();
-        showAgentToast(`已安装「${titles}」，正在继续…`);
+        // Stay in the current conversation after install. Replaying retry_text
+        // as a new user turn (especially bare「安装」) duplicates prompts and
+        // makes the install card look like a second install request.
+        showAgentToast(`已安装「${titles}」，可直接在当前对话继续`);
         dismissInstallRequestFloat();
-        if (retryText) {
-          await sendAgentMessage(retryText);
-        }
+        if (agentInput) agentInput.focus();
       } catch (error) {
         installFloatBusy = false;
         okBtn.disabled = false;
         cancelBtn.disabled = false;
-        okBtn.textContent = "确认安装并继续";
+        okBtn.textContent = "确认安装";
         errorEl.hidden = false;
         errorEl.textContent = (error && error.message) || "安装失败，请重试";
       }
@@ -2665,6 +2751,17 @@
       activeTurn.finalize();
       activeTurn = null;
     }
+  }
+
+  /** Let the browser paint between token deltas so batched NDJSON still looks live. */
+  function yieldAgentPaintFrame() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => resolve());
+      } else {
+        setTimeout(resolve, 16);
+      }
+    });
   }
 
   async function finishTurnAfterStream(turn) {
@@ -3509,53 +3606,110 @@
 
   async function continueAgentQueueFollow(sessionId) {
     if (!sessionId) return;
-    // Wait for the previous turn's streaming UI to settle, then explicitly
-    // promote the next queued Turn and paint ask/answer like a normal send.
-    for (let attempt = 0; attempt < 8; attempt++) {
-      if (agentSessionId !== sessionId) return;
-      if (agentStreams.get(sessionId)?.running) return;
-      await waitForAgentPoll(attempt === 0 ? 350 : 500);
-      if (agentSessionId !== sessionId) return;
-      if (agentStreams.get(sessionId)?.running) return;
-
-      try {
-        await refreshAgentQueue(sessionId);
-      } catch {
-        continue;
-      }
-      if (agentSessionId !== sessionId) return;
-
-      if (isAgentRunActive(currentAgentRun(sessionId))) {
-        await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
-        return;
-      }
-      if (!agentPendingTurns.length) return;
-
-      let started = null;
-      try {
-        started = await promoteNextQueuedTurn(sessionId);
-      } catch (error) {
-        if (attempt >= 7) {
-          showAgentToast(error.message || "排队任务启动失败");
+    // Install confirmation owns the conversation gate: do not auto-promote
+    // queued turns underneath the modal (that scrambled ask/answer order).
+    if (isInstallRequestOpen()) {
+      agentQueueFollowDeferred = sessionId;
+      return;
+    }
+    if (agentQueueFollowActive) {
+      // Another drain loop is already responsible; remember if we need a
+      // follow-up pass after install/UI settle.
+      if (hasAgentQueueWaiting()) agentQueueFollowDeferred = sessionId;
+      return;
+    }
+    agentQueueFollowActive = true;
+    try {
+      // Wait for the previous turn's streaming UI to settle, then explicitly
+      // promote the next queued Turn and paint ask/answer like a normal send.
+      for (let attempt = 0; attempt < 12; ) {
+        if (agentSessionId !== sessionId) return;
+        if (isInstallRequestOpen()) {
+          agentQueueFollowDeferred = sessionId;
           return;
         }
-        continue;
+        if (agentStreams.get(sessionId)?.running) return;
+        if (isAgentStreamUiPending()) {
+          // Do not burn promote retries while the typewriter is still draining.
+          if (activeTurn && typeof activeTurn.waitForStream === "function") {
+            try {
+              await Promise.race([
+                activeTurn.waitForStream(),
+                waitForAgentPoll(20000),
+              ]);
+            } catch {
+              await waitForAgentPoll(350);
+            }
+          } else {
+            await waitForAgentPoll(350);
+          }
+          continue;
+        }
+        attempt += 1;
+        await waitForAgentPoll(attempt === 1 ? 200 : 350);
+        if (agentSessionId !== sessionId) return;
+        if (isInstallRequestOpen()) {
+          agentQueueFollowDeferred = sessionId;
+          return;
+        }
+        if (agentStreams.get(sessionId)?.running) return;
+        if (isAgentStreamUiPending()) continue;
+
+        try {
+          await refreshAgentQueue(sessionId);
+        } catch {
+          continue;
+        }
+        if (agentSessionId !== sessionId) return;
+        if (isInstallRequestOpen()) {
+          agentQueueFollowDeferred = sessionId;
+          return;
+        }
+
+        if (isAgentRunActive(currentAgentRun(sessionId))) {
+          await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
+          return;
+        }
+        if (!agentPendingTurns.length) return;
+
+        let started = null;
+        try {
+          started = await promoteNextQueuedTurn(sessionId);
+        } catch (error) {
+          if (attempt >= 12) {
+            showAgentToast(error.message || "排队任务启动失败");
+            return;
+          }
+          continue;
+        }
+        if (agentSessionId !== sessionId) return;
+        try {
+          await refreshAgentQueue(sessionId);
+        } catch {
+          /* queue rail is best-effort */
+        }
+        if (started && started.started && started.active_run) {
+          await followActiveRunWithLiveTurn(sessionId, started.active_run);
+          return;
+        }
+        if (isAgentRunActive(currentAgentRun(sessionId))) {
+          await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
+          return;
+        }
+        if (!agentPendingTurns.length) return;
       }
-      if (agentSessionId !== sessionId) return;
-      try {
-        await refreshAgentQueue(sessionId);
-      } catch {
-        /* queue rail is best-effort */
+    } finally {
+      agentQueueFollowActive = false;
+      if (
+        agentQueueFollowDeferred &&
+        !isInstallRequestOpen() &&
+        agentSessionId === agentQueueFollowDeferred &&
+        hasAgentQueueWaiting()
+      ) {
+        const again = agentQueueFollowDeferred;
+        agentQueueFollowDeferred = null;
+        continueAgentQueueFollow(again).catch(() => {});
       }
-      if (started && started.started && started.active_run) {
-        await followActiveRunWithLiveTurn(sessionId, started.active_run);
-        return;
-      }
-      if (isAgentRunActive(currentAgentRun(sessionId))) {
-        await followActiveRunWithLiveTurn(sessionId, currentAgentRun(sessionId));
-        return;
-      }
-      if (!agentPendingTurns.length) return;
     }
   }
 
@@ -3917,19 +4071,34 @@
     if (!Render) return;
     // User chose to send instead of picking a quick prompt — drop the clarify card.
     dismissAttachmentClarify();
-    dismissInstallRequestFloat();
+    // Do not dismiss the install float here: it gates queue auto-drain. Closing it
+    // on every send let queued turns race under the install decision.
     const submitted = String(text || "").trim();
     if (!submitted) return;
 
-    if (isCurrentAgentSessionBusy()) {
+    if (shouldEnqueueAgentSend()) {
       if (agentQueueCount >= 3) {
         showAgentToast("排队已满（最多 3 条），请等待或将某条提升为指引");
         return;
       }
+      const holdInstall = isInstallRequestOpen();
+      const holdQueueOrSettle =
+        agentPendingTurns.length > 0 ||
+        agentOptimisticTurns.length > 0 ||
+        isAgentStreamUiPending() ||
+        agentQueueFollowActive ||
+        !!agentQueueFollowDeferred;
       try {
         // Kick off submit first so the optimistic queue card paints before the input clears.
+        // Always mode=queue so the server never starts ahead of durable pending turns
+        // while the previous answer is still rendering or install is open.
         const pending = submitBusyAgentTurn(submitted, "queue");
         clearAgentInput();
+        if (holdInstall) {
+          showAgentToast("已加入排队；确认安装后将按顺序发送");
+        } else if (holdQueueOrSettle) {
+          showAgentToast("已加入排队，将按顺序发送");
+        }
         return await pending;
       } catch (error) {
         restoreAgentInputText(submitted);
@@ -3977,10 +4146,16 @@
       }
       syncAgentBusyUi();
 
+      const attachmentIds = pendingChips
+        .map((item) => item.attachment_id)
+        .filter(Boolean);
       const resp = await fetch(`/api/agent/sessions/${streamSid}/message/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: submitted }),
+        body: JSON.stringify({
+          text: submitted,
+          attachment_ids: attachmentIds,
+        }),
         signal,
       });
       if (!isStreamEntryActive(streamSid, entry)) return;
@@ -4052,6 +4227,12 @@
           }
           if (canPaintStream(streamSid, entry, ownedTurn)) {
             ownedTurn.applyEvent(ev);
+            if (ev.type === "assistant_delta") {
+              agentScrollBottom();
+              // One frame per delta so a burst of tokens still reveals progressively.
+              await yieldAgentPaintFrame();
+              continue;
+            }
             if (ev.type === "done" || ev.type === "error") {
               sawTerminal = true;
               await finishTurnAfterStream(ownedTurn);
@@ -4135,7 +4316,7 @@
     }
   }
 
-  async function submitBusyAgentTurn(text, mode) {
+  async function submitBusyAgentTurn(text, mode, { optimistic = true } = {}) {
     const pending = getPendingAgentAttachments();
     const attachmentIds = pending.map((item) => item.attachment_id).filter(Boolean);
     const attachments = pending.map((item) => ({
@@ -4144,12 +4325,15 @@
       kind: item.kind || "",
     }));
     // Paint an empty loading card immediately so clearing the input does not feel like a failed send.
-    const optimisticKey = pushOptimisticQueueTurn({
-      kind: mode === "guidance" ? "guidance" : "queue",
-      text,
-      attachment_ids: attachmentIds,
-      attachments,
-    });
+    // Callers that already own a queue-rail transition (e.g. promote-to-guidance) can skip this.
+    const optimisticKey = optimistic
+      ? pushOptimisticQueueTurn({
+          kind: mode === "guidance" ? "guidance" : "queue",
+          text,
+          attachment_ids: attachmentIds,
+          attachments,
+        })
+      : null;
     try {
       const sid = await ensureAgentSession();
       const idempotencyKey =
@@ -4174,11 +4358,11 @@
       consumeAgentDraft(text);
       if (pending.length) setAgentAttachment(null, { pending: false });
       // Drop placeholder before refresh paint to avoid a duplicate flash.
-      removeOptimisticQueueTurn(optimisticKey, { paint: false });
+      if (optimisticKey) removeOptimisticQueueTurn(optimisticKey, { paint: false });
       await refreshAgentQueue(sid);
       return accepted;
     } catch (error) {
-      removeOptimisticQueueTurn(optimisticKey);
+      if (optimisticKey) removeOptimisticQueueTurn(optimisticKey);
       throw error;
     }
   }

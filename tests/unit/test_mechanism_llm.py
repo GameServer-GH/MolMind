@@ -119,6 +119,73 @@ def test_chat_completion_http(monkeypatch, tmp_path: Path) -> None:
     fake_client.post.assert_not_called()
 
 
+def test_chat_completion_stream_yields_deltas(monkeypatch, tmp_path: Path) -> None:
+    from services.mechanism.llm_client import chat_completion_stream
+
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-live")
+    settings = resolve_llm_settings(
+        {
+            "enabled": True,
+            "mechanism_pdf": True,
+            "model": "deepseek-chat",
+            "base_url": "https://api.deepseek.com/v1",
+            "cache_dir": str(tmp_path),
+            "use_cache": False,
+            "temperature": 0,
+        }
+    )
+
+    sse_body = (
+        'data: {"choices":[{"delta":{"content":"你"}}]}\n'
+        'data: {"choices":[{"delta":{"content":"好"}}]}\n'
+        "data: [DONE]\n"
+    )
+
+    fake_resp = MagicMock()
+    fake_resp.raise_for_status = MagicMock()
+    fake_resp.iter_text.return_value = iter([sse_body])
+    fake_resp.read = MagicMock()
+    fake_resp.__enter__ = MagicMock(return_value=fake_resp)
+    fake_resp.__exit__ = MagicMock(return_value=False)
+
+    fake_client = MagicMock()
+    fake_client.__enter__.return_value = fake_client
+    fake_client.__exit__.return_value = False
+    fake_client.stream.return_value = fake_resp
+
+    with patch("services.mechanism.llm_client.httpx.Client", return_value=fake_client):
+        chunks = list(chat_completion_stream(settings, system="s", user="u"))
+    assert chunks == ["你", "好"]
+    fake_client.stream.assert_called_once()
+    _, kwargs = fake_client.stream.call_args
+    assert kwargs["json"]["stream"] is True
+
+
+def test_chat_completion_stream_uses_cache(monkeypatch, tmp_path: Path) -> None:
+    from services.mechanism.llm_client import (
+        _cache_key,
+        _write_cache,
+        chat_completion_stream,
+    )
+
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    settings = resolve_llm_settings(
+        {
+            "enabled": True,
+            "mechanism_pdf": True,
+            "model": "deepseek-chat",
+            "base_url": "https://api.deepseek.com/v1",
+            "cache_dir": str(tmp_path),
+            "use_cache": True,
+            "temperature": 0,
+        }
+    )
+    key = _cache_key("deepseek-chat", "sys", "user", 0.0)
+    _write_cache(tmp_path, key, model="deepseek-chat", content="cached-stream")
+    chunks = list(chat_completion_stream(settings, system="sys", user="user"))
+    assert chunks == ["cached-stream"]
+
+
 def test_render_falls_back_without_key(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("MOLMIND_LLM_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)

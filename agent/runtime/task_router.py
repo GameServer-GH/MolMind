@@ -184,16 +184,51 @@ class TaskRouter:
                 confidence=1.0,
             )
 
-        # Capability matched in the SCP Hub catalog, but the Skill is not
-        # installed/enabled on this session → ask to install, never chat-fallback
-        # (which previously told users to open PubMed instead).
         plugin = self.registry.plugins.get("scp-hub")
         declared_skill_ids = {
             str(capability.get("skill_id") or "")
             for capability in (getattr(plugin, "capabilities", None) or [])
             if isinstance(capability, dict) and capability.get("skill_id")
         }
+        recent = list(getattr(session, "messages", None) or [])[-6:]
+
+        # Session act first (inventory / propose_install / chat / deny). Do not
+        # let YAML task_terms short-circuit meta questions ahead of this decision.
+        dialog = self.plan_session_act(
+            text,
+            session,
+            recent_messages=recent,
+        )
+        if dialog is not None:
+            if dialog.route == "deny":
+                return dialog
+            if dialog.route == "clarify" and str(dialog.reason or "").startswith(
+                "scp_skill_not_installed:"
+            ):
+                return dialog
+            if dialog.route == "chat" and "inventory" in str(dialog.reason or ""):
+                return dialog
+
+        # Full-catalog SCP planning (enabled + installable). Call even when no
+        # skill is enabled so the planner can still propose_install.
         if declared_skill_ids:
+            scp = self.plan_scp(
+                text,
+                enabled_skill_ids=enabled,
+                recent_messages=recent,
+            )
+            if scp is not None and str(scp.route) == "scp":
+                return scp
+            if scp is not None and str(scp.route) in {"clarify", "deny"}:
+                return scp
+            if scp is not None and str(scp.route) == "chat":
+                reason = str(scp.reason or "")
+                if "inventory" in reason or dialog is None:
+                    return scp
+
+        # LLM-down only: task_terms may propose install / execute when session-act
+        # LLM was unavailable. Never use this path to override a live inventory act.
+        if dialog is None and declared_skill_ids:
             declared = self.route_scp(text, enabled_skill_ids=declared_skill_ids)
             if (
                 declared is not None
@@ -209,16 +244,16 @@ class TaskRouter:
                     arguments={},
                     reason=f"scp_skill_not_installed:{declared.skill_id}",
                     evidence_required=True,
-                    planner_status="deterministic",
+                    planner_status="deterministic_offline",
                     confidence=1.0,
                 )
+            if enabled:
+                executed = self.route_scp(text, enabled_skill_ids=enabled)
+                if executed is not None:
+                    return executed
 
-        if enabled:
-            scp = self.plan_scp(text, enabled_skill_ids=enabled)
-            if scp is not None and str(scp.route) == "scp":
-                return scp
-            if scp is not None and str(scp.route) in {"clarify", "deny", "chat"}:
-                return scp
+        if dialog is not None:
+            return dialog
 
         return TaskRoute(
             route="chat",
@@ -475,6 +510,145 @@ class TaskRouter:
             evidence_required=bool(capability.get("evidence_required", True)),
         )
 
+    def plan_session_act(
+        self,
+        text: str,
+        session: Any,
+        *,
+        recent_messages: list[dict[str, Any]] | None = None,
+    ) -> TaskRoute | None:
+        """LLM dialog decision over the live capability surface (no keyword tables)."""
+        try:
+            from agent.runtime.capability_context import (
+                build_capability_surface,
+                format_capability_surface_for_prompt,
+            )
+            from plugins.molmind_core.scientific.mechanism.llm_client import (
+                chat_completion,
+                resolve_llm_settings,
+            )
+
+            settings = resolve_llm_settings(
+                {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+            )
+            if not settings.ready:
+                return None
+            settings = type(settings)(
+                enabled=settings.enabled,
+                model=settings.model,
+                base_url=settings.base_url,
+                api_key=settings.api_key,
+                temperature=0.0,
+                timeout_sec=min(settings.timeout_sec, 12.0),
+                max_tokens=min(max(settings.max_tokens, 320), 700),
+                cache_dir=settings.cache_dir,
+                use_cache=False,
+            )
+            surface = build_capability_surface(self.registry, session)
+            installable_ids = {
+                str(item.get("skill_id") or "")
+                for item in surface.get("installable_scp_skills") or []
+                if str(item.get("skill_id") or "") and not bool(item.get("enabled"))
+            }
+            capability_by_skill = {
+                str(item.get("skill_id") or ""): str(item.get("capability_id") or "")
+                for item in surface.get("installable_scp_skills") or []
+                if str(item.get("skill_id") or "")
+            }
+            title_by_skill = {
+                str(item.get("skill_id") or ""): str(
+                    item.get("title") or item.get("skill_id") or ""
+                )
+                for item in surface.get("installable_scp_skills") or []
+                if str(item.get("skill_id") or "")
+            }
+            history = "\n".join(
+                f"{item.get('role')}: {str(item.get('text') or '')[:280]}"
+                for item in (recent_messages or [])[-4:]
+                if item.get("role") in {"user", "assistant"}
+            )
+            system = (
+                "你是 MolMind 的会话决策器。只返回 JSON，不要 Markdown。"
+                "格式：{\"act\":\"inventory|propose_install|chat|deny\","
+                "\"skill_id\":\"\",\"confidence\":0.0,\"reason\":\"...\"}。"
+                "依据下方「能力面」事实做决策，禁止编造未列出的插件/技能/工具。"
+                "act 含义："
+                "inventory=用户在询问当前已装或可装的插件/技能/工具/MCP/Catalog，"
+                "应基于能力面回答，不执行科研工具；"
+                "propose_install=用户意图明显需要某个尚未启用的 SCP skill，"
+                "skill_id 必须来自能力面中未启用的 installable_scp_skills；"
+                "chat=普通概念、用法、流程或闲聊；"
+                "deny=用户想用实时资料改写/重算冻结主榜。"
+                "根据用户目标语义判断，不要臆造能力。"
+            )
+            user = (
+                f"能力面：{format_capability_surface_for_prompt(surface)}\n"
+                f"最近对话：{history or '（无）'}\n"
+                f"用户本轮：{text}"
+            )
+            raw = chat_completion(settings, system=system, user=user).strip()
+            match = re.search(r"\{[\s\S]*\}", raw)
+            data = json.loads(match.group(0) if match else raw)
+            if not isinstance(data, dict):
+                return None
+            act = str(data.get("act") or "chat").strip().lower()
+            skill_id = str(data.get("skill_id") or "").strip()
+            reason = str(data.get("reason") or "session_act")[:500]
+            confidence = self._confidence(data.get("confidence"))
+            if act == "deny":
+                return TaskRoute(
+                    route="deny",
+                    capability_id="",
+                    skill_id="",
+                    tool_id="",
+                    label="拒绝改写冻结排名",
+                    arguments={},
+                    reason=f"session_act_deny:{reason}",
+                    evidence_required=False,
+                    planner_status="llm",
+                    confidence=confidence,
+                )
+            if act == "propose_install" and skill_id and skill_id in installable_ids:
+                return TaskRoute(
+                    route="clarify",
+                    capability_id=capability_by_skill.get(skill_id, ""),
+                    skill_id=skill_id,
+                    tool_id="",
+                    label=title_by_skill.get(skill_id, skill_id),
+                    arguments={},
+                    reason=f"scp_skill_not_installed:{skill_id}",
+                    evidence_required=True,
+                    planner_status="llm",
+                    confidence=confidence,
+                )
+            if act == "inventory":
+                return TaskRoute(
+                    route="chat",
+                    capability_id="",
+                    skill_id="",
+                    tool_id="",
+                    label="能力清单说明",
+                    arguments={},
+                    reason=f"session_act_inventory:{reason}",
+                    evidence_required=False,
+                    planner_status="llm",
+                    confidence=confidence,
+                )
+            return TaskRoute(
+                route="chat",
+                capability_id="",
+                skill_id="",
+                tool_id="",
+                label="普通对话",
+                arguments={},
+                reason=f"session_act_chat:{reason}",
+                evidence_required=False,
+                planner_status="llm",
+                confidence=confidence,
+            )
+        except Exception:
+            return None
+
     def plan_scp(
         self,
         text: str,
@@ -486,23 +660,27 @@ class TaskRouter:
         """Return a constrained LLM plan or the deterministic Phase-2 route."""
         fallback = self.route_scp(text, enabled_skill_ids=enabled_skill_ids)
         plugin = self.registry.plugins.get("scp-hub")
-        candidates = [
+        declared = [
             capability
             for capability in (getattr(plugin, "capabilities", None) or [])
-            if isinstance(capability, dict)
-            and str(capability.get("skill_id") or "") in enabled_skill_ids
+            if isinstance(capability, dict) and str(capability.get("skill_id") or "")
         ]
-        # A declarative task-term match is authoritative.  The LLM may refine
-        # arguments within that capability, but cannot silently replace it
-        # with another installed Skill.
-        if fallback is not None:
-            candidates = [
-                capability
-                for capability in candidates
-                if str(capability.get("capability_id") or "")
-                == fallback.capability_id
-            ]
-        if not candidates:
+        enabled_caps = [
+            capability
+            for capability in declared
+            if str(capability.get("skill_id") or "") in enabled_skill_ids
+        ]
+        installable_caps = [
+            capability
+            for capability in declared
+            if str(capability.get("skill_id") or "") not in enabled_skill_ids
+        ]
+        # Keep the full enabled catalog for the LLM. task_terms (fallback) is only
+        # a soft retrieval_hint and the offline/invalid-plan fallback — never a
+        # hard candidate narrow that overrides planner choice among enabled caps.
+        candidates = enabled_caps
+        hint_capability_id = str(fallback.capability_id or "") if fallback is not None else ""
+        if not candidates and not installable_caps:
             return fallback
         try:
             from plugins.molmind_core.scientific.mechanism.llm_client import (
@@ -526,8 +704,8 @@ class TaskRouter:
                 cache_dir=settings.cache_dir,
                 use_cache=False,
             )
-            catalog = []
-            for capability in candidates:
+
+            def _cap_entry(capability: dict[str, Any], *, status: str) -> dict[str, Any]:
                 tools = []
                 for tool_id in capability.get("tools") or []:
                     tool = self.registry.tools.get(str(tool_id))
@@ -535,23 +713,36 @@ class TaskRouter:
                         {
                             "tool_id": str(tool_id),
                             "input_schema": getattr(tool, "input_schema", {}) if tool else {},
-                            "writes_selection": bool(getattr(tool, "writes_selection", False)) if tool else False,
+                            "writes_selection": bool(getattr(tool, "writes_selection", False))
+                            if tool
+                            else False,
                         }
                     )
-                catalog.append(
-                    {
-                        "capability_id": capability.get("capability_id"),
-                        "skill_id": capability.get("skill_id"),
-                        "title": capability.get("title"),
-                        "domains": capability.get("domains") or [],
-                        "entity_types": capability.get("entity_types") or [],
-                        "supports": capability.get("supports") or [],
-                        "output_types": capability.get("output_types") or [],
-                        "default_arguments": capability.get("default_arguments") or {},
-                        "planner_argument_keys": capability.get("planner_argument_keys") or [],
-                        "tools": tools,
-                    }
-                )
+                entry = {
+                    "status": status,
+                    "capability_id": capability.get("capability_id"),
+                    "skill_id": capability.get("skill_id"),
+                    "title": capability.get("title"),
+                    "domains": capability.get("domains") or [],
+                    "entity_types": capability.get("entity_types") or [],
+                    "supports": capability.get("supports") or [],
+                    "output_types": capability.get("output_types") or [],
+                    "default_arguments": capability.get("default_arguments") or {},
+                    "planner_argument_keys": capability.get("planner_argument_keys") or [],
+                    "tools": tools,
+                }
+                if (
+                    status == "enabled"
+                    and hint_capability_id
+                    and str(capability.get("capability_id") or "") == hint_capability_id
+                ):
+                    entry["retrieval_hint"] = True
+                return entry
+
+            catalog = [
+                *[_cap_entry(item, status="enabled") for item in candidates],
+                *[_cap_entry(item, status="installable") for item in installable_caps],
+            ]
             history = "\n".join(
                 f"{item.get('role')}: {str(item.get('text') or '')[:300]}"
                 for item in (recent_messages or [])[-4:]
@@ -559,13 +750,19 @@ class TaskRouter:
             )
             system = (
                 "你是 MolMind 的受约束 Plugin Capability Planner。只返回 JSON，不要 Markdown。"
-                "格式：{\"route\":\"scp|chat|clarify|deny\",\"capability_id\":\"...\","
-                "\"skill_id\":\"...\",\"tool_id\":\"...\",\"arguments\":{},"
-                "\"confidence\":0.0,\"reason\":\"...\"}。"
-                "只能选择目录中存在且 writes_selection=false 的能力和工具；arguments 必须满足"
-                " input_schema。实时资料只能作 supplementary evidence，不能重算或修改候选排名。"
+                "格式：{\"route\":\"scp|propose_install|inventory|chat|clarify|deny\","
+                "\"capability_id\":\"...\",\"skill_id\":\"...\",\"tool_id\":\"...\","
+                "\"arguments\":{},\"confidence\":0.0,\"reason\":\"...\"}。"
+                "能力目录含 status=enabled|installable。"
+                "route=scp 只能选择 status=enabled 且 writes_selection=false 的能力与工具；"
+                "arguments 必须满足 input_schema。"
+                "retrieval_hint=true 仅作检索提示，不是强制；你仍可在 enabled 中另选更合适的能力。"
+                "route=propose_install：用户意图需要 status=installable 的 skill，"
+                "skill_id/capability_id 必须来自该条目。"
+                "route=inventory：用户在询问已装/可装能力清单，不执行工具。"
+                "实时资料只能作 supplementary evidence，不能重算或修改候选排名。"
                 "default_arguments 由插件固定，planner_argument_keys 之外的参数不会被采纳。"
-                "普通对话或目录能力不适用时返回 chat；缺少用户必须补充的信息时才返回 clarify；"
+                "普通对话返回 chat；缺少用户必须补充的信息时才返回 clarify；"
                 "请求用实时资料改榜时返回 deny。"
             )
             user = (
@@ -575,8 +772,46 @@ class TaskRouter:
             raw = chat_completion(settings, system=system, user=user).strip()
             match = re.search(r"\{[\s\S]*\}", raw)
             data = json.loads(match.group(0) if match else raw)
-            if str(data.get("route") or "") != "scp":
-                declined_route = str(data.get("route") or "chat")
+            route_name = str(data.get("route") or "")
+            if route_name == "inventory":
+                return TaskRoute(
+                    route="chat",
+                    capability_id="",
+                    skill_id="",
+                    tool_id="",
+                    label="能力清单说明",
+                    arguments={},
+                    reason=str(data.get("reason") or "planner_inventory")[:500],
+                    evidence_required=False,
+                    planner_status="llm",
+                    confidence=self._confidence(data.get("confidence")),
+                )
+            if route_name == "propose_install":
+                skill_id = str(data.get("skill_id") or "").strip()
+                capability = next(
+                    (
+                        item
+                        for item in installable_caps
+                        if str(item.get("skill_id") or "") == skill_id
+                    ),
+                    None,
+                )
+                if capability is None:
+                    return fallback
+                return TaskRoute(
+                    route="clarify",
+                    capability_id=str(capability.get("capability_id") or ""),
+                    skill_id=skill_id,
+                    tool_id="",
+                    label=str(capability.get("title") or skill_id),
+                    arguments={},
+                    reason=f"scp_skill_not_installed:{skill_id}",
+                    evidence_required=True,
+                    planner_status="llm",
+                    confidence=self._confidence(data.get("confidence")),
+                )
+            if route_name != "scp":
+                declined_route = route_name or "chat"
                 if declined_route not in {"chat", "clarify", "deny"}:
                     return fallback
                 return TaskRoute(

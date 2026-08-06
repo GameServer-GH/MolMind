@@ -350,7 +350,61 @@ def test_preflight_identifies_uninstalled_semantic_capability(monkeypatch) -> No
     assert route.planner_status == "llm_preflight"
 
 
-def test_planner_cannot_replace_declared_mechanism_with_literature(monkeypatch) -> None:
+def test_planner_honors_llm_choice_among_enabled_capabilities(monkeypatch) -> None:
+    """task_terms hint must not narrow candidates; valid LLM choice wins."""
+    from types import SimpleNamespace
+    from agent.registry.models import ToolSpec
+    from plugins.molmind_core.scientific.mechanism import llm_client
+
+    registry = AgentRegistry()
+    for tool_id, title in (
+        ("scp:SciGraph-Bio:query_cypher", "cypher"),
+        ("scp:Scholar-KG:query_paper", "paper"),
+    ):
+        registry.register_dynamic_tool(
+            ToolSpec(
+                tool_id=tool_id,
+                plugin_id="scp-hub",
+                title=title,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "subject": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                        "kg_name": {"type": "string"},
+                        "cypher": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            )
+        )
+    monkeypatch.setattr(
+        llm_client,
+        "resolve_llm_settings",
+        lambda *args, **kwargs: SimpleNamespace(
+            ready=True, enabled=True, model="test", base_url="", api_key="",
+            temperature=0, timeout_sec=5, max_tokens=400, cache_dir="", use_cache=False,
+        ),
+    )
+    monkeypatch.setattr(
+        llm_client,
+        "chat_completion",
+        lambda *args, **kwargs: '{"route":"scp","capability_id":"literature_search",'
+        '"skill_id":"literature_research","tool_id":"scp:Scholar-KG:query_paper",'
+        '"arguments":{"query":"PPAR MASLD literature"},"confidence":0.99,'
+        '"reason":"user wants papers"}',
+    )
+    route = TaskRouter(registry).plan_scp(
+        "PPARα 在 MASLD 肝脏脂质代谢中扮演什么角色？",
+        enabled_skill_ids={"mechanism_research", "literature_research"},
+    )
+    assert route is not None
+    assert route.capability_id == "literature_search"
+    assert route.planner_status == "llm"
+
+
+def test_planner_falls_back_when_llm_picks_unregistered_tool(monkeypatch) -> None:
     from types import SimpleNamespace
     from agent.registry.models import ToolSpec
     from plugins.molmind_core.scientific.mechanism import llm_client
@@ -388,10 +442,21 @@ def test_planner_cannot_replace_declared_mechanism_with_literature(monkeypatch) 
     assert route.planner_status == "deterministic"
 
 
-def test_missing_literature_skill_clarifies_install_instead_of_chat() -> None:
+def test_missing_literature_skill_clarifies_install_instead_of_chat(monkeypatch) -> None:
     from types import SimpleNamespace
 
     from agent.intent import parse_intent
+    from plugins.molmind_core.scientific.mechanism import llm_client
+
+    # LLM-down path: task_terms may propose install only when session-act is unavailable.
+    monkeypatch.setattr(
+        llm_client,
+        "resolve_llm_settings",
+        lambda *args, **kwargs: SimpleNamespace(
+            ready=False, enabled=False, model="", base_url="", api_key="",
+            temperature=0, timeout_sec=5, max_tokens=400, cache_dir="", use_cache=False,
+        ),
+    )
 
     router = TaskRouter(AgentRegistry())
     session = SimpleNamespace(
@@ -401,6 +466,7 @@ def test_missing_literature_skill_clarifies_install_instead_of_chat() -> None:
         run_history=[],
         installed_scp_skills={"mechanism_research": {"enabled": True}},
         turn_execution_gate=None,
+        messages=[],
     )
     for text in (
         "查询 MASLD 最新文献，允许联网",
@@ -410,14 +476,80 @@ def test_missing_literature_skill_clarifies_install_instead_of_chat() -> None:
         assert route.route == "clarify"
         assert route.skill_id == "literature_research"
         assert route.reason == "scp_skill_not_installed:literature_research"
+        assert route.planner_status == "deterministic_offline"
 
 
-def test_missing_scp_skill_emits_install_request_card(tmp_path) -> None:
-    from agent.memory import FileRunStore
+def test_session_act_propose_install_beats_task_terms(monkeypatch) -> None:
+    """Live session act must win over any task_terms install short-circuit."""
+    from types import SimpleNamespace
+
+    from agent.intent import parse_intent
+    from plugins.molmind_core.scientific.mechanism import llm_client
+
+    monkeypatch.setattr(
+        llm_client,
+        "resolve_llm_settings",
+        lambda *args, **kwargs: SimpleNamespace(
+            ready=True, enabled=True, model="test", base_url="", api_key="",
+            temperature=0, timeout_sec=5, max_tokens=400, cache_dir="", use_cache=False,
+        ),
+    )
+
+    calls: list[str] = []
+
+    def _chat(*args, **kwargs):
+        system = str(kwargs.get("system") or "")
+        if "会话决策器" in system:
+            calls.append("session_act")
+            return (
+                '{"act":"propose_install","skill_id":"literature_research",'
+                '"confidence":0.95,"reason":"needs literature skill"}'
+            )
+        calls.append("plan_scp")
+        return (
+            '{"route":"chat","capability_id":"","skill_id":"","tool_id":"",'
+            '"arguments":{},"confidence":0.5,"reason":"should not reach"}'
+        )
+
+    monkeypatch.setattr(llm_client, "chat_completion", _chat)
+
+    router = TaskRouter(AgentRegistry())
+    session = SimpleNamespace(
+        last_result=None,
+        frozen_ranking=None,
+        last_run_id="",
+        run_history=[],
+        installed_scp_skills={"mechanism_research": {"enabled": True}},
+        turn_execution_gate=None,
+        messages=[],
+    )
+    route = router.route(parse_intent("查询 MASLD 最新文献，允许联网"), session)
+    assert route.route == "clarify"
+    assert route.skill_id == "literature_research"
+    assert route.reason == "scp_skill_not_installed:literature_research"
+    assert route.planner_status == "llm"
+    assert calls == ["session_act"]
+
+
+def test_missing_scp_skill_emits_install_request_card(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from plugins.molmind_core.scientific.mechanism import llm_client
+    from tests.unit.agent_test_support import MemRunStore
 
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session(client_id="scp_install_card_0001")
+    monkeypatch.setattr(
+        llm_client,
+        "resolve_llm_settings",
+        lambda *args, **kwargs: SimpleNamespace(
+            ready=False, enabled=False, model="", base_url="", api_key="",
+            temperature=0, timeout_sec=5, max_tokens=400, cache_dir="", use_cache=False,
+        ),
+    )
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="scp_install_card_0001", client_id="scp_install_card_0001")
     session.installed_scp_skills = {
         "mechanism_research": {"skill_id": "mechanism_research", "enabled": True, "tools": []}
     }
@@ -438,3 +570,4 @@ def test_missing_scp_skill_emits_install_request_card(tmp_path) -> None:
     assistant = next(event for event in events if event.get("type") == "assistant")
     assert "工具与插件" not in str(assistant.get("text") or "")
     assert "安装" in str(assistant.get("text") or "")
+    assert "自动重试" not in str(assistant.get("text") or "")

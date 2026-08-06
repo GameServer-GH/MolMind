@@ -47,10 +47,11 @@ def test_plan_rejects_tool_when_declared_precondition_is_missing() -> None:
 
 
 def test_runtime_uses_registry_backed_llm_plan_before_legacy_classifier(
-    monkeypatch, tmp_path
+    monkeypatch,
 ) -> None:
-    from agent.memory import FileRunStore
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
     monkeypatch.setattr(
         "agent.runtime.loop.llm_plan_request",
@@ -59,14 +60,12 @@ def test_runtime_uses_registry_backed_llm_plan_before_legacy_classifier(
             "llm",
         ),
     )
-    # Ranking questions short-circuit before the planner; use a non-ranking
-    # tool-shaped request to assert the registry-backed plan path.
     monkeypatch.setattr(
         "agent.runtime.loop.llm_json_decision",
         lambda **_kwargs: ("chat", "should_not_reach_legacy"),
     )
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="plan_classify_0001")
     intent = __import__("agent.intent", fromlist=["parse_intent"]).parse_intent(
         "帮我生成候选清单"
     )
@@ -76,9 +75,10 @@ def test_runtime_uses_registry_backed_llm_plan_before_legacy_classifier(
     assert why.startswith("llm;")
 
 
-def test_clarify_plan_persists_unexecutable_goal(monkeypatch, tmp_path) -> None:
-    from agent.memory import FileRunStore
+def test_clarify_plan_persists_unexecutable_goal(monkeypatch) -> None:
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
     monkeypatch.setattr(
         "agent.runtime.loop.llm_plan_request",
@@ -91,8 +91,8 @@ def test_clarify_plan_persists_unexecutable_goal(monkeypatch, tmp_path) -> None:
             "llm",
         ),
     )
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="plan_clarify_0001")
     intent = __import__("agent.intent", fromlist=["parse_intent"]).parse_intent("排除 PAINS")
 
     action, _ = runtime._classify_request_action(session, "排除 PAINS", intent)
@@ -101,12 +101,13 @@ def test_clarify_plan_persists_unexecutable_goal(monkeypatch, tmp_path) -> None:
     assert session.pending_goal["reason"] == "tool_contract_missing_parameters"
 
 
-def test_runtime_persists_plan_step_observations(tmp_path) -> None:
-    from agent.memory import FileRunStore
+def test_runtime_persists_plan_step_observations() -> None:
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="plan_obs_0001")
     runtime._emit(
         session,
         {
@@ -136,12 +137,13 @@ def test_runtime_persists_plan_step_observations(tmp_path) -> None:
     assert plan["steps"][0]["observation"]["digest"]["run_id"] == "mm-test"
 
 
-def test_runtime_does_not_mark_unstarted_planned_steps_completed(tmp_path) -> None:
-    from agent.memory import FileRunStore
+def test_runtime_does_not_mark_unstarted_planned_steps_completed() -> None:
+    from agent.memory.models import AgentSession
     from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
 
-    runtime = AgentRuntime(store=FileRunStore(root=tmp_path / "runs"))
-    session = runtime.create_session()
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="plan_unstarted_0001")
     runtime._emit(
         session,
         {

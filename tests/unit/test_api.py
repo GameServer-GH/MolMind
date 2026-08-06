@@ -39,6 +39,15 @@ def test_health(client: TestClient) -> None:
     assert data["top_n_max"] == TOP_N_MAX
 
 
+def test_root_serves_web_index(client: TestClient) -> None:
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    assert "MolMind" in resp.text
+    assert 'src="/static/app.js' in resp.text
+    assert 'href="/static/vendor/tailwindcss/tailwind.css"' in resp.text
+
+
 def test_screen_upload(client: TestClient) -> None:
     with SAMPLE_SDF.open("rb") as fh:
         resp = client.post(

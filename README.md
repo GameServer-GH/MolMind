@@ -336,6 +336,9 @@ docker compose --env-file .env -f deploy/docker-compose.yml run --rm cli
 
 界面与 API 细节见 [`apps/web/README.md`](apps/web/README.md)、[`apps/api/README.md`](apps/api/README.md)；SCP 边界见 [`plugins/scp_hub/README.md`](plugins/scp_hub/README.md)。
 
+Agent 对话与路由演进请遵循设计原则：  
+[`docs/agent-design-principles.md`](docs/agent-design-principles.md)（**状态进上下文，决策留给模型**；禁止再堆关键词规则表）。
+
 ---
 
 ## 仓库结构
@@ -344,6 +347,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml run --rm cli
 |------|------|
 | `apps/` | API、CLI、Web 静态前端 |
 | `agent/` | Agent 运行时：决策环、Turn 队列、任务路由、Postgres/Redis/Blob 存储 |
+| `docs/` | 项目设计原则与架构约定 |
 | `plugins/molmind_core/` | 流水线、评分、证据 Gateway / Facade、Critic、机制与 Tool 的 canonical 实现 |
 | `plugins/scp_hub/` | 可选 SCP Hub MCP 边界（Catalog opt-in；不改主榜） |
 | `services/` | 指向 canonical 实现的向后兼容 shim；新科学逻辑不放在此处 |

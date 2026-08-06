@@ -1,6 +1,6 @@
 skill_id: enrich_topn_with_aurobind
 plugin_id: aurobind
 title: AuroBind TopN fitness 旁证
-description: 对 TopN 分子做蛋白–配体 fitness 旁证；需靶点序列与 GPU；不改主榜。
+description: 对 TopN 分子做蛋白–配体 fitness 旁证；需靶点序列与 GPU；不改主榜，也不改提名 CSV 列。
 tools:
   - predict_pl_fitness
