@@ -279,3 +279,55 @@ def test_embedded_key_ready_without_env(monkeypatch) -> None:
     assert s.api_key.startswith("sk-")
     assert s.base_url == "https://api.deepseek.com/v1"
     assert s.model == "deepseek-v4-pro"
+
+
+def test_agent_chat_defaults_to_v4_pro(monkeypatch) -> None:
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    monkeypatch.delenv("MOLMIND_LLM_MODEL", raising=False)
+    monkeypatch.delenv("MOLMIND_LLM_CHAT", raising=False)
+    s = resolve_llm_settings(
+        {"enabled": True, "agent_chat": True}, purpose="agent_chat"
+    )
+    assert s.ready is True
+    assert s.model == "deepseek-v4-pro"
+    assert s.timeout_sec >= 30
+
+
+def test_agent_reflection_defaults_to_v4_flash(monkeypatch) -> None:
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("MOLMIND_LLM_MODEL", "deepseek-v4-pro")
+    monkeypatch.delenv("MOLMIND_LLM_REFLECTION_MODEL", raising=False)
+    monkeypatch.delenv("MOLMIND_LLM_REFLECTION", raising=False)
+    monkeypatch.delenv("MOLMIND_REFLECTION_GATE", raising=False)
+    s = resolve_llm_settings(
+        {"enabled": True, "agent_reflection": True}, purpose="agent_reflection"
+    )
+    assert s.ready is True
+    # Must not inherit the main pro model.
+    assert s.model == "deepseek-v4-flash"
+    assert s.timeout_sec <= 10
+    assert s.max_tokens <= 1024
+    assert s.use_cache is False
+
+
+def test_agent_reflection_model_env_override(monkeypatch) -> None:
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("MOLMIND_LLM_REFLECTION_MODEL", "deepseek-v4-flash")
+    s = resolve_llm_settings({}, purpose="agent_reflection")
+    assert s.model == "deepseek-v4-flash"
+
+
+def test_agent_reflection_timeout_env_override(monkeypatch) -> None:
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("MOLMIND_LLM_REFLECTION_TIMEOUT_SEC", "4")
+    monkeypatch.setenv("MOLMIND_LLM_REFLECTION_MAX_TOKENS", "256")
+    s = resolve_llm_settings({}, purpose="agent_reflection")
+    assert s.timeout_sec == 4.0
+    assert s.max_tokens == 256
+
+
+def test_agent_reflection_disabled_when_gate_off(monkeypatch) -> None:
+    monkeypatch.setenv("MOLMIND_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("MOLMIND_REFLECTION_GATE", "off")
+    s = resolve_llm_settings({}, purpose="agent_reflection")
+    assert s.enabled is False

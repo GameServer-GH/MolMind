@@ -571,3 +571,85 @@ def test_missing_scp_skill_emits_install_request_card(monkeypatch) -> None:
     assert "工具与插件" not in str(assistant.get("text") or "")
     assert "安装" in str(assistant.get("text") or "")
     assert "自动重试" not in str(assistant.get("text") or "")
+    assert isinstance(session.pending_install, dict)
+    assert session.pending_install.get("retry_text") == "查询 MASLD 最新文献，允许联网"
+    assert "literature_research" in (session.pending_install.get("skill_ids") or [])
+
+
+def test_pending_install_continue_resumes_original_request(monkeypatch) -> None:
+    """After install card,「继续」must resume retry_text via tools — not chat fakes."""
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="scp_install_resume_0001")
+    session.pending_install = {
+        "kind": "scp_skill",
+        "status": "awaiting_install",
+        "skill_ids": ["literature_research"],
+        "retry_text": "检索 PPAR 与脂肪肝相关论文",
+        "reason": "scp_skill_not_installed",
+    }
+    session.installed_scp_skills = {
+        "literature_research": {
+            "skill_id": "literature_research",
+            "enabled": True,
+            "tools": ["scp:Scholar-KG:query_paper"],
+        }
+    }
+
+    resumed: list[str] = []
+    depth = {"n": 0}
+    real_body = AgentRuntime._handle_message_body
+
+    def gated(self, sess, text):
+        depth["n"] += 1
+        if depth["n"] > 1:
+            resumed.append(str(text))
+            yield self._emit(sess, {"type": "thinking", "text": f"resumed:{text}"})
+            yield self._emit(sess, {"type": "done", "status": "succeeded"})
+            return
+        yield from real_body(self, sess, text)
+
+    monkeypatch.setattr(AgentRuntime, "_handle_message_body", gated)
+    events = list(runtime.handle_message(session, "继续"))
+    assert resumed == ["检索 PPAR 与脂肪肝相关论文"]
+    assert session.pending_install is None
+    assert any(
+        event.get("type") == "thinking"
+        and "安装后续接" in str(event.get("text") or "")
+        for event in events
+    )
+
+
+def test_pending_install_continue_without_skill_reminds_card(monkeypatch) -> None:
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
+
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="scp_install_wait_0001")
+    session.pending_install = {
+        "skill_ids": ["literature_research"],
+        "retry_text": "检索 PPAR 与脂肪肝相关论文",
+    }
+    session.installed_scp_skills = {}
+    events = list(runtime.handle_message(session, "继续"))
+    reply = next(event["text"] for event in events if event.get("type") == "assistant")
+    assert "安装" in reply
+    assert "tool_call" not in reply.lower()
+    assert isinstance(session.pending_install, dict)

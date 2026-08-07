@@ -2217,6 +2217,123 @@ class AgentRuntime:
             ):
                 session.pending_action = None
 
+        # After an install_request card, short follow-ups like「继续」must resume
+        # the original scientific request — not fall through to chat that fakes
+        # <tool_call> text.
+        pending_install = session.pending_install
+        if isinstance(pending_install, dict) and pending_install:
+            compact_install = (text or "").strip()
+            retry_text = str(pending_install.get("retry_text") or "").strip()
+            skill_ids = [
+                str(item).strip()
+                for item in (pending_install.get("skill_ids") or [])
+                if str(item).strip()
+            ]
+            if _PENDING_CANCEL_RE.fullmatch(compact_install):
+                session.pending_install = None
+                self._prepare_turn(session, text)
+                reply = "好的，已取消安装后待执行的请求。"
+                session.messages.append({"role": "assistant", "text": reply})
+                yield self._emit(session, {"type": "assistant", "text": reply})
+                yield self._emit(session, {"type": "done"})
+                self.store.persist(session)
+                return
+
+            missing_skills = self._pending_install_missing_skills(session, skill_ids)
+            synthetic_install = {
+                "source_text": retry_text or "安装后继续执行",
+                "top_n": session.top_n,
+                "missing_slots": (["scp_install"] if missing_skills else []),
+            }
+            if _PENDING_AFFIRM_RE.fullmatch(compact_install):
+                install_act, install_why = "continue", "structural_install_affirm"
+            else:
+                install_act, install_why = self._classify_pending_continuation(
+                    session, compact_install, synthetic_install
+                )
+
+            if install_act in {"continue", "status"}:
+                titles = "、".join(
+                    self._scp_skill_catalog_meta(sid)["title"] or sid
+                    for sid in skill_ids
+                ) or "对应科研能力"
+                if missing_skills:
+                    self._prepare_turn(session, text)
+                    reply = (
+                        f"「{titles}」尚未确认安装完成。"
+                        "请先在安装请求卡片中点确认；安装成功后再回复「继续」，"
+                        "我会按原请求执行，不会在对话里假装调用工具。"
+                    )
+                    if install_act == "status":
+                        reply = "尚未启动工具调用；" + reply
+                    session.messages.append({"role": "assistant", "text": reply})
+                    yield self._emit(
+                        session,
+                        {
+                            "type": "thinking",
+                            "text": f"安装待续：{install_act}（{install_why}；仍缺 {','.join(missing_skills)}）",
+                        },
+                    )
+                    yield self._emit(session, {"type": "assistant", "text": reply})
+                    yield self._emit(session, {"type": "done"})
+                    self.store.persist(session)
+                    return
+
+                if not retry_text:
+                    self._prepare_turn(session, text)
+                    session.pending_install = None
+                    reply = (
+                        f"「{titles}」已就绪，但没有可恢复的原请求原文。"
+                        "请直接说明要检索或调用的内容。"
+                    )
+                    session.messages.append({"role": "assistant", "text": reply})
+                    yield self._emit(session, {"type": "assistant", "text": reply})
+                    yield self._emit(session, {"type": "done"})
+                    self.store.persist(session)
+                    return
+
+                if install_act == "status":
+                    self._prepare_turn(session, text)
+                    reply = (
+                        f"「{titles}」已安装就绪，此前的请求尚未启动。"
+                        "回复「继续」即可按原请求执行。"
+                    )
+                    session.messages.append({"role": "assistant", "text": reply})
+                    yield self._emit(
+                        session,
+                        {
+                            "type": "thinking",
+                            "text": f"安装待续：status（{install_why}）",
+                        },
+                    )
+                    yield self._emit(session, {"type": "assistant", "text": reply})
+                    yield self._emit(session, {"type": "done"})
+                    self.store.persist(session)
+                    return
+
+                session.pending_install = None
+                yield self._emit(
+                    session,
+                    {
+                        "type": "thinking",
+                        "text": (
+                            f"安装后续接：continue（{install_why}）；"
+                            f"恢复原请求「{retry_text[:80]}」"
+                        ),
+                    },
+                )
+                # Keep the short affirm visible once via display_text. Do NOT
+                # _prepare_turn here — _handle_intent will append a single user
+                # bubble; preparing twice left two「继续」rows in the transcript.
+                if isinstance(session.active_run, dict):
+                    session.active_run["display_text"] = compact_install
+                self.store.persist(session)
+                yield from self._handle_message_body(session, retry_text)
+                return
+
+            # New topic — drop the install wait and continue normal routing.
+            session.pending_install = None
+
         # Planner clarify for missing SDF historically only set pending_goal (chat),
         # so short follow-ups like「提供了」never resumed. When the library is now
         # bound, treat continuation the same as pending_action resume.
@@ -2431,6 +2548,25 @@ class AgentRuntime:
                                 ),
                             )
                 action, why = self._classify_request_action(session, text, intent)
+                # Execution gate already authorized this turn. A second LLM pass
+                # must not demote structured CSV/PDF deliverables into chat, or
+                # TaskRouter may fall through to a hallucinated SCP deny.
+                if (
+                    action != "execute_tools"
+                    and str(gate_meta.get("dialog_act") or "") == "execute_now"
+                    and (
+                        intent.want_csv
+                        or intent.want_pdf
+                        or intent.want_reserve
+                        or intent.want_bundle
+                        or intent.execution_requested
+                        or intent.force_rescreen
+                    )
+                ):
+                    action, why = (
+                        "execute_tools",
+                        f"execution_gate_allow_override:{why}",
+                    )
             if action == "explain_ranking":
                 _, ranking_molecule_id = ranking_question_fallback(text)
             if action != "execute_tools":
@@ -2684,6 +2820,53 @@ class AgentRuntime:
             description = str(item.get("description") or "").strip()
         return {"skill_id": sid, "title": title, "description": description}
 
+    @staticmethod
+    def _pending_install_missing_skills(
+        session: AgentSession, skill_ids: list[str] | tuple[str, ...]
+    ) -> list[str]:
+        installed = getattr(session, "installed_scp_skills", None) or {}
+        missing: list[str] = []
+        for raw in skill_ids:
+            sid = str(raw or "").strip()
+            if not sid:
+                continue
+            state = installed.get(sid)
+            if not isinstance(state, dict) or not bool(state.get("enabled")):
+                missing.append(sid)
+        return missing
+
+    def _expand_missing_scp_skills_for_text(
+        self,
+        session: AgentSession,
+        text: str,
+        seed_skill_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> list[str]:
+        """Collect every SCP skill this question needs that is not yet enabled.
+
+        Avoids install-card ping-pong (literature → continue → mechanism → …).
+        """
+        plugin = self.registry.plugins.get("scp-hub")
+        declared_skill_ids = {
+            str(capability.get("skill_id") or "")
+            for capability in (getattr(plugin, "capabilities", None) or [])
+            if isinstance(capability, dict) and capability.get("skill_id")
+        }
+        needed: list[str] = []
+        for skill_id in seed_skill_ids or ():
+            sid = str(skill_id or "").strip()
+            if sid and sid not in needed:
+                needed.append(sid)
+        try:
+            for route in self.task_router.route_scp_tasks(
+                str(text or ""), enabled_skill_ids=declared_skill_ids
+            ):
+                sid = str(getattr(route, "skill_id", "") or "").strip()
+                if sid and sid not in needed:
+                    needed.append(sid)
+        except Exception:
+            pass
+        return self._pending_install_missing_skills(session, needed)
+
     def _install_request_event(
         self,
         *,
@@ -2740,8 +2923,17 @@ class AgentRuntime:
         ) or str(payload.get("label") or "对应科研能力")
         reply = (
             f"本轮需要「{titles}」。请在安装请求卡片中确认；"
-            "安装成功后即可在当前对话继续，无需重新发送原请求。"
+            "安装成功后回复「继续」即可按原请求执行，无需重新粘贴整句。"
         )
+        session.pending_install = {
+            "kind": "scp_skill",
+            "status": "awaiting_install",
+            "skill_ids": [str(item.get("skill_id") or "") for item in (payload.get("skills") or []) if str(item.get("skill_id") or "")],
+            "retry_text": str(retry_text or ""),
+            "label": str(label or titles),
+            "capability_id": str(capability_id or ""),
+            "reason": "scp_skill_not_installed",
+        }
         session.messages.append({"role": "assistant", "text": reply})
         yield emit(payload)
         yield emit({"type": "assistant", "text": reply})
@@ -3598,11 +3790,18 @@ class AgentRuntime:
                     str(getattr(task_route, "skill_id", "") or "").strip()
                     or reason.split(":", 1)[-1].strip()
                 )
+                skill_ids = self._expand_missing_scp_skills_for_text(
+                    session, text, seed_skill_ids=[skill_id] if skill_id else []
+                ) or ([skill_id] if skill_id else [])
                 yield from self._yield_scp_install_request(
                     session,
-                    skill_ids=[skill_id],
+                    skill_ids=skill_ids,
                     retry_text=text,
-                    label=str(getattr(task_route, "label", "") or ""),
+                    label=(
+                        "多项科研能力"
+                        if len(skill_ids) > 1
+                        else str(getattr(task_route, "label", "") or "")
+                    ),
                     capability_id=str(getattr(task_route, "capability_id", "") or ""),
                     out=out,
                 )
@@ -3791,45 +3990,19 @@ class AgentRuntime:
                         "请先完成一轮筛选，或指明具体分子 ID 后再问。"
                     )
             if not reply:
-                parts: list[str] = []
-                try:
-                    for delta in self._llm_chat_reply_stream(session, text):
-                        piece = str(delta or "")
-                        if not piece:
-                            continue
-                        parts.append(piece)
-                        streamed = True
-                        yield self._emit_live(
-                            session,
-                            {"type": "assistant_delta", "delta": piece},
-                        )
-                    reply = "".join(parts).strip()
-                except CallCancelled:
-                    raise
-                except RunInterrupted:
-                    raise
-                except Exception as exc:  # noqa: BLE001 — LLM optional
-                    if self._run_controller(session).interruption_requested:
-                        raise RunInterrupted("user_guidance") from exc
-                    reply = ""
-                if not reply:
-                    reply = self._chat_reply_fallback(session, text)
-                    streamed = False
-            session.messages.append({"role": "assistant", "text": reply})
-            yield out(
-                {
-                    "type": "task_end",
-                    "task_id": "conversation",
-                    "status": "succeeded",
-                    "observation": {
-                        "summary": self._compact_observation(reply, limit=1200),
-                        "streamed": streamed,
-                    },
-                }
+                yield from self._generate_and_release_chat_reply(
+                    session, text, out=out
+                )
+                return
+            # Deterministic ranking explanation: still pass Reflection Gate.
+            yield from self._release_chat_candidate(
+                session,
+                user_text=text,
+                candidate=reply,
+                route="chat",
+                streamed=False,
+                out=out,
             )
-            yield out({"type": "assistant", "text": reply})
-            yield out({"type": "done"})
-            self.store.persist(session)
             return
 
         # Top N 超规范上限：反问，不静默截断开跑
@@ -4704,9 +4877,20 @@ class AgentRuntime:
         )
         if report_cache:
             reply += "\n\n" + self._scp_cache_summary(results)
-        yield self._emit(session, {"type": "assistant", "text": reply})
-        yield self._emit(session, {"type": "done"})
-        self.store.persist(session)
+        tool_ids: list[str] = []
+        for result in results:
+            for call in result.get("calls") or []:
+                tool_id = str(call.get("tool_id") or "").strip()
+                if tool_id:
+                    tool_ids.append(tool_id)
+        yield from self._release_scp_final(
+            session,
+            user_text=original_question,
+            candidate=reply,
+            tool_starts=tool_ids,
+            tool_ends=tool_ids,
+            rewrite_context={"kind": "multi", "question": original_question, "results": results},
+        )
         return True
 
     def _maybe_run_scp_chat(
@@ -4736,12 +4920,14 @@ class AgentRuntime:
                     "tool_calls": 0,
                 },
             )
-            yield self._emit(
+            yield from self._release_scp_final(
                 session,
-                {"type": "assistant", "text": self._scp_history_summary_reply(session)},
+                user_text=original_text,
+                candidate=self._scp_history_summary_reply(session),
+                tool_starts=[],
+                tool_ends=[],
+                rewrite_context={"kind": "history", "question": original_text},
             )
-            yield self._emit(session, {"type": "done"})
-            self.store.persist(session)
             return True
         repeated_question = (
             self._scp_previous_scientific_question(session)
@@ -4795,25 +4981,38 @@ class AgentRuntime:
                 self.store.persist(session)
                 return True
             return False
-        missing_declared_skills = [
-            str(route.skill_id)
-            for route in declared_tasks
-            if route.skill_id and route.skill_id not in enabled
-        ]
+        missing_declared_skills = self._expand_missing_scp_skills_for_text(
+            session,
+            routing_text,
+            seed_skill_ids=[
+                str(route.skill_id)
+                for route in declared_tasks
+                if route.skill_id
+            ],
+        )
         if missing_declared_skills:
             yield from self._yield_scp_install_request(
                 session,
                 skill_ids=missing_declared_skills,
                 retry_text=original_text,
-                label="多项科研能力",
+                label="多项科研能力" if len(missing_declared_skills) > 1 else "",
             )
             return True
         if declared_route is not None and declared_route.skill_id not in enabled:
+            expanded = self._expand_missing_scp_skills_for_text(
+                session,
+                routing_text,
+                seed_skill_ids=[str(declared_route.skill_id)],
+            ) or [str(declared_route.skill_id)]
             yield from self._yield_scp_install_request(
                 session,
-                skill_ids=[str(declared_route.skill_id)],
+                skill_ids=expanded,
                 retry_text=original_text,
-                label=str(declared_route.label or ""),
+                label=(
+                    "多项科研能力"
+                    if len(expanded) > 1
+                    else str(declared_route.label or "")
+                ),
                 capability_id=str(declared_route.capability_id or ""),
             )
             return True
@@ -4936,6 +5135,9 @@ class AgentRuntime:
             events.append(event)
             yield event
         end = next((e for e in reversed(events) if e.get("type") == "tool_end"), {})
+        values: list[str] = []
+        digest: dict[str, Any] = {}
+        reply = ""
         if end.get("status") == "queued":
             job_id = str(end.get("job_id") or "")
             deadline = time.monotonic() + 600.0
@@ -5057,9 +5259,30 @@ class AgentRuntime:
             )
         else:
             reply = f"SCP Hub 的{label}调用未完成（{end.get('error_code') or end.get('error') or 'unknown_error'}）；这不代表研究结论为阴性。"
-        yield self._emit(session, {"type": "assistant", "text": reply})
-        yield self._emit(session, {"type": "done"})
-        self.store.persist(session)
+        tool_starts = [
+            str(event.get("tool") or "")
+            for event in events
+            if event.get("type") == "tool_start" and event.get("tool")
+        ]
+        tool_ends = [
+            str(event.get("tool") or "")
+            for event in events
+            if event.get("type") == "tool_end" and event.get("tool")
+        ]
+        yield from self._release_scp_final(
+            session,
+            user_text=raw,
+            candidate=reply,
+            tool_starts=tool_starts,
+            tool_ends=tool_ends,
+            rewrite_context={
+                "kind": "single",
+                "question": raw,
+                "label": label,
+                "values": values,
+                "digest": digest,
+            },
+        )
         return True
 
     def _resolve_mention(self, mention: MentionRef) -> dict[str, Any] | None:
@@ -6331,6 +6554,495 @@ class AgentRuntime:
                     break
         return format_attachment_context(summaries)
 
+    def _release_scp_final(
+        self,
+        session: AgentSession,
+        *,
+        user_text: str,
+        candidate: str,
+        tool_starts: list[str] | None = None,
+        tool_ends: list[str] | None = None,
+        rewrite_context: dict[str, Any] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Gate a user-visible SCP summary before durable assistant emit (Phase 2)."""
+        from agent.runtime.capability_context import build_capability_surface
+        from agent.runtime.reflection_gate import (
+            ReflectionVerdict,
+            apply_mode,
+            bump_reflection_counter,
+            clarification_for_verdict,
+            evaluate_candidate,
+            max_rewrite,
+            record_gate_on_session,
+            reflection_gate_mode,
+        )
+
+        mode = reflection_gate_mode()
+        starts = [str(x) for x in (tool_starts or []) if str(x)]
+        ends = [str(x) for x in (tool_ends or []) if str(x)]
+        reply = str(candidate or "").strip()
+        if mode == "off":
+            yield self._emit(session, {"type": "assistant", "text": reply})
+            yield self._emit(session, {"type": "done"})
+            self.store.persist(session)
+            return
+
+        yield self._emit(
+            session,
+            {"type": "thinking", "text": "正在复核终稿…"},
+        )
+
+        surface = build_capability_surface(
+            self.registry,
+            session,
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
+        )
+        verdict = evaluate_candidate(
+            session=session,
+            user_text=user_text,
+            candidate_assistant=reply,
+            route="scp",
+            release_point="scp_final",
+            capability_surface=surface,
+            tool_starts=starts,
+            tool_ends=ends,
+            registry=self.registry,
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
+        )
+        record_gate_on_session(session, verdict)
+        yield self._emit(
+            session,
+            {
+                "type": "reflection_verdict",
+                "decision": verdict.decision,
+                "source": verdict.source,
+                "issue_codes": [item.code for item in verdict.issues],
+                "diagnosis": verdict.diagnosis[:240],
+                "release_point": "scp_final",
+                "mode": mode,
+                "latency_ms": verdict.latency_ms,
+                "gate1_reason": getattr(verdict, "gate1_reason", "")[:120],
+                "soft_signals": list(getattr(verdict, "soft_signals", []) or [])[:8],
+            },
+        )
+        effective = apply_mode(verdict, mode=mode)
+
+        if mode == "enforce" and effective.decision in {"rewrite", "reenter"}:
+            # Tools already ran; convert reenter into rewrite to avoid empty loops.
+            rewrites = bump_reflection_counter(session, "reflection_rewrites")
+            if rewrites <= max_rewrite():
+                instruction = str(
+                    (verdict.repair_hint or {}).get("rewrite_instruction") or ""
+                ).strip() or (
+                    "纠正越权断言；不得声称改写冻结排名；仅依据已发生的工具观察总结。"
+                )
+                yield self._emit(
+                    session,
+                    {
+                        "type": "thinking",
+                        "text": f"反思闸改写 SCP 总结（{verdict.source}:{verdict.diagnosis[:80]}）",
+                    },
+                )
+                rewritten = self._rewrite_scp_summary(
+                    session,
+                    candidate=reply,
+                    instruction=instruction,
+                    user_text=user_text,
+                    rewrite_context=rewrite_context or {},
+                    hard_facts=[
+                        f"tool_starts={starts}",
+                        f"tool_ends={ends}",
+                        "scp_participates_in_ranking=false",
+                        "frozen_ranking_immutable=true",
+                    ],
+                )
+                if rewritten and rewritten != reply:
+                    # One more Gate 0 pass on the rewrite; no nested LLM gate thrash.
+                    second = evaluate_candidate(
+                        session=session,
+                        user_text=user_text,
+                        candidate_assistant=rewritten,
+                        route="scp",
+                        release_point="scp_final",
+                        capability_surface=surface,
+                        tool_starts=starts,
+                        tool_ends=ends,
+                        registry=self.registry,
+                        scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
+                    )
+                    record_gate_on_session(session, second)
+                    yield self._emit(
+                        session,
+                        {
+                            "type": "reflection_verdict",
+                            "decision": second.decision,
+                            "source": second.source,
+                            "issue_codes": [item.code for item in second.issues],
+                            "diagnosis": second.diagnosis[:240],
+                            "release_point": "scp_final",
+                            "mode": mode,
+                            "latency_ms": second.latency_ms,
+                            "pass": 2,
+                        },
+                    )
+                    second_eff = apply_mode(second, mode=mode)
+                    if second_eff.decision == "release":
+                        reply = rewritten
+                    elif second_eff.decision in {"clarify", "deny"}:
+                        reply = clarification_for_verdict(
+                            second, user_text=user_text
+                        )
+                    else:
+                        reply = clarification_for_verdict(
+                            second, user_text=user_text
+                        )
+                else:
+                    # Deterministic fallback when rewrite LLM unavailable.
+                    reply = clarification_for_verdict(verdict, user_text=user_text)
+            else:
+                reply = clarification_for_verdict(
+                    ReflectionVerdict(
+                        decision="clarify",
+                        confidence=effective.confidence,
+                        source=effective.source,
+                        issues=list(effective.issues),
+                        diagnosis=effective.diagnosis or "改写次数用尽",
+                        repair_hint=dict(effective.repair_hint),
+                        release_point="scp_final",
+                    ),
+                    user_text=user_text,
+                )
+        elif mode == "enforce" and effective.decision in {"clarify", "deny"}:
+            reply = clarification_for_verdict(verdict, user_text=user_text)
+
+        yield self._emit(session, {"type": "assistant", "text": reply})
+        yield self._emit(session, {"type": "done"})
+        self.store.persist(session)
+
+    def _rewrite_scp_summary(
+        self,
+        session: AgentSession,
+        *,
+        candidate: str,
+        instruction: str,
+        user_text: str,
+        rewrite_context: dict[str, Any],
+        hard_facts: list[str],
+    ) -> str:
+        """Rewrite an SCP summary under Reflection Gate constraints."""
+        from agent.runtime.reflection_gate import rewrite_candidate_text
+
+        rewritten = rewrite_candidate_text(
+            candidate=candidate,
+            instruction=instruction,
+            user_text=user_text,
+            hard_facts=hard_facts,
+        )
+        if rewritten:
+            if (
+                "不参与候选排序" not in rewritten
+                and "不参与候选排名" not in rewritten
+            ):
+                rewritten = f"{rewritten.rstrip()}\n\n本次实时资料不参与候选排序。"
+            return rewritten
+
+        # Prefer deterministic re-synthesis when observation context is available.
+        kind = str(rewrite_context.get("kind") or "")
+        if kind == "single":
+            values = list(rewrite_context.get("values") or [])
+            digest = dict(rewrite_context.get("digest") or {})
+            label = str(rewrite_context.get("label") or "科研检索")
+            question = str(rewrite_context.get("question") or user_text)
+            if values or digest:
+                return self._synthesize_scp_reply(
+                    question=question,
+                    label=label,
+                    values=values,
+                    digest=digest,
+                )
+        if kind == "multi":
+            results = list(rewrite_context.get("results") or [])
+            question = str(rewrite_context.get("question") or user_text)
+            if results:
+                return self._synthesize_scp_multi_reply(
+                    question=question, results=results
+                )
+        return ""
+
+    def _chat_release_point(self, session: AgentSession, text: str) -> str:
+        if isinstance(session.pending_install, dict) and session.pending_install:
+            return "install_followup"
+        for message in reversed(session.messages[-6:]):
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            body = str(message.get("text") or "")
+            if "安装请求" in body or "确认安装" in body:
+                return "install_followup"
+        lowered = str(text or "")
+        if any(
+            token in lowered
+            for token in ("插件", "技能", "能力", "CSV", "csv", "字段", "哪些列", "附加列")
+        ):
+            return "capability_claim"
+        return "chat_final"
+
+    def _generate_and_release_chat_reply(
+        self,
+        session: AgentSession,
+        text: str,
+        *,
+        out: Any,
+        rewrite_instruction: str = "",
+    ) -> Iterator[dict[str, Any]]:
+        """Buffer a chat draft (when gate on), then release via Reflection Gate."""
+        from agent.runtime.reflection_gate import reflection_gate_mode
+
+        mode = reflection_gate_mode()
+        buffer_before_release = mode != "off"
+        parts: list[str] = []
+        streamed = False
+        try:
+            for delta in self._llm_chat_reply_stream(
+                session, text, rewrite_instruction=rewrite_instruction
+            ):
+                piece = str(delta or "")
+                if not piece:
+                    continue
+                parts.append(piece)
+                if not buffer_before_release:
+                    streamed = True
+                    yield self._emit_live(
+                        session,
+                        {"type": "assistant_delta", "delta": piece},
+                    )
+            reply = "".join(parts).strip()
+        except CallCancelled:
+            raise
+        except RunInterrupted:
+            raise
+        except Exception as exc:  # noqa: BLE001 — LLM optional
+            if self._run_controller(session).interruption_requested:
+                raise RunInterrupted("user_guidance") from exc
+            reply = ""
+        if not reply:
+            reply = self._chat_reply_fallback(session, text)
+            streamed = False
+        yield from self._release_chat_candidate(
+            session,
+            user_text=text,
+            candidate=reply,
+            route="chat",
+            streamed=streamed and not buffer_before_release,
+            out=out,
+            already_streamed=streamed and not buffer_before_release,
+        )
+
+    def _release_chat_candidate(
+        self,
+        session: AgentSession,
+        *,
+        user_text: str,
+        candidate: str,
+        route: str,
+        streamed: bool,
+        out: Any,
+        already_streamed: bool = False,
+    ) -> Iterator[dict[str, Any]]:
+        """Run Reflection Gate then emit assistant / reenter / clarify."""
+        from agent.runtime.capability_context import build_capability_surface
+        from agent.runtime.reflection_gate import (
+            ReflectionVerdict,
+            apply_mode,
+            bump_reflection_counter,
+            clarification_for_verdict,
+            evaluate_candidate,
+            max_reenter,
+            max_rewrite,
+            record_gate_on_session,
+            reflection_gate_mode,
+        )
+
+        mode = reflection_gate_mode()
+        release_point = self._chat_release_point(session, user_text)
+        surface = build_capability_surface(
+            self.registry,
+            session,
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
+        )
+        verdict = evaluate_candidate(
+            session=session,
+            user_text=user_text,
+            candidate_assistant=candidate,
+            route=route,
+            release_point=release_point,
+            capability_surface=surface,
+            tool_starts=[],
+            tool_ends=[],
+            registry=self.registry,
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
+        )
+        record_gate_on_session(session, verdict)
+        yield out(
+            {
+                "type": "reflection_verdict",
+                "decision": verdict.decision,
+                "source": verdict.source,
+                "issue_codes": [item.code for item in verdict.issues],
+                "diagnosis": verdict.diagnosis[:240],
+                "release_point": verdict.release_point,
+                "mode": mode,
+                "latency_ms": verdict.latency_ms,
+                "gate1_reason": getattr(verdict, "gate1_reason", "")[:120],
+                "soft_signals": list(getattr(verdict, "soft_signals", []) or [])[:8],
+            }
+        )
+        effective = apply_mode(verdict, mode=mode)
+
+        if mode == "enforce" and effective.decision == "rewrite":
+            rewrites = bump_reflection_counter(session, "reflection_rewrites")
+            if rewrites <= max_rewrite():
+                instruction = str(
+                    (verdict.repair_hint or {}).get("rewrite_instruction") or ""
+                ).strip() or (
+                    "纠正与会话真相面矛盾的断言；禁止伪 tool_call；不得声称已执行工具。"
+                )
+                yield out(
+                    {
+                        "type": "thinking",
+                        "text": f"反思闸改写终稿（{verdict.source}:{verdict.diagnosis[:80]}）",
+                    }
+                )
+                yield from self._generate_and_release_chat_reply(
+                    session,
+                    user_text,
+                    out=out,
+                    rewrite_instruction=instruction,
+                )
+                return
+            effective = ReflectionVerdict(
+                decision="clarify",
+                confidence=effective.confidence,
+                source=effective.source,
+                issues=list(effective.issues),
+                diagnosis=effective.diagnosis or "改写次数用尽",
+                repair_hint=dict(effective.repair_hint),
+                release_point=effective.release_point,
+                latency_ms=effective.latency_ms,
+            )
+
+        if mode == "enforce" and effective.decision == "reenter":
+            depth = bump_reflection_counter(session, "reflection_depth")
+            if depth <= max_reenter():
+                hint = verdict.repair_hint or {}
+                retry_text = self._reflection_retry_text(
+                    session, user_text=user_text, hint=hint
+                )
+                preferred = str(hint.get("preferred_act") or "")
+                yield out(
+                    {
+                        "type": "thinking",
+                        "text": (
+                            f"反思闸重入（{verdict.source}:{','.join(i.code for i in verdict.issues) or 'n/a'}）；"
+                            f"恢复「{retry_text[:80]}」 preferred_act={preferred or 'auto'}"
+                        ),
+                    }
+                )
+                yield out(
+                    {
+                        "type": "task_end",
+                        "task_id": "conversation",
+                        "status": "succeeded",
+                        "observation": {
+                            "summary": "reflection_reenter",
+                            "streamed": False,
+                            "reflection_decision": "reenter",
+                        },
+                    }
+                )
+                if isinstance(session.active_run, dict):
+                    session.active_run["display_text"] = user_text
+                    if preferred:
+                        session.active_run["reflection_preferred_act"] = preferred
+                    session.active_run["reflection_diagnosis"] = verdict.diagnosis[:240]
+                self.store.persist(session)
+                yield from self._handle_message_body(session, retry_text)
+                return
+            effective = ReflectionVerdict(
+                decision="clarify",
+                confidence=effective.confidence,
+                source=effective.source,
+                issues=list(effective.issues),
+                diagnosis=effective.diagnosis or "重入次数用尽",
+                repair_hint=dict(effective.repair_hint),
+                release_point=effective.release_point,
+                latency_ms=effective.latency_ms,
+            )
+
+        if mode == "enforce" and effective.decision in {"clarify", "deny"}:
+            reply = clarification_for_verdict(verdict, user_text=user_text)
+            streamed = False
+            already_streamed = False
+        else:
+            reply = candidate
+
+        if mode != "off" and not already_streamed and reply:
+            # Buffered path: reveal the released text as live deltas for UI parity.
+            yield self._emit_live(
+                session, {"type": "assistant_delta", "delta": reply}
+            )
+            streamed = True
+
+        session.messages.append({"role": "assistant", "text": reply})
+        yield out(
+            {
+                "type": "task_end",
+                "task_id": "conversation",
+                "status": "succeeded",
+                "observation": {
+                    "summary": self._compact_observation(reply, limit=1200),
+                    "streamed": streamed,
+                    "reflection_decision": verdict.decision,
+                    "reflection_source": verdict.source,
+                    "reflection_mode": mode,
+                },
+            }
+        )
+        yield out({"type": "assistant", "text": reply})
+        yield out({"type": "done"})
+        self.store.persist(session)
+
+    def _reflection_retry_text(
+        self,
+        session: AgentSession,
+        *,
+        user_text: str,
+        hint: dict[str, Any],
+    ) -> str:
+        """Prefer pending scientific source text over short affirmatives like「继续」."""
+        candidates = [
+            str(hint.get("retry_text") or "").strip(),
+            str((session.pending_install or {}).get("retry_text") or "").strip()
+            if isinstance(session.pending_install, dict)
+            else "",
+            str((session.pending_action or {}).get("source_text") or "").strip()
+            if isinstance(session.pending_action, dict)
+            else "",
+            str((session.pending_goal or {}).get("source_text") or "").strip()
+            if isinstance(session.pending_goal, dict)
+            else "",
+            str(user_text or "").strip(),
+        ]
+        affirm = re.compile(
+            r"^(?:继续|确认|好的|好|可以|行|嗯|ok|okay|yes|y)$", re.I
+        )
+        for item in candidates:
+            if item and not affirm.fullmatch(item):
+                return item
+        for item in candidates:
+            if item:
+                return item
+        return str(user_text or "").strip() or "继续"
+
     def _llm_chat_reply(self, session: AgentSession, text: str) -> str:
         """Answer general questions with LLM; fall back to a short template."""
         try:
@@ -6345,7 +7057,11 @@ class AgentRuntime:
             return self._chat_reply_fallback(session, text)
 
     def _llm_chat_reply_stream(
-        self, session: AgentSession, text: str
+        self,
+        session: AgentSession,
+        text: str,
+        *,
+        rewrite_instruction: str = "",
     ) -> Iterator[str]:
         """Yield token deltas for a conversational reply; records working memory once."""
         from plugins.molmind_core.scientific.mechanism.llm_client import (
@@ -6407,7 +7123,7 @@ class AgentRuntime:
         capability_surface = build_capability_surface(
             self.registry,
             session,
-            scp_catalog=getattr(self.scp, "catalog", None),
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
         )
         capability_json = format_capability_surface_for_prompt(capability_surface)
 
@@ -6440,6 +7156,9 @@ class AgentRuntime:
             "禁止声称「执行时可以指定附加列」。"
             "讨论执行前可确认的选项时，只能使用 discussable_execution_options；"
             "旁证 enrich 是另跑流程，不改变提名 CSV schema。"
+            "普通对话不得输出 <tool_call>、伪 JSON 工具调用、或任何假装已调用工具的正文；"
+            "不得声称「正在检索/已为你查询」除非本轮已有真实工具事件。"
+            "需要文献检索或筛选时，应提示用户确认执行或回复「继续」，由运行时走工具路径。"
             "非 SDF 附件（PDF/图片/文档）仅作上下文参考，不能用于 score_and_rank，"
             "也不能假装已经解析了 PDF/图片正文。"
             f"当前会话附件：{'已绑定 ' + name if has_sdf else '无'}（仅本会话可用，不跨会话）。"
@@ -6447,6 +7166,13 @@ class AgentRuntime:
             f"\n当前能力面（JSON）：{capability_json}"
             + (f"\n{attachment_context}" if attachment_context else "")
         )
+        rewrite_block = ""
+        if str(rewrite_instruction or "").strip():
+            rewrite_block = (
+                "\n\n【系统改写要求】上一稿未通过内部放行复核。"
+                f"{str(rewrite_instruction).strip()}"
+                "请给出可放行的最终中文回复；禁止 <tool_call> 与伪工具调用。"
+            )
         user = (
             f"最近对话：\n{history}\n\n"
             f"会话工作记忆（最近的调用、观察与 Loop 决策）：\n{working_context}\n\n"
@@ -6455,6 +7181,7 @@ class AgentRuntime:
             f"用户本轮：{text}\n\n"
             "请直接回答本轮问题。若在说明能力清单，按已启用 / 可安装 分层组织，"
             "并提示用户如何启用未装项。"
+            f"{rewrite_block}"
         )
         try:
             for delta in chat_completion_stream(settings, system=system, user=user):
@@ -6495,7 +7222,7 @@ class AgentRuntime:
         surface = build_capability_surface(
             self.registry,
             session,
-            scp_catalog=getattr(self.scp, "catalog", None),
+            scp_catalog=getattr(getattr(self, "scp", None), "catalog", None),
         )
         skill_titles = [
             str(item.get("title") or item.get("skill_id") or "")

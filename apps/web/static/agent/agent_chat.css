@@ -2356,8 +2356,30 @@
 }
 
 .mm-stop-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.72;
+  cursor: wait;
+}
+
+.mm-stop-btn--stopping {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.28);
+  background: rgba(255, 244, 242, 0.92);
+}
+
+.mm-stop-btn--stopping::before {
+  animation: none !important;
+  opacity: 0.35;
+  background: rgba(180, 35, 24, 0.22);
+}
+
+.mm-chat-root--stopping .mm-send-bar,
+.mm-chat-root--stopping .mm-queue-rail {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.mm-chat-root--stopping .mm-stop-btn {
+  pointer-events: none;
 }
 
 .mm-send-btn:disabled {

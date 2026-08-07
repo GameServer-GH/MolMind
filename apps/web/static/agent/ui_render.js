@@ -739,6 +739,7 @@
     let chain = Promise.resolve();
     let forceInstant = isDocumentHidden();
     let pendingCount = 0;
+    let cancelled = false;
     const waiters = new Set();
 
     function shouldInstant() {
@@ -747,7 +748,7 @@
 
     function delay(ms) {
       return new Promise((resolve) => {
-        if (shouldInstant()) {
+        if (cancelled || shouldInstant()) {
           resolve();
           return;
         }
@@ -763,6 +764,10 @@
     async function typeInto(el, fullText, onTick) {
       const text = String(fullText || "");
       if (!el) return;
+      if (cancelled) {
+        // Leave whatever is already painted; do not jump to full text.
+        return;
+      }
       if (shouldInstant() || !text) {
         el.textContent = text;
         if (onTick) onTick(text);
@@ -784,6 +789,9 @@
       let i = 0;
       el.textContent = "";
       while (i < len) {
+        if (cancelled) {
+          return;
+        }
         if (shouldInstant()) {
           el.textContent = text;
           if (onTick) onTick(text);
@@ -798,9 +806,13 @@
 
     const api = {
       enqueue(task) {
+        if (cancelled) return chain;
         pendingCount += 1;
         chain = chain
-          .then(() => task())
+          .then(() => {
+            if (cancelled) return;
+            return task();
+          })
           .catch(() => {})
           .finally(() => {
             pendingCount = Math.max(0, pendingCount - 1);
@@ -819,12 +831,24 @@
         });
         waiters.clear();
       },
+      /** Stop pending reveals immediately without jumping to full text (user stop). */
+      cancel() {
+        cancelled = true;
+        waiters.forEach((entry) => {
+          clearTimeout(entry.id);
+          entry.resolve();
+        });
+        waiters.clear();
+      },
       typeInto,
       get instant() {
         return forceInstant || isDocumentHidden();
       },
       get pending() {
         return pendingCount > 0;
+      },
+      get cancelled() {
+        return cancelled;
       },
     };
     liveRevealQueues.add(api);
@@ -1096,6 +1120,18 @@
 
   function applyEventToTurn(turn, ev) {
     if (!turn || !ev) return;
+    if (turn._stopFrozen) {
+      const type = ev.type;
+      // After user stop, only terminal / interrupt chrome may still paint.
+      if (
+        type !== "run_interrupted" &&
+        type !== "done" &&
+        type !== "error" &&
+        type !== "governance_denied"
+      ) {
+        return;
+      }
+    }
     const type = ev.type;
     if (
       type === "thinking" ||
@@ -1111,12 +1147,21 @@
       type === "identity_conflict" ||
       type === "query_summary" ||
       type === "loop_decision" ||
-      type === "governance_denied"
+      type === "governance_denied" ||
+      type === "reflection_verdict"
     ) {
       const trace = turn.ensureTrace();
       if (type === "thinking") trace.appendThinking(ev.text || "");
       else if (type === "plan") trace.appendPlan(ev.steps || []);
-      else if (type === "tool_start") {
+      else if (type === "reflection_verdict") {
+        const decision = String(ev.decision || "release");
+        const codes = Array.isArray(ev.issue_codes) ? ev.issue_codes.join(",") : "";
+        const detail =
+          decision === "release"
+            ? "终稿复核通过"
+            : `终稿复核：${decision}${codes ? `（${codes}）` : ""}`;
+        trace.appendThinking(detail);
+      } else if (type === "tool_start") {
         trace.appendTool("start", friendlyToolLine("start", ev.tool, ev));
       } else if (type === "tool_end") {
         const terminalKind = ev.ok === false ? "error" : "end";
@@ -1406,6 +1451,7 @@
         },
         /** Clear answer body / thinking / artifacts so a checkpoint retry can paint fresh. */
         resetAnswer() {
+          api._stopFrozen = false;
           if (reveal) {
             reveal.flush();
             liveRevealQueues.delete(reveal);
@@ -1460,7 +1506,30 @@
             }
           });
         },
+        /** Highest-priority user stop: freeze paint, cancel typewriter mid-flight. */
+        haltForStop(detail) {
+          api._stopFrozen = true;
+          timingLive = false;
+          if (reveal && typeof reveal.cancel === "function") {
+            reveal.cancel();
+            liveRevealQueues.delete(reveal);
+          }
+          if (tokenStreamBlock) {
+            const bubble = tokenStreamBlock.querySelector(".mm-msg-bubble");
+            if (bubble) bubble.classList.remove("mm-msg-bubble--streaming");
+            tokenStreamEl = null;
+          }
+          if (trace && typeof trace.appendThinking === "function") {
+            trace.appendThinking(
+              String(detail || "已请求停止，正在中断当前任务…").slice(0, 200)
+            );
+          }
+        },
+        get stopFrozen() {
+          return !!api._stopFrozen;
+        },
       };
+      api._stopFrozen = false;
       return api;
     },
 

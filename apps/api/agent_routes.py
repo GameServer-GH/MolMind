@@ -444,6 +444,7 @@ def get_session(
         "top_n": session.top_n,
         "pending_action": session.pending_action,
         "pending_goal": session.pending_goal,
+        "pending_install": session.pending_install,
         "last_run_id": session.last_run_id or None,
         "last_selection_sha256": session.last_selection_sha256 or None,
         "run_history": list(session.run_history),

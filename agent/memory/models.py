@@ -57,6 +57,10 @@ class AgentSession:
     #: current tool contract. It must be clarified or explicitly discarded;
     #: later exports must not silently run the default pipeline instead.
     pending_goal: dict[str, Any] | None = None
+    #: SCP skill install wait. Holds the original user request so a short
+    #: follow-up like「继续」can resume after the install card is confirmed,
+    #: without replaying fake tool calls in chat.
+    pending_install: dict[str, Any] | None = None
     last_run_id: str = ""
     last_selection_sha256: str = ""
     last_config_hash: str = ""

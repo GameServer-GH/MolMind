@@ -745,6 +745,7 @@ class PostgresRunStore:
             "pending_top_confirm": session.pending_top_confirm,
             "pending_action": session.pending_action,
             "pending_goal": session.pending_goal,
+            "pending_install": session.pending_install,
             "last_run_id": session.last_run_id,
             "last_selection_sha256": session.last_selection_sha256,
             "last_config_hash": session.last_config_hash,
@@ -911,6 +912,11 @@ class PostgresRunStore:
             ),
             pending_goal=(
                 dict(meta["pending_goal"]) if isinstance(meta.get("pending_goal"), dict) else None
+            ),
+            pending_install=(
+                dict(meta["pending_install"])
+                if isinstance(meta.get("pending_install"), dict)
+                else None
             ),
             last_run_id=str(meta.get("last_run_id") or ""),
             last_selection_sha256=str(meta.get("last_selection_sha256") or ""),

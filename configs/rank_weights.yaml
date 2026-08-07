@@ -199,11 +199,16 @@ llm:
   temperature: 0
   provider: openai_compatible
   model: deepseek-v4-pro
+  # Reflection Gate（purpose=agent_reflection）快模型；主路径勿改用此字段。
+  reflection_model: deepseek-v4-flash
   base_url: https://api.deepseek.com/v1
   max_tokens: 4096
   timeout_sec: 120
   use_cache: true
   cache_dir: data/llm_cache
+  reflection_timeout_sec: 6
+  reflection_max_tokens: 512
+  reflection_use_cache: false
 
 critic:
   fp_sim_threshold: 0.75

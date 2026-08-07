@@ -1835,6 +1835,7 @@
   }
 
   function isCurrentAgentSessionBusy() {
+    if (isAgentStopGateActive()) return true;
     const local = agentSessionId ? agentStreams.get(agentSessionId) : null;
     if (local && local.running) return true;
     if (isAgentRunActive(currentAgentRun())) return true;
@@ -1895,7 +1896,9 @@
 
   function syncAgentBusyUi() {
     const cur = agentSessionId ? agentStreams.get(agentSessionId) : null;
+    const stopping = isAgentStopGateActive();
     const busy =
+      stopping ||
       !!(cur && cur.running) ||
       isAgentRunActive(currentAgentRun()) ||
       !!(
@@ -1904,9 +1907,27 @@
         activeTurn.isStreamPending()
       );
     agentBusy = busy;
-    setStreaming(busy);
+    setStreaming(busy && !stopping);
+    if (agentChatRoot) {
+      agentChatRoot.classList.toggle("mm-chat-root--stopping", stopping);
+      agentChatRoot.setAttribute("aria-busy", busy ? "true" : "false");
+    }
+    if (agentInput) {
+      if (!agentInput.dataset.defaultPlaceholder) {
+        agentInput.dataset.defaultPlaceholder =
+          agentInput.getAttribute("placeholder") || "";
+      }
+      agentInput.disabled = stopping;
+      agentInput.setAttribute(
+        "placeholder",
+        stopping
+          ? "正在停止，请稍候…"
+          : agentInput.dataset.defaultPlaceholder || ""
+      );
+    }
     if (agentSendBtn) {
-      agentSendBtn.disabled = busy && agentQueueCount >= 3;
+      // During stop: hard-ban send. Otherwise allow queueing unless full.
+      agentSendBtn.disabled = stopping || (busy && agentQueueCount >= 3);
       agentSendBtn.type = "submit";
       applyAgentSendShortcutLabel();
     }
@@ -1914,29 +1935,40 @@
       agentSendShortcut.classList.remove("hidden");
     }
     if (agentStopBtn) {
-      agentStopBtn.classList.toggle("hidden", !busy);
-      agentStopBtn.hidden = !busy;
-      agentStopBtn.disabled = false;
+      const showStop = busy || stopping;
+      agentStopBtn.classList.toggle("hidden", !showStop);
+      agentStopBtn.hidden = !showStop;
+      agentStopBtn.disabled = stopping;
+      agentStopBtn.title = stopping ? "正在停止…" : "停止当前任务";
+      agentStopBtn.setAttribute("aria-label", stopping ? "正在停止" : "停止");
+      agentStopBtn.classList.toggle("mm-stop-btn--stopping", stopping);
     }
     if (agentGuideBtn) {
       agentGuideBtn.classList.add("hidden");
       agentGuideBtn.hidden = true;
     }
-    if (agentFileInput) agentFileInput.disabled = agentUploadInProgress;
+    if (agentFileInput) agentFileInput.disabled = stopping || agentUploadInProgress;
     if (agentUploadBtn) {
-      agentUploadBtn.setAttribute("aria-disabled", String(agentUploadInProgress));
-      agentUploadBtn.title = agentUploadInProgress ? "附件上传中" : "上传附件";
+      agentUploadBtn.setAttribute(
+        "aria-disabled",
+        String(stopping || agentUploadInProgress)
+      );
+      agentUploadBtn.title = stopping
+        ? "正在停止"
+        : agentUploadInProgress
+          ? "附件上传中"
+          : "上传附件";
     }
-    if (agentNewChatBtn) agentNewChatBtn.disabled = false;
-    if (agentHistoryClearBtn) agentHistoryClearBtn.disabled = busy;
+    if (agentNewChatBtn) agentNewChatBtn.disabled = stopping;
+    if (agentHistoryClearBtn) agentHistoryClearBtn.disabled = busy || stopping;
     if (agentAttachRail) {
       agentAttachRail.querySelectorAll(".mm-attach-chip-remove").forEach((button) => {
-        button.disabled = false;
-        button.title = "移除附件";
+        button.disabled = stopping;
+        button.title = stopping ? "正在停止" : "移除附件";
       });
     }
     if (RunStatus) {
-      if (busy) RunStatus.setVisible(true);
+      if (busy || stopping) RunStatus.setVisible(true);
       else RunStatus.setVisible(false);
     }
     paintAgentQueueRail();
@@ -2126,6 +2158,10 @@
         sendBtn.addEventListener("click", async (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (isAgentStopGateActive()) {
+            showAgentToast("正在停止，请稍候");
+            return;
+          }
           setActionsDisabled(true);
           try {
             await promotePromptAsGuidance(card);
@@ -2172,6 +2208,9 @@
         });
 
         actions.append(sendBtn, editBtn, deleteBtn);
+        if (isAgentStopGateActive()) {
+          setActionsDisabled(true);
+        }
         side.appendChild(actions);
       }
 
@@ -2381,14 +2420,44 @@
     return !!entry && agentStreams.get(sid) === entry && entry.running;
   }
 
-  function canPaintStream(sid, entry, turn) {
-    return (
+  function canPaintStream(sid, entry, turn, ev = null) {
+    const attached =
       isStreamEntryActive(sid, entry) &&
       agentSessionId === sid &&
       turn &&
       turn.root &&
-      turn.root.isConnected
+      turn.root.isConnected;
+    if (!attached) return false;
+    const frozen =
+      !!(entry && entry.paintFrozen) || isAgentStopGateActive(sid);
+    if (!frozen) return true;
+    // During stop freeze, only terminal / interrupt chrome may still paint.
+    const type = ev && ev.type;
+    return (
+      type === "done" ||
+      type === "error" ||
+      type === "run_interrupted"
     );
+  }
+
+  function noteAgentStreamTerminal(sessionId, ev) {
+    const status = String((ev && ev.status) || "").trim();
+    const type = String((ev && ev.type) || "");
+    const wasStopping = isAgentStopGateActive(sessionId);
+    const terminalStop =
+      type === "run_interrupted" ||
+      status === "interrupted" ||
+      status === "cancelled" ||
+      status === "failed";
+    if (terminalStop || type === "done" || type === "error") {
+      clearAgentStopGate(sessionId);
+      if (wasStopping) {
+        showAgentToast(
+          terminalStop || status === "interrupted" ? "已停止当前任务" : "任务已结束"
+        );
+      }
+      syncAgentBusyUi();
+    }
   }
 
   /** Stop painting into the current DOM without cancelling background generation. */
@@ -2513,6 +2582,68 @@
   let agentQueueFollowDeferred = null;
   /** True while continueAgentQueueFollow is actively trying to promote. */
   let agentQueueFollowActive = false;
+  /** Hold queue while we auto-send「继续」to resume pending_install after install. */
+  let agentInstallResumeHold = false;
+  /** Highest-priority stop gate: freeze UI paint and ban user ops until terminal. */
+  let agentStopGate = null;
+  /** After user stop, do not auto-drain the queue (avoid surprise follow-up runs). */
+  let agentSuppressQueueFollow = false;
+
+  function isAgentStopGateActive(sessionId = agentSessionId) {
+    return !!(
+      agentStopGate &&
+      agentStopGate.active &&
+      (!sessionId || agentStopGate.sessionId === sessionId)
+    );
+  }
+
+  function beginAgentStopGate(sessionId, runId) {
+    agentStopGate = {
+      active: true,
+      sessionId: sessionId || agentSessionId,
+      runId: String(runId || ""),
+      startedAt: Date.now(),
+    };
+    const stream = sessionId ? agentStreams.get(sessionId) : null;
+    if (stream) stream.paintFrozen = true;
+    if (activeTurn && typeof activeTurn.haltForStop === "function") {
+      activeTurn.haltForStop("已请求停止，正在中断当前任务…");
+    }
+    if (RunStatus && typeof RunStatus.applyEvent === "function") {
+      RunStatus.applyEvent({
+        type: "thinking",
+        text: "正在停止当前任务…",
+      });
+    }
+    // Safety valve: never leave the UI locked forever if the terminal event is lost.
+    if (agentStopGate.timer) clearTimeout(agentStopGate.timer);
+    agentStopGate.timer = setTimeout(() => {
+      if (!isAgentStopGateActive(sessionId)) return;
+      clearAgentStopGate(sessionId);
+      showAgentToast("停止已超时解除；若任务仍在跑可再次点击停止");
+      syncAgentBusyUi();
+    }, 45000);
+    syncAgentBusyUi();
+  }
+
+  function clearAgentStopGate(sessionId = null) {
+    if (
+      sessionId &&
+      agentStopGate &&
+      agentStopGate.sessionId &&
+      agentStopGate.sessionId !== sessionId
+    ) {
+      return;
+    }
+    if (agentStopGate && agentStopGate.timer) {
+      clearTimeout(agentStopGate.timer);
+    }
+    if (agentStopGate) agentStopGate.active = false;
+    agentStopGate = null;
+    const sid = sessionId || agentSessionId;
+    const stream = sid ? agentStreams.get(sid) : null;
+    if (stream) stream.paintFrozen = false;
+  }
 
   function isInstallRequestOpen() {
     return !!(installFloatEl && installFloatEl.isConnected);
@@ -2536,12 +2667,25 @@
    */
   function shouldEnqueueAgentSend() {
     return (
+      isAgentStopGateActive() ||
       isCurrentAgentSessionBusy() ||
       hasAgentQueueWaiting() ||
       isInstallRequestOpen() ||
       agentQueueFollowActive ||
-      !!agentQueueFollowDeferred
+      !!agentQueueFollowDeferred ||
+      agentInstallResumeHold
     );
+  }
+
+  function holdAgentQueueForInstallResume(sessionId) {
+    const sid = sessionId || agentSessionId;
+    if (!sid) return;
+    agentQueueFollowDeferred = sid;
+    agentInstallResumeHold = true;
+  }
+
+  function releaseAgentInstallResumeHold() {
+    agentInstallResumeHold = false;
   }
 
   function dismissInstallRequestFloat({ resumeQueue = true } = {}) {
@@ -2677,11 +2821,24 @@
         if (MentionUI && sessionId) {
           MentionUI.refresh(sessionId).catch(() => {});
         }
-        // Stay in the current conversation after install. Replaying retry_text
-        // as a new user turn (especially bare「安装」) duplicates prompts and
-        // makes the install card look like a second install request.
-        showAgentToast(`已安装「${titles}」，可直接在当前对话继续`);
-        dismissInstallRequestFloat();
+        // Close the float without draining the queue. Queued test prompts must
+        // not race ahead of pending_install resume (that wiped the scientific
+        // retry and jumped to the next unrelated ask).
+        dismissInstallRequestFloat({ resumeQueue: false });
+        holdAgentQueueForInstallResume(sessionId);
+        showAgentToast(`已安装「${titles}」，正在按原请求继续…`);
+        try {
+          // Backend pending_install treats「继续」as the affirm to restore retry_text.
+          await sendAgentMessage("继续", { forceDirect: true });
+        } catch (continueError) {
+          showAgentToast(
+            ((continueError && continueError.message) || "自动继续失败") +
+              "；请手动回复「继续」以执行原请求"
+          );
+        } finally {
+          releaseAgentInstallResumeHold();
+          resumeAgentQueueFollowAfterGate();
+        }
         if (agentInput) agentInput.focus();
       } catch (error) {
         installFloatBusy = false;
@@ -3547,16 +3704,22 @@
             RunStatus.applyEvent(event);
           }
           if (
-            canPaintStream(sessionId, entry, ownedTurn) &&
+            canPaintStream(sessionId, entry, ownedTurn, event) &&
             (!entry.runId || !event.run_id || String(event.run_id) === entry.runId)
           ) {
             ownedTurn.applyEvent(event);
-            if (event.type === "done" || event.type === "error") {
+            if (event.type === "done" || event.type === "error" || event.type === "run_interrupted") {
+              noteAgentStreamTerminal(sessionId, event);
               sawTerminal = true;
               await finishTurnAfterStream(ownedTurn);
             }
             agentScrollBottom();
-          } else if (event.type === "done" || event.type === "error") {
+          } else if (
+            event.type === "done" ||
+            event.type === "error" ||
+            event.type === "run_interrupted"
+          ) {
+            noteAgentStreamTerminal(sessionId, event);
             sawTerminal = true;
           }
         }
@@ -3606,9 +3769,14 @@
 
   async function continueAgentQueueFollow(sessionId) {
     if (!sessionId) return;
+    if (agentSuppressQueueFollow) {
+      agentSuppressQueueFollow = false;
+      agentQueueFollowDeferred = null;
+      return;
+    }
     // Install confirmation owns the conversation gate: do not auto-promote
     // queued turns underneath the modal (that scrambled ask/answer order).
-    if (isInstallRequestOpen()) {
+    if (isInstallRequestOpen() || agentInstallResumeHold || isAgentStopGateActive(sessionId)) {
       agentQueueFollowDeferred = sessionId;
       return;
     }
@@ -3624,7 +3792,7 @@
       // promote the next queued Turn and paint ask/answer like a normal send.
       for (let attempt = 0; attempt < 12; ) {
         if (agentSessionId !== sessionId) return;
-        if (isInstallRequestOpen()) {
+        if (isInstallRequestOpen() || agentInstallResumeHold) {
           agentQueueFollowDeferred = sessionId;
           return;
         }
@@ -3648,7 +3816,7 @@
         attempt += 1;
         await waitForAgentPoll(attempt === 1 ? 200 : 350);
         if (agentSessionId !== sessionId) return;
-        if (isInstallRequestOpen()) {
+        if (isInstallRequestOpen() || agentInstallResumeHold) {
           agentQueueFollowDeferred = sessionId;
           return;
         }
@@ -3661,7 +3829,7 @@
           continue;
         }
         if (agentSessionId !== sessionId) return;
-        if (isInstallRequestOpen()) {
+        if (isInstallRequestOpen() || agentInstallResumeHold) {
           agentQueueFollowDeferred = sessionId;
           return;
         }
@@ -3703,6 +3871,7 @@
       if (
         agentQueueFollowDeferred &&
         !isInstallRequestOpen() &&
+        !agentInstallResumeHold &&
         agentSessionId === agentQueueFollowDeferred &&
         hasAgentQueueWaiting()
       ) {
@@ -4067,21 +4236,26 @@
     return hasSdf && /csv|候选清单|提名清单/i.test(String(text || ""));
   }
 
-  async function sendAgentMessage(text) {
+  async function sendAgentMessage(text, opts = {}) {
     if (!Render) return;
+    if (isAgentStopGateActive() && !opts.forceDirect) {
+      showAgentToast("正在停止，请稍候再发送");
+      return;
+    }
     // User chose to send instead of picking a quick prompt — drop the clarify card.
     dismissAttachmentClarify();
     // Do not dismiss the install float here: it gates queue auto-drain. Closing it
     // on every send let queued turns race under the install decision.
     const submitted = String(text || "").trim();
     if (!submitted) return;
+    const forceDirect = !!opts.forceDirect;
 
-    if (shouldEnqueueAgentSend()) {
+    if (!forceDirect && shouldEnqueueAgentSend()) {
       if (agentQueueCount >= 3) {
         showAgentToast("排队已满（最多 3 条），请等待或将某条提升为指引");
         return;
       }
-      const holdInstall = isInstallRequestOpen();
+      const holdInstall = isInstallRequestOpen() || agentInstallResumeHold;
       const holdQueueOrSettle =
         agentPendingTurns.length > 0 ||
         agentOptimisticTurns.length > 0 ||
@@ -4095,7 +4269,7 @@
         const pending = submitBusyAgentTurn(submitted, "queue");
         clearAgentInput();
         if (holdInstall) {
-          showAgentToast("已加入排队；确认安装后将按顺序发送");
+          showAgentToast("已加入排队；安装完成后将先续接原请求，再按顺序发送");
         } else if (holdQueueOrSettle) {
           showAgentToast("已加入排队，将按顺序发送");
         }
@@ -4223,9 +4397,18 @@
             });
           }
           if (agentSessionId === streamSid && isStreamEntryActive(streamSid, entry) && RunStatus) {
-            RunStatus.applyEvent(ev);
+            // Keep status strip updates during stop freeze (shows cancel_requested).
+            if (
+              !entry.paintFrozen ||
+              ev.type === "done" ||
+              ev.type === "error" ||
+              ev.type === "run_interrupted" ||
+              ev.type === "thinking"
+            ) {
+              RunStatus.applyEvent(ev);
+            }
           }
-          if (canPaintStream(streamSid, entry, ownedTurn)) {
+          if (canPaintStream(streamSid, entry, ownedTurn, ev)) {
             ownedTurn.applyEvent(ev);
             if (ev.type === "assistant_delta") {
               agentScrollBottom();
@@ -4233,12 +4416,22 @@
               await yieldAgentPaintFrame();
               continue;
             }
-            if (ev.type === "done" || ev.type === "error") {
+            if (
+              ev.type === "done" ||
+              ev.type === "error" ||
+              ev.type === "run_interrupted"
+            ) {
+              noteAgentStreamTerminal(streamSid, ev);
               sawTerminal = true;
               await finishTurnAfterStream(ownedTurn);
             }
             agentScrollBottom();
-          } else if (ev.type === "done" || ev.type === "error") {
+          } else if (
+            ev.type === "done" ||
+            ev.type === "error" ||
+            ev.type === "run_interrupted"
+          ) {
+            noteAgentStreamTerminal(streamSid, ev);
             sawTerminal = true;
           }
         }
@@ -4369,7 +4562,12 @@
 
   async function interruptCurrentAgentRun() {
     const sid = agentSessionId;
-    if (!sid || !isCurrentAgentSessionBusy()) return;
+    if (!sid) return;
+    if (isAgentStopGateActive(sid)) {
+      showAgentToast("正在停止，请稍候");
+      return;
+    }
+    if (!isCurrentAgentSessionBusy()) return;
     const run = currentAgentRun(sid);
     const stream = agentStreams.get(sid);
     const runId = String((run && run.run_id) || (stream && stream.runId) || "");
@@ -4377,7 +4575,18 @@
       showAgentToast("没有可停止的任务");
       return;
     }
-    if (agentStopBtn) agentStopBtn.disabled = true;
+    // Freeze UI + ban ops BEFORE the network round-trip (highest priority).
+    beginAgentStopGate(sid, runId);
+    setAgentRunSnapshot(sid, {
+      ...(run || {}),
+      run_id: runId,
+      status: "cancel_requested",
+    });
+    showAgentToast("正在停止当前任务");
+    // Hold queue drain until the interrupted terminal event arrives,
+    // then suppress auto-promote so stop does not immediately start the next turn.
+    agentQueueFollowDeferred = sid;
+    agentSuppressQueueFollow = true;
     try {
       const resp = await fetch(
         `/api/agent/sessions/${sid}/runs/${encodeURIComponent(runId)}/interrupt`,
@@ -4388,16 +4597,11 @@
           apiErrorMessage(await resp.json().catch(() => ({})), "停止失败")
         );
       }
-      setAgentRunSnapshot(sid, {
-        ...(run || {}),
-        run_id: runId,
-        status: "cancel_requested",
-      });
-      showAgentToast("正在停止当前任务");
     } catch (error) {
+      clearAgentStopGate(sid);
       showAgentToast(error.message || "停止失败");
+      syncAgentBusyUi();
     } finally {
-      if (agentStopBtn) agentStopBtn.disabled = false;
       syncAgentBusyUi();
     }
   }

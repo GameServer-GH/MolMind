@@ -70,8 +70,10 @@ def resolve_llm_settings(
     - ``mechanism``: requires ``llm.enabled`` and ``mechanism_pdf`` (or env override)
     - ``nomination_review``: requires ``llm.enabled`` and ``nomination_review``
       (default True when enabled; env ``MOLMIND_LLM_NOMINATION_REVIEW`` overrides)
-    - ``agent_chat``: conversational Q&A; on by default when an API key is available
-      (env ``MOLMIND_LLM_CHAT`` can force on/off)
+    - ``agent_chat``: conversational Q&A / planning; default model ``deepseek-v4-pro``
+      (env ``MOLMIND_LLM_CHAT`` can force on/off; ``MOLMIND_LLM_MODEL`` overrides model)
+    - ``agent_reflection``: fast Reflection Gate reviewer; default model
+      ``deepseek-v4-flash`` (env ``MOLMIND_LLM_REFLECTION`` / ``MOLMIND_LLM_REFLECTION_MODEL``)
     """
     cfg = dict(llm_cfg or {})
     base_enabled = bool(cfg.get("enabled", False))
@@ -90,6 +92,17 @@ def resolve_llm_settings(
             enabled = True
         elif env_flag in {"0", "false", "no", "off"}:
             enabled = False
+    elif purpose == "agent_reflection":
+        # Follow the Reflection Gate mode by default: on unless explicitly off.
+        enabled = bool(cfg.get("agent_reflection", True))
+        env_flag = os.environ.get("MOLMIND_LLM_REFLECTION", "").strip().lower()
+        if env_flag in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif env_flag in {"0", "false", "no", "off"}:
+            enabled = False
+        gate_mode = os.environ.get("MOLMIND_REFLECTION_GATE", "").strip().lower()
+        if gate_mode in {"off", "0", "false", "no"}:
+            enabled = False
     else:
         enabled = base_enabled and bool(cfg.get("mechanism_pdf", True))
         # 环境变量可强制开关（不改 YAML 即可试跑）
@@ -106,17 +119,54 @@ def resolve_llm_settings(
         or _decode_embedded_api_key()
         or ""
     ).strip()
-    base_url = (
-        os.environ.get("MOLMIND_LLM_BASE_URL")
-        or str(cfg.get("base_url") or "https://api.deepseek.com/v1")
-    ).rstrip("/")
+    if purpose == "agent_reflection":
+        base_url = (
+            os.environ.get("MOLMIND_LLM_REFLECTION_BASE_URL")
+            or os.environ.get("MOLMIND_LLM_BASE_URL")
+            or str(cfg.get("reflection_base_url") or cfg.get("base_url") or "")
+            or "https://api.deepseek.com/v1"
+        ).rstrip("/")
+    else:
+        base_url = (
+            os.environ.get("MOLMIND_LLM_BASE_URL")
+            or str(cfg.get("base_url") or "https://api.deepseek.com/v1")
+        ).rstrip("/")
     # DeepSeek OpenAI 兼容层：宿主为 api.deepseek.com 时统一走 /v1
     if base_url in {"https://api.deepseek.com", "http://api.deepseek.com"}:
         base_url = "https://api.deepseek.com/v1"
-    model = (
-        os.environ.get("MOLMIND_LLM_MODEL")
-        or str(cfg.get("model") or "deepseek-v4-pro")
-    ).strip()
+
+    if purpose == "agent_reflection":
+        # Flash is intentional for Gate 2 latency; do not inherit MOLMIND_LLM_MODEL
+        # (which stays on deepseek-v4-pro for normal agent / chat / planning).
+        model = (
+            os.environ.get("MOLMIND_LLM_REFLECTION_MODEL")
+            or str(cfg.get("reflection_model") or "deepseek-v4-flash")
+        ).strip()
+        temperature = float(
+            cfg.get(
+                "reflection_temperature",
+                cfg.get("temperature", 0),
+            )
+        )
+        timeout_sec = float(
+            os.environ.get("MOLMIND_LLM_REFLECTION_TIMEOUT_SEC")
+            or cfg.get("reflection_timeout_sec", 6)
+        )
+        max_tokens = int(
+            os.environ.get("MOLMIND_LLM_REFLECTION_MAX_TOKENS")
+            or cfg.get("reflection_max_tokens", 512)
+        )
+        use_cache = bool(cfg.get("reflection_use_cache", False))
+    else:
+        model = (
+            os.environ.get("MOLMIND_LLM_MODEL")
+            or str(cfg.get("model") or "deepseek-v4-pro")
+        ).strip()
+        temperature = float(cfg.get("temperature", 0))
+        timeout_sec = float(cfg.get("timeout_sec", 60))
+        max_tokens = int(cfg.get("max_tokens", 4096))
+        use_cache = bool(cfg.get("use_cache", True))
+
     cache_raw = cfg.get("cache_dir") or "data/llm_cache"
     cache_dir = Path(cache_raw)
     if not cache_dir.is_absolute():
@@ -127,11 +177,11 @@ def resolve_llm_settings(
         model=model,
         base_url=base_url,
         api_key=api_key,
-        temperature=float(cfg.get("temperature", 0)),
-        timeout_sec=float(cfg.get("timeout_sec", 60)),
-        max_tokens=int(cfg.get("max_tokens", 4096)),
+        temperature=temperature,
+        timeout_sec=timeout_sec,
+        max_tokens=max_tokens,
         cache_dir=cache_dir,
-        use_cache=bool(cfg.get("use_cache", True)),
+        use_cache=use_cache,
     )
 
 

@@ -405,7 +405,8 @@ def test_install_request_copy_does_not_promise_auto_retry(monkeypatch) -> None:
     assistant = next(event for event in events if event.get("type") == "assistant")
     text = str(assistant.get("text") or "")
     assert "自动重试" not in text
-    assert "当前对话" in text
+    assert "继续" in text
+    assert isinstance(session.pending_install, dict)
 
 
 def test_pending_action_survives_store_reload(tmp_path) -> None:
