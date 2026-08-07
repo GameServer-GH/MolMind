@@ -18,7 +18,13 @@ class NoveltyAssessment:
     method: str = "morgan_tanimoto_distance"
 
 
-def assess_structural_novelty(fp_bits, gold: GoldSet, cfg: AppConfig) -> NoveltyAssessment:
+def assess_structural_novelty(
+    fp_bits,
+    gold: GoldSet,
+    cfg: AppConfig,
+    *,
+    positive_similarity: tuple[float, str | None] | None = None,
+) -> NoveltyAssessment:
     """计算 ``1-max_similarity``；数据库 presence 和查询 miss 均不参与。"""
     policy = cfg.novelty
     reference_version = str(policy.get("reference_version") or "unversioned")
@@ -30,7 +36,10 @@ def assess_structural_novelty(fp_bits, gold: GoldSet, cfg: AppConfig) -> Novelty
             nearest_reference="",
             reference_version=reference_version,
         )
-    similarity, name = max_similarity(fp_bits, gold.positives)
+    if positive_similarity is None:
+        similarity, name = max_similarity(fp_bits, gold.positives)
+    else:
+        similarity, name = positive_similarity
     return NoveltyAssessment(
         score=clamp(1.0 - similarity),
         max_similarity=clamp(similarity),

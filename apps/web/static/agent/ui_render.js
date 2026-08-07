@@ -332,6 +332,77 @@
     return chunks.join("");
   }
 
+  function copyTextToClipboard(text) {
+    const value = String(text || "");
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = value;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (ok) resolve();
+        else reject(new Error("copy failed"));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function attachBubbleCopy(bubble) {
+    if (!bubble || bubble.querySelector(".mm-msg-copy")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mm-msg-copy";
+    btn.title = "复制";
+    btn.setAttribute("aria-label", "复制内容");
+    btn.appendChild(icon("copy", "mm-icon--sm"));
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const body = bubble.querySelector(".mm-msg-bubble-body");
+      const text = ((body || bubble).innerText || "").trim();
+      if (!text) return;
+      copyTextToClipboard(text)
+        .then(() => {
+          btn.classList.add("mm-msg-copy--done");
+          btn.title = "已复制";
+          btn.setAttribute("aria-label", "已复制");
+          window.clearTimeout(btn._mmCopyTimer);
+          btn._mmCopyTimer = window.setTimeout(() => {
+            btn.classList.remove("mm-msg-copy--done");
+            btn.title = "复制";
+            btn.setAttribute("aria-label", "复制内容");
+          }, 1400);
+        })
+        .catch(() => {
+          btn.title = "复制失败";
+        });
+    });
+    bubble.appendChild(btn);
+  }
+
+  function setBubbleBodyHtml(bubble, html, { copy = true } = {}) {
+    let body = bubble.querySelector(".mm-msg-bubble-body");
+    if (!body) {
+      body = document.createElement("div");
+      body.className = "mm-msg-bubble-body";
+      const copyBtn = bubble.querySelector(".mm-msg-copy");
+      if (copyBtn) bubble.insertBefore(body, copyBtn);
+      else bubble.appendChild(body);
+    }
+    body.innerHTML = html;
+    if (copy) attachBubbleCopy(bubble);
+    return body;
+  }
+
   function buildUserAsk(text, attachments) {
     const ask = document.createElement("div");
     ask.className = "mm-turn-ask";
@@ -358,7 +429,23 @@
       el.setAttribute("aria-expanded", String(expanded));
       el.title = expanded ? "点击收起" : "点击展开完整内容";
     };
-    el.addEventListener("click", toggle);
+    let dragSelect = false;
+    el.addEventListener("mousedown", () => {
+      dragSelect = false;
+    });
+    el.addEventListener("mousemove", (event) => {
+      if (event.buttons === 1) dragSelect = true;
+    });
+    el.addEventListener("click", () => {
+      // Allow native text selection / copy without collapsing the hint.
+      if (dragSelect) {
+        dragSelect = false;
+        return;
+      }
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && el.contains(sel.anchorNode)) return;
+      toggle();
+    });
     el.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -388,25 +475,29 @@
     return ask;
   }
 
-  function buildAssistantBubble(text, { error } = {}) {
+  function buildAssistantBubble(text, { error, copy } = {}) {
     const block = document.createElement("div");
     block.className =
       "mm-msg-assistant-block" + (error ? " mm-msg-assistant-block--error" : "");
     const bubble = document.createElement("div");
     bubble.className = error ? "mm-msg-bubble mm-msg-bubble--error" : "mm-msg-bubble";
+    const body = document.createElement("div");
+    body.className = "mm-msg-bubble-body";
     if (error) {
-      const body = document.createElement("div");
-      body.className = "mm-msg-error-body";
+      const errBody = document.createElement("div");
+      errBody.className = "mm-msg-error-body";
       const detail = String(text || "").replace(/^错误[：:]\s*/, "");
-      body.textContent = detail || "未知错误";
-      bubble.appendChild(body);
+      errBody.textContent = detail || "未知错误";
+      body.appendChild(errBody);
     } else {
       const html = renderAssistantHtml(text);
       if (html.includes("mm-md-table")) {
         block.classList.add("mm-msg-assistant-block--wide");
       }
-      bubble.innerHTML = html || escapeHtml(text || "");
+      body.innerHTML = html || escapeHtml(text || "");
     }
+    bubble.appendChild(body);
+    if (copy !== false) attachBubbleCopy(bubble);
     block.appendChild(bubble);
     return block;
   }
@@ -863,7 +954,7 @@
     if (html.includes("mm-md-table")) {
       block.classList.add("mm-msg-assistant-block--wide");
     }
-    bubble.innerHTML = html || escapeHtml(full || "");
+    setBubbleBodyHtml(bubble, html || escapeHtml(full || ""));
   }
 
   function buildStreamingAssistantShell() {
@@ -871,13 +962,17 @@
     block.className = "mm-msg-assistant-block";
     const bubble = document.createElement("div");
     bubble.className = "mm-msg-bubble mm-msg-bubble--streaming";
+    const body = document.createElement("div");
+    body.className = "mm-msg-bubble-body";
     const streamEl = document.createElement("div");
     streamEl.className = "mm-msg-stream-text";
     const cursor = document.createElement("span");
     cursor.className = "mm-msg-stream-cursor";
     cursor.setAttribute("aria-hidden", "true");
-    bubble.appendChild(streamEl);
-    bubble.appendChild(cursor);
+    body.appendChild(streamEl);
+    body.appendChild(cursor);
+    bubble.appendChild(body);
+    attachBubbleCopy(bubble);
     block.appendChild(bubble);
     return { block, streamEl };
   }
@@ -1213,7 +1308,7 @@
     } else if (type === "run_interrupted") {
       const errorBlock = turn.appendAssistant(
         ev.detail || "服务重启导致本轮中断，请重新发送本轮请求。",
-        { error: true }
+        { error: true, copy: false }
       );
       const errorBubble =
         errorBlock && errorBlock.querySelector(".mm-msg-bubble--error");

@@ -18,6 +18,10 @@ from plugins.molmind_core.scientific.evidence_facade.bundle import EvidenceBundl
 from plugins.molmind_core.scientific.pipeline.config_loader import SNAPSHOT_DIR, AppConfig
 from plugins.molmind_core.scientific.evidence_facade.epa_index import EPAContextIndex
 from plugins.molmind_core.scientific.evidence_facade.epa_risk import epa_cytotox_metrics, epa_cytotox_risk_tier
+from plugins.molmind_core.scientific.evidence_facade.index_cache import (
+    get_or_load,
+    paths_fingerprint,
+)
 
 LIPID_MECHANISM_TARGET_RE = re.compile(
     r"HMGCR|HMG.?CoA|PPAR[A-Z]?|SREBF|SREBP|ACAC[AB]?|FASN|SCD1?|CPT1|"
@@ -70,15 +74,13 @@ _LEGACY_SCORING_ADAPTERS = frozenset(
 _LEGACY_SCORING_QUERY_TYPES = frozenset({"lipid", "tox", "novelty", "pathway"})
 
 
+def _risk_alias_path() -> Path:
+    return REPO_ROOT / "data" / "evidence_snapshot" / "v2" / "risk_identity_aliases.json"
+
+
 def _load_frozen_risk_aliases() -> dict[str, str]:
     """原始结构键 → 标准化结构键；仅用于保守传播毒性风险。"""
-    path = (
-        REPO_ROOT
-        / "data"
-        / "evidence_snapshot"
-        / "v2"
-        / "risk_identity_aliases.json"
-    )
+    path = _risk_alias_path()
     if not path.is_file():
         return {}
     try:
@@ -92,6 +94,71 @@ def _load_frozen_risk_aliases() -> dict[str, str]:
         if original and standardized and original != standardized:
             aliases[original] = standardized
     return aliases
+
+
+def _cached_frozen_risk_aliases() -> dict[str, str]:
+    path = _risk_alias_path()
+    return get_or_load(
+        "risk_identity_aliases",
+        paths_fingerprint([path]),
+        _load_frozen_risk_aliases,
+    )
+
+
+def _load_snapshot_index_from_dir(snapshot_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    index: dict[str, list[dict[str, Any]]] = {}
+    risk_aliases = _cached_frozen_risk_aliases()
+    if not snapshot_dir.is_dir():
+        return index
+    for path in sorted(snapshot_dir.glob("*.jsonl")):
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                row = _normalize_snapshot_row(row)
+                if row.get("provenance_status") == "query_failed":
+                    # 保留在 JSONL 供审计，但失败记录不能阻止下一次联网重试。
+                    continue
+                keys = {
+                    str(row.get("inchikey") or "").strip(),
+                    str(row.get("cas") or "").strip(),
+                }
+                row_inchikey = str(row.get("inchikey") or "").strip()
+                if (
+                    row.get("query_type") == "tox"
+                    or row.get("direction") == "risk"
+                ):
+                    alias = risk_aliases.get(row_inchikey)
+                    if alias:
+                        keys.add(alias)
+                        payload = dict(row.get("payload") or {})
+                        payload.setdefault(
+                            "identity_resolution", "risk_tautomer_or_parent_alias"
+                        )
+                        row["payload"] = payload
+                keys.discard("")
+                if not keys:
+                    continue
+                for key in keys:
+                    index.setdefault(key, []).append(row)
+    return index
+
+
+def _cached_snapshot_index(snapshot_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    paths = [snapshot_dir]
+    if snapshot_dir.is_dir():
+        paths.extend(sorted(snapshot_dir.glob("*.jsonl")))
+    paths.append(_risk_alias_path())
+    return get_or_load(
+        f"snapshot_index:{snapshot_dir}",
+        paths_fingerprint(paths),
+        lambda: _load_snapshot_index_from_dir(snapshot_dir),
+    )
 
 
 def _utc_now() -> str:
@@ -344,11 +411,76 @@ def _collect_pubchem_strings(node: Any, *, path: tuple[str, ...] = ()) -> list[t
     return found
 
 
+def _default_public_assay_paths(pag: dict[str, Any]) -> list[Path]:
+    root = REPO_ROOT
+    paths: list[Path] = []
+    for rel in pag.get("qc_paths") or [
+        "data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl",
+        "data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl",
+        "data/public/processed/bindingdb/records_endpoint_qc.jsonl",
+        "data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl",
+    ]:
+        paths.append(root / str(rel))
+    return paths
+
+
+def _cached_epa_index(epa_cfg: dict[str, Any]) -> EPAContextIndex:
+    cfg = dict(epa_cfg or {})
+    if not bool(cfg.get("enabled", True)):
+        return EPAContextIndex()
+    path_values: list[Path] = []
+    for key in ("mapping_paths", "risk_summary_paths", "assay_qc_paths"):
+        for item in cfg.get(key) or []:
+            path = Path(str(item))
+            path_values.append(path if path.is_absolute() else REPO_ROOT / path)
+    # from_config 还会读 companion manifest；纳入指纹以免 bulk 完成前后命中脏缓存。
+    manifests = [path.with_suffix(".manifest.json") for path in path_values]
+    fingerprint = paths_fingerprint([*path_values, *manifests])
+    return get_or_load(
+        f"epa_index:{json.dumps(cfg, sort_keys=True, default=str)}",
+        fingerprint,
+        lambda: EPAContextIndex.from_config(cfg),
+    )
+
+
+def _cached_public_assay_index(paths: list[Path]):
+    from plugins.molmind_core.scientific.public_data.assay_index import load_public_assay_index
+
+    return get_or_load(
+        "public_assay_index",
+        paths_fingerprint(paths),
+        lambda: load_public_assay_index(paths),
+    )
+
+
+def _cached_dilirank_gate_index(dili_gate_cfg: dict[str, Any]):
+    from plugins.molmind_core.scientific.evidence_facade.dilirank_gate import (
+        DEFAULT_IDENTITY_PATH,
+        DEFAULT_REFERENCE_CSV,
+        load_dilirank_index_from_config,
+    )
+
+    gate = dict(dili_gate_cfg or {})
+    raw_paths = gate.get("identity_paths") or [
+        str(DEFAULT_IDENTITY_PATH),
+        str(DEFAULT_REFERENCE_CSV),
+    ]
+    paths = [
+        Path(str(item)) if Path(str(item)).is_absolute() else REPO_ROOT / str(item)
+        for item in raw_paths
+    ]
+    return get_or_load(
+        f"dilirank_gate:{json.dumps(gate, sort_keys=True, default=str)}",
+        paths_fingerprint(paths),
+        lambda: load_dilirank_index_from_config(gate),
+    )
+
+
 class EvidenceFacade:
     def __init__(self, cfg: AppConfig, snapshot_dir: Path | None = None):
         self.cfg = cfg
         self.snapshot_dir = Path(snapshot_dir or SNAPSHOT_DIR)
-        self._index = self._load_snapshot_index()
+        self._index = _cached_snapshot_index(self.snapshot_dir)
         self.enabled = bool(cfg.evidence.get("enabled", True))
         self._cache: dict[str, EvidenceBundle] = {}
         self._live_failures = 0
@@ -360,14 +492,10 @@ class EvidenceFacade:
         self._nafld_index = None
         self._public_assay_index = None
         self._dilirank_gate_index = None
-        self._epa_index = EPAContextIndex.from_config(
-            (cfg.evidence.get("epa_ctx") or {})
-        )
+        self._epa_index = _cached_epa_index(cfg.evidence.get("epa_ctx") or {})
         dili_gate_cfg = cfg.evidence.get("dilirank_exact_gate") or {}
         if bool(dili_gate_cfg.get("enabled", True)):
-            from plugins.molmind_core.scientific.evidence_facade.dilirank_gate import load_dilirank_index_from_config
-
-            self._dilirank_gate_index = load_dilirank_index_from_config(dili_gate_cfg)
+            self._dilirank_gate_index = _cached_dilirank_gate_index(dili_gate_cfg)
         lt = cfg.evidence.get("local_tables") or {}
         # 主路径默认关闭；显式 enabled=true 时才加载（阶段 7 可选）
         if bool(lt.get("enabled", False)):
@@ -376,23 +504,22 @@ class EvidenceFacade:
             root = REPO_ROOT
             dili_path = root / str(lt.get("dili_csv", "data/reference/dilirank.csv"))
             nafld_path = root / str(lt.get("nafld_csv", "data/reference/nafldkb.csv"))
-            self._dili_index = load_dilirank(dili_path)
-            self._nafld_index = load_nafldkb(nafld_path)
+            self._dili_index = get_or_load(
+                f"local_dili:{dili_path}",
+                paths_fingerprint([dili_path]),
+                lambda: load_dilirank(dili_path),
+            )
+            self._nafld_index = get_or_load(
+                f"local_nafld:{nafld_path}",
+                paths_fingerprint([nafld_path]),
+                lambda: load_nafldkb(nafld_path),
+            )
 
         pag = cfg.evidence.get("public_assay_grain") or {}
         if bool(pag.get("enabled", True)):
-            from plugins.molmind_core.scientific.public_data.assay_index import load_public_assay_index
-
-            root = REPO_ROOT
-            paths = []
-            for rel in pag.get("qc_paths") or [
-                "data/public/processed/chembl_bioactivity/records_endpoint_qc.jsonl",
-                "data/public/processed/pubchem_bioassay/records_endpoint_qc.jsonl",
-                "data/public/processed/bindingdb/records_endpoint_qc.jsonl",
-                "data/public/processed/epa_toxcast_tox21/records_endpoint_qc.jsonl",
-            ]:
-                paths.append(root / str(rel))
-            self._public_assay_index = load_public_assay_index(paths)
+            self._public_assay_index = _cached_public_assay_index(
+                _default_public_assay_paths(pag)
+            )
 
         if not self.enabled:
             cfg.mark_degraded("evidence_disabled")
@@ -410,47 +537,6 @@ class EvidenceFacade:
                 continue
             enabled.add(adapter)
         return enabled
-
-    def _load_snapshot_index(self) -> dict[str, list[dict[str, Any]]]:
-        index: dict[str, list[dict[str, Any]]] = {}
-        risk_aliases = _load_frozen_risk_aliases()
-        if not self.snapshot_dir.is_dir():
-            return index
-        for path in sorted(self.snapshot_dir.glob("*.jsonl")):
-            with path.open(encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    try:
-                        row = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    row = _normalize_snapshot_row(row)
-                    if row.get("provenance_status") == "query_failed":
-                        # 保留在 JSONL 供审计，但失败记录不能阻止下一次联网重试。
-                        continue
-                    keys = {
-                        str(row.get("inchikey") or "").strip(),
-                        str(row.get("cas") or "").strip(),
-                    }
-                    row_inchikey = str(row.get("inchikey") or "").strip()
-                    if (
-                        row.get("query_type") == "tox"
-                        or row.get("direction") == "risk"
-                    ):
-                        alias = risk_aliases.get(row_inchikey)
-                        if alias:
-                            keys.add(alias)
-                            payload = dict(row.get("payload") or {})
-                            payload.setdefault("identity_resolution", "risk_tautomer_or_parent_alias")
-                            row["payload"] = payload
-                    keys.discard("")
-                    if not keys:
-                        continue
-                    for key in keys:
-                        index.setdefault(key, []).append(row)
-        return index
 
     @staticmethod
     def _snapshot_hit(

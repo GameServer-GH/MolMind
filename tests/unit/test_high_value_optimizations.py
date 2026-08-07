@@ -180,6 +180,12 @@ def test_similarity_portfolio_avoids_near_duplicate_when_alternative_exists() ->
 
 def test_rank_robustness_is_deterministic_and_audit_only() -> None:
     cfg = load_config(mode="offline")
+    cfg.raw["robustness"] = {
+        **dict(cfg.raw.get("robustness") or {}),
+        "enabled": True,
+        "weight_delta": 0.05,
+        "gate_delta": 0.03,
+    }
     candidates = [
         _score_record("CCOc1ccccc1", "A", 0.80),
         _score_record("NCC(=O)O", "B", 0.70),
@@ -188,6 +194,7 @@ def test_rank_robustness_is_deterministic_and_audit_only() -> None:
     first = analyze_rank_robustness(candidates, cfg, top_n=1)
     second = analyze_rank_robustness(candidates, cfg, top_n=1)
     assert first == second
+    assert first
     assert [item.final_score for item in candidates] == before
     assert all(0.0 <= float(row["inclusion_frequency"]) <= 1.0 for row in first)
 

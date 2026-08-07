@@ -40,14 +40,23 @@ def load_public_assay_index(paths: Optional[List[Path]] = None) -> PublicAssayIn
     for path in paths or list(DEFAULT_QC_PATHS):
         if not path.is_file():
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            inchikey = str(row.get("inchikey") or "").strip()
-            if not inchikey:
-                continue
-            index.by_inchikey.setdefault(inchikey, []).append(row)
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(row, dict):
+                        continue
+                    inchikey = str(row.get("inchikey") or "").strip()
+                    if not inchikey:
+                        continue
+                    index.by_inchikey.setdefault(inchikey, []).append(row)
+        except OSError:
+            continue
     return index
 
 

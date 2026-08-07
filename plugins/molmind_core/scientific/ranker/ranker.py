@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 
 from packages.chem_core import clamp, murcko_scaffold_smiles, tanimoto
-from packages.goldset import GoldSet
+from packages.goldset import GoldSet, max_similarity
 from packages.models import (
     Attribution,
     EligibilityDecision,
@@ -128,8 +128,22 @@ def score_molecule(
     *,
     excluded_reference_names: set[str] | None = None,
 ) -> ScoreRecord:
+    # 同一分子对 goldset 子集的 max Tanimoto 只算一次，供 lipid/novelty/tox 复用。
+    if record.fp_bits is None:
+        positive_similarity: tuple[float, str | None] = (0.0, None)
+        false_positive_similarity: tuple[float, str | None] = (0.0, None)
+        negative_similarity: tuple[float, str | None] = (0.0, None)
+    else:
+        positive_similarity = max_similarity(record.fp_bits, gold.positives)
+        false_positive_similarity = max_similarity(record.fp_bits, gold.false_positives)
+        negative_similarity = max_similarity(record.fp_bits, gold.negatives)
+
     lipid_score, lipid_parts, lipid_attrs, lipid_rationale = score_lipid(
-        record, cfg, gold, evidence
+        record,
+        cfg,
+        gold,
+        evidence,
+        positive_similarity=positive_similarity,
     )
     tox_risk, tox_heads, _boost, tox_attrs, tox_rationale = score_tox(
         record,
@@ -137,9 +151,16 @@ def score_molecule(
         gold,
         evidence,
         excluded_reference_names=excluded_reference_names,
+        false_positive_similarity=false_positive_similarity,
+        negative_similarity=negative_similarity,
     )
     scientific_status, claim_ceiling, audit_missing = _scientific_claim(evidence)
-    novelty_assessment = assess_structural_novelty(record.fp_bits, gold, cfg)
+    novelty_assessment = assess_structural_novelty(
+        record.fp_bits,
+        gold,
+        cfg,
+        positive_similarity=positive_similarity,
+    )
     novelty = novelty_assessment.score
     novelty_note = (
         f"透明新颖性代理: 1-max_tanimoto={novelty:.3f}; "
@@ -338,7 +359,7 @@ def apply_scaffold_diversity(
     deferred: list[ScoreRecord] = []
 
     while remaining and len(selected) < top_n:
-        candidates: list[tuple[float, float, str, ScoreRecord, str]] = []
+        candidates: list[tuple[float, float, str, ScoreRecord, str, float, str]] = []
         next_remaining: list[ScoreRecord] = []
         for mol in remaining:
             key = mol.scaffold_smiles or mol.molecule_id
@@ -362,16 +383,15 @@ def apply_scaffold_diversity(
             mmr = mmr_lambda * portfolio_score + (1.0 - mmr_lambda) * (1.0 - nearest)
             if redundancy_lambda > 0:
                 mmr -= redundancy_lambda * nearest
-            candidates.append((mmr, portfolio_score, mol.molecule_id, mol, cluster_key))
+            candidates.append(
+                (mmr, portfolio_score, mol.molecule_id, mol, cluster_key, nearest, nearest_id)
+            )
             next_remaining.append(mol)
         if not candidates:
             break
-        _mmr, _score, _mid, chosen, cluster_key = sorted(
+        _mmr, _score, _mid, chosen, cluster_key, nearest, nearest_id = sorted(
             candidates, key=lambda item: (-item[0], -item[1], item[2])
         )[0]
-        similarities = [tanimoto(chosen.fp_bits, prior.fp_bits) for prior in selected]
-        nearest = max(similarities, default=0.0)
-        nearest_id = selected[similarities.index(nearest)].molecule_id if similarities else ""
         chosen.internal_nearest_similarity = round(nearest, 4)
         chosen.similarity_cluster = cluster_key or chosen.molecule_id
         chosen.selection_tier = "similarity_strict"

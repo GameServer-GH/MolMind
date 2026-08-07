@@ -7,6 +7,7 @@ SQLite reads and writes so the default sqlite3 thread contract is preserved.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -15,6 +16,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import asdict, dataclass, fields, replace
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -82,6 +84,24 @@ def load_provider_config(path: str | Path | None = None) -> dict[str, Any]:
     """Load the evidence-provider policy used by planning and execution."""
 
     config_path = Path(path) if path is not None else REPO_ROOT / "configs/evidence_providers.yaml"
+    return copy.deepcopy(_load_provider_config_cached(_provider_config_cache_key(config_path)))
+
+
+def _provider_config_cache_key(config_path: Path) -> tuple[str, int | None, int | None]:
+    try:
+        resolved = config_path.resolve()
+    except OSError:
+        resolved = config_path
+    try:
+        stat = resolved.stat()
+        return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        return (str(resolved), None, None)
+
+
+@lru_cache(maxsize=8)
+def _load_provider_config_cached(cache_key: tuple[str, int | None, int | None]) -> dict[str, Any]:
+    config_path = Path(cache_key[0])
     loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(loaded, dict):
         raise ValueError("evidence provider config must be a YAML mapping")

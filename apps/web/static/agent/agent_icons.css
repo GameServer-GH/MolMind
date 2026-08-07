@@ -82,6 +82,7 @@
 .mm-icon--shield-chevron { -webkit-mask-image: url("./icons/shield-chevron.svg"); mask-image: url("./icons/shield-chevron.svg"); }
 .mm-icon--cloud-down { -webkit-mask-image: url("./icons/cloud-down.svg"); mask-image: url("./icons/cloud-down.svg"); }
 .mm-icon--share { -webkit-mask-image: url("./icons/share-3.svg"); mask-image: url("./icons/share-3.svg"); }
+.mm-icon--copy { -webkit-mask-image: url("./icons/copy.svg"); mask-image: url("./icons/copy.svg"); }
 .mm-icon--progress-help { -webkit-mask-image: url("./icons/progress-help.svg"); mask-image: url("./icons/progress-help.svg"); }
 .mm-icon--history { -webkit-mask-image: url("./icons/history-toggle.svg"); mask-image: url("./icons/history-toggle.svg"); }
 .mm-icon--clock { -webkit-mask-image: url("./icons/clock-24.svg"); mask-image: url("./icons/clock-24.svg"); }

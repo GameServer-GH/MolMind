@@ -14,6 +14,7 @@ def _chat_json_payload(
     purpose: str,
     max_tokens: int,
     timeout_sec: float,
+    memory_cache: bool = True,
 ) -> dict[str, Any]:
     from plugins.molmind_core.scientific.mechanism.llm_client import (
         chat_completion,
@@ -37,7 +38,9 @@ def _chat_json_payload(
         cache_dir=settings.cache_dir,
         use_cache=False,
     )
-    raw = chat_completion(settings, system=system, user=user).strip()
+    raw = chat_completion(
+        settings, system=system, user=user, memory_cache=memory_cache
+    ).strip()
     match = re.search(r"\{[\s\S]*\}", raw)
     data = json.loads(match.group(0) if match else raw)
     if not isinstance(data, dict):
@@ -64,6 +67,7 @@ def llm_json_object(
     max_tokens: int = 256,
     timeout_sec: float = 30.0,
     retries: int = 1,
+    memory_cache: bool = True,
 ) -> tuple[dict[str, Any], str]:
     """Return (payload, status_tag).
 
@@ -82,6 +86,7 @@ def llm_json_object(
                 purpose=purpose,
                 max_tokens=max_tokens,
                 timeout_sec=timeout_sec,
+                memory_cache=memory_cache,
             )
             return data, "ok"
         except Exception as exc:  # noqa: BLE001 — LLM optional

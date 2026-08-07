@@ -60,6 +60,8 @@ def score_tox(
     evidence: EvidenceBundle,
     *,
     excluded_reference_names: set[str] | None = None,
+    false_positive_similarity: tuple[float, str | None] | None = None,
+    negative_similarity: tuple[float, str | None] | None = None,
 ) -> tuple[float, dict[str, float], float, list[Attribution], str]:
     mol = Chem.MolFromSmiles(record.smiles)
     attrs: list[Attribution] = []
@@ -142,7 +144,10 @@ def score_tox(
             Attribution("evidence", hit.adapter_id, value=hit.score, evidence_id=hit.evidence_id)
         )
 
-    fp_sim, fp_name = max_similarity(record.fp_bits, gold.false_positives)
+    if false_positive_similarity is None:
+        fp_sim, fp_name = max_similarity(record.fp_bits, gold.false_positives)
+    else:
+        fp_sim, fp_name = false_positive_similarity
     threshold = float(cfg.evidence.get("tox_analog_sim_threshold", 0.75))
     alpha = float(cfg.evidence.get("tox_analog_boost_alpha", 0.25))
     boost = 0.0
@@ -156,7 +161,10 @@ def score_tox(
             )
         )
 
-    neg_sim, neg_name = max_similarity(record.fp_bits, gold.negatives)
+    if negative_similarity is None:
+        neg_sim, neg_name = max_similarity(record.fp_bits, gold.negatives)
+    else:
+        neg_sim, neg_name = negative_similarity
     if neg_sim >= threshold and (neg_name or ""):
         boost = max(boost, 0.5 * alpha * neg_sim)
         attrs.append(Attribution("neg_analog_boost", f"vs {neg_name}", value=round(neg_sim, 4)))

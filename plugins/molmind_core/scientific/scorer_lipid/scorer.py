@@ -22,6 +22,8 @@ def score_lipid(
     cfg: AppConfig,
     gold: GoldSet,
     evidence: EvidenceBundle,
+    *,
+    positive_similarity: tuple[float, str | None] | None = None,
 ) -> tuple[float, dict[str, float], list[Attribution], str]:
     mol = Chem.MolFromSmiles(record.smiles)
     attrs: list[Attribution] = []
@@ -37,7 +39,10 @@ def score_lipid(
     for h in pathway_hits:
         attrs.append(Attribution("pathway_hint", h, value=None))
 
-    pos_sim, pos_name = max_similarity(record.fp_bits, gold.positives)
+    if positive_similarity is None:
+        pos_sim, pos_name = max_similarity(record.fp_bits, gold.positives)
+    else:
+        pos_sim, pos_name = positive_similarity
     s_sim = clamp(pos_sim)
     if pos_name:
         attrs.append(Attribution("positive_similarity", f"vs {pos_name}", value=round(pos_sim, 4)))

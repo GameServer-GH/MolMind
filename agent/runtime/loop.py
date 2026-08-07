@@ -88,21 +88,15 @@ _DEFAULT_CONFIG_EXECUTION_RE = re.compile(
     r"(?:生成|导出|筛选|运行|top)",
     re.I,
 )
-_DIRECT_DELIVERABLE_RE = re.compile(
-    # Bare「筛选」alone is too weak: it also appears in discuss/defer turns.
-    # Positive deliverable cues stay structural; execution-vs-defer is gated by LLM.
-    r"(?:生成|导出|运行|重跑|重新跑|重新筛选|开始跑|制作|做一份|出一份)|"
-    r"(?:希望|想要|需要|请|给我|帮我).{0,40}"
-    r"(?:csv|候选|提名|清单|短名单|候补|结果包|交卷包|候选包|bundle|top)|"
-    r"(?:默认).{0,24}(?:配置|筛选).{0,24}top",
-    re.I,
-)
 _PENDING_TOP_N_REPLY_RE = re.compile(r"^\s*(?:top\s*)?(\d{1,3})\s*(?:个|名)?\s*$", re.I)
 _PENDING_CANCEL_RE = re.compile(r"^\s*(?:取消|算了|不用了?|不要了?|停止)(?:[。！!])?\s*$", re.I)
 # Affirm/status synonym tables are LLM-down only (see _classify_pending_continuation).
+# 「导出/现在执行」are protocol affirmations after execution-gate clarify, not
+# open-domain route keywords (design-principles §6 exception 8).
 _PENDING_AFFIRM_RE = re.compile(
     r"^\s*(?:"
     r"需要|要|是|对|可以|好|好的|行|继续|开始|现在呢|现在可以了?"
+    r"|导出|现在执行|执行吧|开始导出|现在导出"
     r"|提供了|已经提供了?|已提供|已上传|上传了"
     r"|(?:我)?(?:已经)?(?:提供|上传)了?.{0,40}"
     r")(?:[。！!？?])?\s*$",
@@ -120,12 +114,12 @@ _BRANCH_ASSISTANT_CAPTURE: ContextVar[list[str] | None] = ContextVar(
 
 
 def _is_direct_deliverable_request(intent: AgentIntent, text: str) -> bool:
-    """Whether a parsed deliverable must bypass optional chat planning.
+    """Whether a parsed deliverable is structural enough for LLM-down offline bias.
 
-    The intent parser has already established a concrete output type. The
-    conversational LLM may refine ambiguous rank-follow-up questions, but it
-    must not turn a clear CSV/run request into a chat turn because the caller
-    did not repeat the session-default TopN as a literal number.
+    Online execution-gate LLM always wins. Offline, trust ``parse_intent`` product
+    slots (csv/pdf/reserve/bundle) — do not require a second verb regex table.
+    Discuss/defer is owned by ``_offline_prefer_discuss``, not by missing
+    「生成/导出」surface verbs (bare「机制/验证 PDF」must still allow).
     """
     if (
         not intent.wants_tools
@@ -142,29 +136,20 @@ def _is_direct_deliverable_request(intent: AgentIntent, text: str) -> bool:
     is_rank_question, _ = ranking_question_fallback(text)
     if is_rank_question:
         return False
-    if getattr(intent, "force_rescreen", False):
-        return True
-    # Explicit TopN on a CSV/PDF request is structural enough for offline allow
-    # when the execution-gate LLM is unavailable (e.g. 「用默认配置筛选 Top20」).
-    if intent.requested_top_n is not None and (
-        intent.want_csv or intent.want_pdf or intent.want_bundle
-    ):
-        return True
-    return bool(
-        _DEFAULT_CONFIG_EXECUTION_RE.search(text or "")
-        or _DIRECT_DELIVERABLE_RE.search(text or "")
-    )
+    return True
 
 
 _DISCUSS_ACT_RE = re.compile(
-    r"只讨论|先别跑|先别动工具|跳过执行|"
-    r"先不(?:要|必)?(?:跑|执行|筛选)|本轮不(?:要|必)?(?:跑|执行)|"
+    r"只讨论|先讨论|先别跑|先别动工具|跳过执行|"
+    r"先不(?:要|必)?(?:跑|执行|筛选|导出)|"
+    r"(?:本轮|这轮)不(?:要|必)?(?:跑|执行|筛选|导出)|"
+    r"不要导出|"
     r"先 hold|hold\s*住",
     re.I,
 )
 _LATER_EXECUTE_ACT_RE = re.compile(
     r"帮我跑|输出\s*top|生成.{0,12}(?:csv|pdf|清单|报告)|"
-    r"重新筛选|给我候选包|导出.{0,12}(?:csv|bundle|包)",
+    r"重新筛选|给我候选包|导出.{0,12}(?:csv|pdf|bundle|包|机制|验证)",
     re.I,
 )
 
@@ -304,15 +289,15 @@ def _sanitize_query_event(event: object) -> dict[str, Any] | None:
 
 
 def _molecule_index_from_result(result: Any) -> dict[str, list[dict[str, Any]]]:
-    """Keep only lookup identity; duplicate IDs remain explicit for review."""
-    molecules = list(getattr(result, "molecule_records", None) or [])
-    if not molecules:
-        molecules = list(getattr(result, "scored_molecules", None) or [])
-    if not molecules:
-        molecules = [
-            *(getattr(result, "top_molecules", None) or []),
-            *(getattr(result, "reserve_molecules", None) or []),
-        ]
+    """Keep durable lookup identity for top + reserve only.
+
+    Full scored pools are not persisted: query_evidence for non-shortlist
+    molecules should pass explicit inchikey/cas/smiles identity.
+    """
+    molecules = [
+        *(getattr(result, "top_molecules", None) or []),
+        *(getattr(result, "reserve_molecules", None) or []),
+    ]
     index: dict[str, list[dict[str, Any]]] = {}
     for molecule in molecules:
         molecule_id = str(getattr(molecule, "molecule_id", "") or "").strip()
@@ -1870,7 +1855,10 @@ class AgentRuntime:
                     session.agent_run_history.append(archived)
                     session.agent_run_history = session.agent_run_history[-30:]
             session.active_run = active
-            self.store.persist(session)
+            # Ephemeral progress events stay in the event log; avoid rewriting the
+            # full session meta (frozen ranking / molecule index) on every tick.
+            if kind not in {"thinking", "log", "token", "progress", "heartbeat"}:
+                self.store.persist(session)
         if kind == "done":
             with self._run_controllers_guard:
                 self._run_controllers.pop(session.session_id, None)
@@ -2199,9 +2187,9 @@ class AgentRuntime:
                 return
 
             # A complete structural deliverable supersedes the unfinished request.
-            # Do not use online keyword tables (_DIRECT_DELIVERABLE_RE); parse_intent
-            # product slots are the source of truth. Ranking follow-up candidates
-            # (wants_tools without csv/pdf/bundle) must not clear pending.
+            # Do not use online verb regex tables; parse_intent product slots are
+            # the source of truth. Ranking follow-up candidates (wants_tools
+            # without csv/pdf/bundle) must not clear pending.
             probe = parse_intent(
                 compact,
                 default_top_n=session.top_n,
@@ -2522,6 +2510,12 @@ class AgentRuntime:
                     # request-action (LLM or structural fallback) owns explain.
                     action, why = self._classify_request_action(session, text, intent)
                 else:
+                    # clarify: remember candidate deliverable in session state so
+                    # short follow-ups (「导出」「继续」) resume via pending, not
+                    # by parsing weak standalone verbs as a new intent (P2/P6).
+                    self._stash_execution_gate_clarify_pending(
+                        session, text=text, intent=intent
+                    )
                     action, why = (
                         "chat",
                         f"execution_gate_block:{dialog_act}:{gate_meta.get('reason', '')}",
@@ -2547,13 +2541,10 @@ class AgentRuntime:
                                     or f"需要：Top{default_n} 候选 CSV"
                                 ),
                             )
-                action, why = self._classify_request_action(session, text, intent)
-                # Execution gate already authorized this turn. A second LLM pass
-                # must not demote structured CSV/PDF deliverables into chat, or
-                # TaskRouter may fall through to a hallucinated SCP deny.
+                # Gate already authorized structured deliverables: skip the second
+                # planning LLM (same outcome as the former allow_override path).
                 if (
-                    action != "execute_tools"
-                    and str(gate_meta.get("dialog_act") or "") == "execute_now"
+                    str(gate_meta.get("dialog_act") or "") == "execute_now"
                     and (
                         intent.want_csv
                         or intent.want_pdf
@@ -2565,8 +2556,29 @@ class AgentRuntime:
                 ):
                     action, why = (
                         "execute_tools",
-                        f"execution_gate_allow_override:{why}",
+                        f"execution_gate_allow_direct:{gate_meta.get('reason', '')}",
                     )
+                else:
+                    action, why = self._classify_request_action(session, text, intent)
+                    # Execution gate already authorized this turn. A second LLM pass
+                    # must not demote structured CSV/PDF deliverables into chat, or
+                    # TaskRouter may fall through to a hallucinated SCP deny.
+                    if (
+                        action != "execute_tools"
+                        and str(gate_meta.get("dialog_act") or "") == "execute_now"
+                        and (
+                            intent.want_csv
+                            or intent.want_pdf
+                            or intent.want_reserve
+                            or intent.want_bundle
+                            or intent.execution_requested
+                            or intent.force_rescreen
+                        )
+                    ):
+                        action, why = (
+                            "execute_tools",
+                            f"execution_gate_allow_override:{why}",
+                        )
             if action == "explain_ranking":
                 _, ranking_molecule_id = ranking_question_fallback(text)
             if action != "execute_tools":
@@ -2692,6 +2704,76 @@ class AgentRuntime:
             except (TypeError, ValueError):
                 pass
         return int(_PROFILE_DEFAULT_TOP_N)
+
+    def _stash_execution_gate_clarify_pending(
+        self,
+        session: AgentSession,
+        *,
+        text: str,
+        intent: AgentIntent,
+    ) -> None:
+        """Persist candidate deliverable when the gate asks execute-vs-discuss.
+
+        Puts facts into session state (pending_goal / pending_action) so a short
+        follow-up like「导出」can resume without relying on weak standalone
+        intent parsing. Does nothing when there is no structured product slot.
+        """
+        has_product = bool(
+            intent.want_csv
+            or intent.want_pdf
+            or intent.want_reserve
+            or intent.want_bundle
+            or intent.force_rescreen
+        )
+        if not has_product:
+            return
+        skill_ids = list(intent.skill_ids or ())
+        if not skill_ids:
+            if intent.want_pdf:
+                skill_ids = ["masld_mechanism"]
+            elif intent.want_bundle:
+                skill_ids = ["masld_export_bundle"]
+            else:
+                skill_ids = ["masld_nominate"]
+        top_n_val = int(
+            intent.requested_top_n
+            if intent.requested_top_n is not None
+            else (intent.top_n or session.top_n or self._profile_default_top_n(session))
+        )
+        session.pending_goal = {
+            "goal": str(intent.reason or text),
+            "source_text": text,
+            "reason": "execution_gate_awaiting_execute_confirm",
+            "want_csv": bool(intent.want_csv),
+            "want_pdf": bool(intent.want_pdf),
+            "want_reserve": bool(intent.want_reserve),
+            "want_bundle": bool(intent.want_bundle),
+            "skill_ids": skill_ids,
+            "top_n": top_n_val,
+            "requested_top_n": intent.requested_top_n,
+            "missing_slots": [],
+        }
+        # Mirror an executable pending_action when slots are already known so
+        # protocol affirmations (继续/导出) resume the tool lane directly.
+        missing: list[str] = []
+        needs_sdf = bool(
+            intent.want_csv or intent.want_bundle or intent.force_rescreen
+        ) and not bool(session.sdf_bytes)
+        if needs_sdf:
+            missing.append("sdf")
+        session.pending_action = {
+            "kind": "deliverable",
+            "status": "awaiting_execute_confirm",
+            "want_csv": bool(intent.want_csv),
+            "want_pdf": bool(intent.want_pdf),
+            "want_reserve": bool(intent.want_reserve),
+            "want_bundle": bool(intent.want_bundle),
+            "top_n": top_n_val,
+            "requested_top_n": intent.requested_top_n or top_n_val,
+            "skill_ids": skill_ids,
+            "source_text": text,
+            "missing_slots": missing,
+        }
 
     def _classify_execution_gate(
         self, session: AgentSession, text: str, intent: AgentIntent
@@ -8181,6 +8263,7 @@ class AgentRuntime:
 
         tmp_path: Path | None = None
         try:
+            input_sha256 = hashlib.sha256(session.sdf_bytes).hexdigest()
             with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp:
                 tmp.write(session.sdf_bytes)
                 tmp_path = Path(tmp.name)
@@ -8191,6 +8274,7 @@ class AgentRuntime:
                     top_n=top_n,
                     source_filename=session.sdf_filename,
                     log_sink=on_log,
+                    input_sha256=input_sha256,
                 )
 
             started = time.perf_counter()

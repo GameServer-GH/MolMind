@@ -166,12 +166,13 @@
       idx = list.findIndex((item) => item.status === "success");
     }
     if (idx < 0) return;
+    // Keep job id for re-download; avoid stuffing large PDF base64 into localStorage.
     list[idx] = {
       ...list[idx],
-      mechanismPdfBase64: pdfBase64,
       mechanismPdfName: pdfName || list[idx].mechanismPdfName,
       mechanismJobId: jobId || list[idx].mechanismJobId,
     };
+    delete list[idx].mechanismPdfBase64;
     saveHistory(list);
     renderHistory();
   }
@@ -208,7 +209,9 @@
         const data = await resp.json();
         if (data.status === "ready") {
           stopMechanismPoll();
-          applyMechanismReady(data);
+          const fullResp = await fetch(window.MOLMIND_MECHANISM_STATUS(jobId, true));
+          if (!fullResp.ok) throw new Error(`payload status ${fullResp.status}`);
+          applyMechanismReady(await fullResp.json());
         } else if (["cancel_requested", "cancelled"].includes(data.status)) {
           stopMechanismPoll();
           setPdfButtonState("idle");

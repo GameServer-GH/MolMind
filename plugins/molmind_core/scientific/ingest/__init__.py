@@ -14,6 +14,7 @@ from plugins.molmind_core.scientific.ingest.cache import (
     feature_cache_path,
     load_feature_cache,
     save_feature_cache,
+    sha256_bytes,
     sha256_file,
 )
 
@@ -29,5 +30,6 @@ __all__ = [
     "feature_cache_path",
     "load_feature_cache",
     "save_feature_cache",
+    "sha256_bytes",
     "sha256_file",
 ]

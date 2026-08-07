@@ -176,7 +176,8 @@ novelty:
   unknown_score: 0.50
 
 robustness:
-  enabled: true
+  # 诊断审计，不改主榜；默认关闭以降低筛选墙钟。需要稳健性表时显式 enabled: true。
+  enabled: false
   weight_delta: 0.05
   gate_delta: 0.03
 

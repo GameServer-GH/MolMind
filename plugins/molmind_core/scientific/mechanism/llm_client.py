@@ -7,6 +7,8 @@ import base64
 import hashlib
 import json
 import os
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -224,17 +226,64 @@ class MechanismLLMError(RuntimeError):
     """机制 LLM 调用失败（调用方应降级到模板）。"""
 
 
+_CLIENT_LOCK = threading.Lock()
+_HTTP_CLIENTS: dict[tuple[str, float], httpx.Client] = {}
+_MEMORY_CACHE_LOCK = threading.Lock()
+_MEMORY_CACHE: dict[str, tuple[float, str]] = {}
+_MEMORY_CACHE_MAX = 256
+_MEMORY_CACHE_TTL_SEC = 120.0
+
+
+def _shared_http_client(base_url: str, timeout_sec: float) -> httpx.Client:
+    """Reuse keep-alive clients per (base_url, timeout) within the process."""
+    key = (str(base_url).rstrip("/"), float(timeout_sec))
+    with _CLIENT_LOCK:
+        client = _HTTP_CLIENTS.get(key)
+        if client is not None and not client.is_closed:
+            return client
+        timeout = httpx.Timeout(timeout_sec, connect=min(12.0, timeout_sec))
+        client = httpx.Client(base_url=key[0], timeout=timeout)
+        _HTTP_CLIENTS[key] = client
+        return client
+
+
+def _memory_cache_get(key: str) -> str | None:
+    now = time.monotonic()
+    with _MEMORY_CACHE_LOCK:
+        hit = _MEMORY_CACHE.get(key)
+        if hit is None:
+            return None
+        expires_at, content = hit
+        if expires_at < now:
+            _MEMORY_CACHE.pop(key, None)
+            return None
+        return content
+
+
+def _memory_cache_put(key: str, content: str) -> None:
+    with _MEMORY_CACHE_LOCK:
+        if len(_MEMORY_CACHE) >= _MEMORY_CACHE_MAX:
+            # Drop oldest expiry first (approximation: clear half).
+            ordered = sorted(_MEMORY_CACHE.items(), key=lambda item: item[1][0])
+            for stale_key, _ in ordered[: max(1, _MEMORY_CACHE_MAX // 2)]:
+                _MEMORY_CACHE.pop(stale_key, None)
+        _MEMORY_CACHE[key] = (time.monotonic() + _MEMORY_CACHE_TTL_SEC, content)
+
+
 def chat_completion(
     settings: LLMSettings,
     *,
     system: str,
     user: str,
     cancel_event: Any = None,
+    memory_cache: bool = False,
 ) -> str:
     """调用 OpenAI 兼容 /chat/completions；命中磁盘缓存则直接返回。
 
     When ``cancel_event`` (or the active cancel ContextVar) is set, the HTTP
     call is abandoned promptly and late responses are discarded.
+    ``memory_cache`` enables a short in-process TTL cache for deterministic
+    classification prompts (does not write the disk cache unless ``use_cache``).
     """
     if not settings.ready:
         raise MechanismLLMError("LLM 未就绪（未启用或缺少 API Key）")
@@ -255,12 +304,18 @@ def chat_completion(
         raise MechanismLLMError("LLM call cancelled")
 
     key = _cache_key(settings.model, system, user, settings.temperature)
+    if memory_cache:
+        cached_mem = _memory_cache_get(key)
+        if cached_mem:
+            return cached_mem
     if settings.use_cache:
         cached = _read_cache(settings.cache_dir, key)
         if cached:
+            if memory_cache:
+                _memory_cache_put(key, cached)
             return cached
 
-    url = f"{settings.base_url}/chat/completions"
+    url = "/chat/completions"
     payload = {
         "model": settings.model,
         "temperature": settings.temperature,
@@ -277,10 +332,10 @@ def chat_completion(
 
     def _request_and_parse() -> str:
         try:
-            with httpx.Client(timeout=settings.timeout_sec) as client:
-                resp = client.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
+            client = _shared_http_client(settings.base_url, settings.timeout_sec)
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
         except httpx.HTTPError as exc:
             raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
         except (ValueError, TypeError) as exc:
@@ -316,6 +371,8 @@ def chat_completion(
 
     if settings.use_cache:
         _write_cache(settings.cache_dir, key, model=settings.model, content=text)
+    if memory_cache:
+        _memory_cache_put(key, text)
     return text
 
 
@@ -355,7 +412,7 @@ def chat_completion_stream(
             yield cached
             return
 
-    url = f"{settings.base_url}/chat/completions"
+    url = "/chat/completions"
     payload = {
         "model": settings.model,
         "temperature": settings.temperature,
@@ -411,41 +468,37 @@ def chat_completion_stream(
         yield piece
 
     try:
-        timeout = httpx.Timeout(
-            settings.timeout_sec,
-            connect=min(12.0, settings.timeout_sec),
-        )
-        with httpx.Client(timeout=timeout) as client:
-            with client.stream("POST", url, headers=headers, json=payload) as resp:
+        client = _shared_http_client(settings.base_url, settings.timeout_sec)
+        with client.stream("POST", url, headers=headers, json=payload) as resp:
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                # Drain error body so the connection closes cleanly.
                 try:
-                    resp.raise_for_status()
-                except httpx.HTTPError as exc:
-                    # Drain error body so the connection closes cleanly.
-                    try:
-                        resp.read()
-                    except Exception:  # noqa: BLE001
-                        pass
-                    raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
-                # Byte/text iteration avoids waiting for the full body before the
-                # first yield (unlike some buffered line iterators behind proxies).
-                pending = ""
-                done = False
-                for text_chunk in resp.iter_text():
-                    _raise_if_cancelled()
-                    if not text_chunk:
-                        continue
-                    pending += text_chunk
-                    while "\n" in pending and not done:
-                        line, pending = pending.split("\n", 1)
-                        stripped = line.strip()
-                        if stripped == "data: [DONE]" or stripped.endswith("[DONE]"):
-                            done = True
-                            break
-                        yield from _consume_sse_line(line)
-                    if done:
+                    resp.read()
+                except Exception:  # noqa: BLE001
+                    pass
+                raise MechanismLLMError(f"HTTP 失败: {exc}") from exc
+            # Byte/text iteration avoids waiting for the full body before the
+            # first yield (unlike some buffered line iterators behind proxies).
+            pending = ""
+            done = False
+            for text_chunk in resp.iter_text():
+                _raise_if_cancelled()
+                if not text_chunk:
+                    continue
+                pending += text_chunk
+                while "\n" in pending and not done:
+                    line, pending = pending.split("\n", 1)
+                    stripped = line.strip()
+                    if stripped == "data: [DONE]" or stripped.endswith("[DONE]"):
+                        done = True
                         break
-                if not done and pending.strip():
-                    yield from _consume_sse_line(pending)
+                    yield from _consume_sse_line(line)
+                if done:
+                    break
+            if not done and pending.strip():
+                yield from _consume_sse_line(pending)
     except CallCancelled as exc:
         raise MechanismLLMError("LLM call cancelled") from exc
     except httpx.HTTPError as exc:

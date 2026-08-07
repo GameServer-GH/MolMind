@@ -23,7 +23,7 @@ from plugins.scp_hub.catalog import SCPCatalog
 from plugins.scp_hub.client import MCPError
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
-_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent")
+_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="agent")
 _RUN_QUEUE: RunQueue | None = None
 _RUN_WORKERS: RunQueueWorkers | None = None
 
@@ -427,12 +427,17 @@ def clear_sessions(client_id: str = Depends(_require_client_id)) -> dict[str, An
 def get_session(
     session_id: str,
     client_id: str = Depends(_require_client_id),
+    include: str = Query(
+        "summary",
+        description="summary|full — full includes tool_checkpoints and long histories",
+    ),
 ) -> dict[str, Any]:
     session = _owned_session(session_id, client_id)
     # Do not auto-activate pending turns here. The live UI promotes via
     # POST /turns/next after streaming settles; process restart recovery uses
     # recover_pending_sessions().
-    return {
+    include_full = str(include or "summary").strip().lower() == "full"
+    payload = {
         "session_id": session.session_id,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
@@ -449,8 +454,10 @@ def get_session(
         "last_selection_sha256": session.last_selection_sha256 or None,
         "run_history": list(session.run_history),
         "active_plan": session.active_plan,
-        "plan_history": list(session.plan_history),
-        "working_memory": list(session.working_memory),
+        "plan_history": list(session.plan_history[-8:] if not include_full else session.plan_history),
+        "working_memory": list(
+            session.working_memory[-12:] if not include_full else session.working_memory
+        ),
         "agent_run_state": session.agent_run_state,
         "approvals": [
             {
@@ -494,10 +501,19 @@ def get_session(
         ),
         "queue_limit": 3,
         "staged_attachments": list(session.staged_attachments.values()),
-        "agent_run_history": list(session.agent_run_history),
-        "tool_checkpoints": list(session.tool_checkpoints),
+        "agent_run_history": list(
+            session.agent_run_history[-12:]
+            if not include_full
+            else session.agent_run_history
+        ),
+        "tool_checkpoints": list(
+            session.tool_checkpoints[-20:]
+            if not include_full
+            else session.tool_checkpoints
+        ),
         "revision": session.revision,
     }
+    return payload
 
 
 @router.get("/sessions/{session_id}/events")

@@ -7,6 +7,7 @@ purpose=agent_reflection (deepseek-v4-flash by default).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -176,6 +177,25 @@ def scp_llm_sample_rate() -> float:
 
 def load_reflection_llm_cfg() -> dict[str, Any]:
     """Merge rank_weights ``llm:`` with reflection defaults for Gate 2 / rewrite."""
+    return dict(_load_reflection_llm_cfg_cached(_reflection_cfg_fingerprint()))
+
+
+def _reflection_cfg_fingerprint() -> tuple[str, int | None, int | None]:
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "configs" / "rank_weights.yaml"
+    try:
+        resolved = path.resolve()
+        stat = resolved.stat()
+        return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        return (str(path), None, None)
+
+
+@lru_cache(maxsize=4)
+def _load_reflection_llm_cfg_cached(
+    fingerprint: tuple[str, int | None, int | None],
+) -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "enabled": True,
         "agent_reflection": True,
@@ -190,8 +210,7 @@ def load_reflection_llm_cfg() -> dict[str, Any]:
 
         import yaml
 
-        root = Path(__file__).resolve().parents[2]
-        path = root / "configs" / "rank_weights.yaml"
+        path = Path(fingerprint[0])
         if path.is_file():
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             llm = data.get("llm") if isinstance(data, dict) else None

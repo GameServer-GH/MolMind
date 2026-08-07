@@ -5,10 +5,37 @@ HF contract lineage: YLuo / LJR
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from rdkit import Chem
 
 from packages.models import FilterDecision, MoleculeRecord, StructuralAlertHit
 from plugins.molmind_core.scientific.pipeline.config_loader import AppConfig
+
+
+@lru_cache(maxsize=16)
+def _compiled_structural_alerts(
+    rules_key: tuple[tuple[str, str, str], ...],
+) -> tuple[tuple[str, str, str, object | None], ...]:
+    compiled: list[tuple[str, str, str, object | None]] = []
+    for name, smarts, classification in rules_key:
+        pattern = Chem.MolFromSmarts(smarts) if smarts else None
+        compiled.append((name, smarts, classification, pattern))
+    return tuple(compiled)
+
+
+def _alert_rules(cfg: AppConfig) -> tuple[tuple[str, str, str, object | None], ...]:
+    steps = cfg.filter_steps.get("steps", [])
+    alert_step = next((s for s in steps if s.get("id") == "structural_alerts"), {})
+    rules_key = tuple(
+        (
+            str(rule.get("id") or "unnamed_alert"),
+            str(rule.get("smarts") or ""),
+            str(rule.get("classification") or "review_required"),
+        )
+        for rule in alert_step.get("rules") or []
+    )
+    return _compiled_structural_alerts(rules_key)
 
 
 def apply_hard_filters(record: MoleculeRecord, cfg: AppConfig) -> FilterDecision:
@@ -76,13 +103,8 @@ def apply_hard_filters(record: MoleculeRecord, cfg: AppConfig) -> FilterDecision
             reason_codes=reason_codes + ["invalid_smiles"],
         )
 
-    alert_step = next((s for s in steps if s.get("id") == "structural_alerts"), {})
     alert_hits: list[StructuralAlertHit] = []
-    for rule in alert_step.get("rules") or []:
-        name = str(rule.get("id") or "unnamed_alert")
-        smarts = str(rule.get("smarts") or "")
-        classification = str(rule.get("classification") or "review_required")
-        pattern = Chem.MolFromSmarts(smarts)
+    for name, smarts, classification, pattern in _alert_rules(cfg):
         if pattern is not None and mol.HasSubstructMatch(pattern):
             hit = StructuralAlertHit(name, classification, smarts)
             alert_hits.append(hit)

@@ -491,7 +491,9 @@ def test_offline_prefer_discuss_on_compound_message() -> None:
     assert _offline_prefer_discuss(text) is True
     intent = parse_intent(text)
     assert intent.wants_tools is True
-    assert _is_direct_deliverable_request(intent, text) is False
+    # Discuss cue wins offline even when a product surface is present.
+    # Ranking-shaped TopN may also demote direct; either way gate must block.
+    assert _offline_prefer_discuss(text) is True
 
 
 def test_offline_gate_discuss_bias_when_llm_unavailable(monkeypatch) -> None:
@@ -510,6 +512,94 @@ def test_offline_gate_discuss_bias_when_llm_unavailable(monkeypatch) -> None:
 def test_offline_discuss_does_not_override_later_execute() -> None:
     text = "先别跑筛选\n好的，那帮我跑一轮 MASLD 低毒降脂筛选，输出 Top10"
     assert _offline_prefer_discuss(text) is False
+
+
+def test_offline_gate_allows_bare_mechanism_pdf(monkeypatch) -> None:
+    """LLM-down: parsed PDF product slots are enough without「生成/导出」verbs."""
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_unavailable:MechanismLLMError"),
+    )
+    rt = _runtime_stub()
+    text = "机制/验证 PDF"
+    intent = parse_intent(text)
+    assert intent.want_pdf is True
+    assert intent.wants_tools is True
+    assert _is_direct_deliverable_request(intent, text) is True
+    assert _offline_prefer_discuss(text) is False
+    gate, meta = rt._classify_execution_gate(_session(), text, intent)
+    assert gate == "allow"
+    assert meta["dialog_act"] == "execute_now"
+
+
+def test_offline_gate_blocks_topn_discuss_without_export(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (kwargs["default"], "llm_unavailable:MechanismLLMError"),
+    )
+    rt = _runtime_stub()
+    text = "先讨论一下 TopN 选 10 还是 20 更合适，这轮不要导出"
+    intent = parse_intent(text)
+    assert _offline_prefer_discuss(text) is True
+    gate, meta = rt._classify_execution_gate(_session(), text, intent)
+    assert gate == "block"
+    assert meta["dialog_act"] == "discuss_only"
+
+
+def test_execution_gate_clarify_stashes_pending_for_export_followup(monkeypatch) -> None:
+    """Gate clarify must put candidate deliverable into session state (P2/P6)."""
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_object",
+        lambda **kwargs: (
+            {
+                "dialog_act": "clarify",
+                "execution_gate": "block",
+                "force_rescreen": False,
+                "reason": "need confirm execute vs discuss",
+            },
+            "ok",
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_plan_request",
+        lambda **_kwargs: (None, "llm_not_ready"),
+    )
+
+    from agent.memory.models import AgentSession
+    from agent.runtime.loop import AgentRuntime
+    from tests.unit.agent_test_support import MemRunStore
+
+    runtime = AgentRuntime(store=MemRunStore())
+    session = AgentSession(session_id="gate_clarify_pdf_0001")
+    session.sdf_bytes = b"fake-sdf"
+    session.sdf_filename = "lib.sdf"
+    session.top_n = 10
+    session.last_result = SimpleNamespace(
+        top_molecules=[object()] * 10, run_id="mm-frozen"
+    )
+
+    events = list(runtime.handle_message(session, "机制/验证 PDF"))
+    assert any(
+        e.get("type") == "thinking"
+        and "clarify" in str(e.get("text") or "")
+        for e in events
+    )
+    assert isinstance(session.pending_action, dict)
+    assert session.pending_action.get("want_pdf") is True
+    assert session.pending_action.get("status") == "awaiting_execute_confirm"
+    assert isinstance(session.pending_goal, dict)
+    assert session.pending_goal.get("reason") == "execution_gate_awaiting_execute_confirm"
+
+    # Offline protocol affirm: bare「导出」continues the stashed deliverable.
+    monkeypatch.setattr(
+        "agent.runtime.loop.llm_json_decision",
+        lambda **kwargs: (kwargs["default"], "llm_not_ready"),
+    )
+    act, why = runtime._classify_pending_continuation(
+        session, "导出", session.pending_action
+    )
+    assert act == "continue"
+    assert "structural_pending_fallback" in why
 
 
 def test_force_rescreen_resets_session_top_n_to_profile_default() -> None:

@@ -24,6 +24,7 @@ def run_score_and_rank(
     top_n: int,
     source_filename: str,
     log_sink: LogSink | None = None,
+    input_sha256: str | None = None,
 ) -> Any:
     cfg = load_config(mode="auto", use_snapshot=True, allow_live=False)
     return screen_sdf(
@@ -32,6 +33,7 @@ def run_score_and_rank(
         top_n=top_n,
         source_filename=source_filename,
         log_sink=log_sink,
+        input_sha256=input_sha256,
     )
 
 

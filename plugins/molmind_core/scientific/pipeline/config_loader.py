@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from plugins.molmind_core.scientific.paths import REPO_ROOT
+import copy
 import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -225,6 +227,42 @@ def _files_digest(paths: list[Path]) -> str:
     return digest.hexdigest()[:16]
 
 
+def _path_mtime_fingerprint(paths: list[Path]) -> tuple[tuple[str, int | None, int | None], ...]:
+    parts: list[tuple[str, int | None, int | None]] = []
+    for path in sorted({Path(p) for p in paths}, key=lambda item: str(item)):
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        try:
+            stat = resolved.stat()
+            parts.append((str(resolved), int(stat.st_mtime_ns), int(stat.st_size)))
+        except OSError:
+            parts.append((str(resolved), None, None))
+    return tuple(parts)
+
+
+_CONFIG_CACHE_LOCK = threading.Lock()
+_CONFIG_CACHE: dict[tuple[Any, ...], tuple[tuple[Any, ...], AppConfig]] = {}
+
+
+def _clone_app_config(cfg: AppConfig) -> AppConfig:
+    return AppConfig(
+        raw=copy.deepcopy(cfg.raw),
+        filter_steps=copy.deepcopy(cfg.filter_steps),
+        lipid_steps=copy.deepcopy(cfg.lipid_steps),
+        tox_steps=copy.deepcopy(cfg.tox_steps),
+        model_manifest=copy.deepcopy(cfg.model_manifest),
+        assumptions=copy.deepcopy(cfg.assumptions),
+        mode=cfg.mode,
+        seed=cfg.seed,
+        config_hash=cfg.config_hash,
+        degraded_channels=[],
+        ml_predict_calls=0,
+        ml_no_neighbor_hits=0,
+    )
+
+
 def _validate_config(
     rank: dict[str, Any],
     filter_steps: dict[str, Any],
@@ -423,6 +461,36 @@ def load_config(
         if not (cfg_dir / name).is_file():
             raise ConfigLoadError(f"缺少配置文件: {cfg_dir / name}")
 
+    snap = Path(os.environ.get("EVIDENCE_SNAPSHOT_DIR", SNAPSHOT_DIR))
+    cache_key = (
+        str(cfg_dir.resolve()),
+        mode,
+        seed,
+        use_snapshot,
+        allow_live,
+        epa_stage,
+        os.environ.get("MOLMIND_EPA_STAGE"),
+        os.environ.get("MOLMIND_USE_SNAPSHOT"),
+        os.environ.get("MOLMIND_ALLOW_LIVE"),
+        os.environ.get("EVIDENCE_SNAPSHOT_DIR"),
+    )
+    fingerprint_paths = [
+        *(cfg_dir / name for name in REQUIRED_YAML),
+        cfg_dir / "clinical_exclusions.yaml",
+        cfg_dir / "nomination_review.yaml",
+        cfg_dir / "model_manifest.json",
+        *sorted((DATA_DIR / "goldset").glob("*.yaml")),
+        DATA_DIR / "reference" / "nafld_pathways.yaml",
+        *(ROOT / relative_path for relative_path in ALGORITHM_PATHS),
+    ]
+    if snap.is_dir():
+        fingerprint_paths.extend(sorted(snap.glob("*.jsonl")))
+    fingerprint = _path_mtime_fingerprint(fingerprint_paths)
+    with _CONFIG_CACHE_LOCK:
+        hit = _CONFIG_CACHE.get(cache_key)
+        if hit is not None and hit[0] == fingerprint:
+            return _clone_app_config(hit[1])
+
     rank = _read_yaml(cfg_dir / "rank_weights.yaml")
     filter_steps = _read_yaml(cfg_dir / "filter_steps.yaml")
     lipid_steps = _read_yaml(cfg_dir / "lipid_steps.yaml")
@@ -473,7 +541,6 @@ def load_config(
     }
 
     snapshot_digest = ""
-    snap = Path(os.environ.get("EVIDENCE_SNAPSHOT_DIR", SNAPSHOT_DIR))
     if effective_use_snapshot and snap.is_dir():
         snapshot_digest = _files_digest(list(snap.glob("*.jsonl")))
 
@@ -502,7 +569,7 @@ def load_config(
         "algorithm_digest": _files_digest(algorithm_paths),
         "algorithm_contract_version": ALGORITHM_CONTRACT_VERSION,
     }
-    return AppConfig(
+    loaded = AppConfig(
         raw=rank,
         filter_steps=filter_steps,
         lipid_steps=lipid_steps,
@@ -513,3 +580,6 @@ def load_config(
         seed=resolved_seed,
         config_hash=_ljr_cfg_digest(hash_payload),
     )
+    with _CONFIG_CACHE_LOCK:
+        _CONFIG_CACHE[cache_key] = (fingerprint, loaded)
+    return _clone_app_config(loaded)

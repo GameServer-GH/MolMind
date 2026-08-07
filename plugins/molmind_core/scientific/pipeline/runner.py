@@ -203,6 +203,7 @@ def screen_sdf(
     top_n: int | None = None,
     source_filename: str = "",
     log_sink: LogSink | None = None,
+    input_sha256: str | None = None,
 ) -> PipelineResult:
     config = cfg or load_config(mode="offline")
     requested_n = top_n or config.top_n
@@ -224,6 +225,7 @@ def screen_sdf(
             top_n=requested_n,
             source_filename=source_filename,
             log=log,
+            input_sha256=input_sha256,
         )
 
 
@@ -236,9 +238,10 @@ def _screen_sdf_inner(
     top_n: int | None,
     source_filename: str,
     log: RunLogCollector,
+    input_sha256: str | None = None,
 ) -> PipelineResult:
     mode_label = "Quality-Max"
-    input_hash = sha256_file(input_path)
+    input_hash = (input_sha256 or "").strip().lower() or sha256_file(input_path)
     use_snapshot = bool(config.evidence.get("use_snapshot", True))
     allow_live = bool(config.allow_live_evidence)
     snap_zh = "开启" if use_snapshot else "关闭"
@@ -284,15 +287,14 @@ def _screen_sdf_inner(
             "解析耗时主要来自逐分子化学计算：每条记录都要做确定性标准化"
             "（Cleanup / 取主体片段 / 去电荷 / 互变异构规范化），"
             "再算 Morgan 指纹、InChIKey 与理化描述符；"
-            "当前为单线程、无特征缓存，万级库通常需要数分钟，进度会持续更新。"
+            "当前为单线程；暖启动命中特征缓存时可跳过重复标准化与指纹计算。"
         ),
         (
             "Parse time is dominated by per-molecule chemistry: each record runs "
             "deterministic standardization "
             "(Cleanup / parent fragment / uncharge / canonical tautomer), "
             "then Morgan fingerprint, InChIKey and descriptors. "
-            "The path is single-threaded with no feature cache, so large libraries "
-            "often take several minutes; progress updates continue throughout."
+            "The path is single-threaded; warm starts reuse the feature cache when available."
         ),
         progress=_PARSE_PROGRESS_START,
     )
@@ -378,6 +380,7 @@ def _screen_sdf_inner(
         input_path,
         cache_dir=cache_dir,
         schema_version=cache_schema,
+        content_sha256=input_hash,
     )
     parsed = load_feature_cache(cache_path) if cache_enabled else None
     if parsed is not None:
@@ -399,7 +402,7 @@ def _screen_sdf_inner(
                     cache_path,
                     parsed,
                     metadata={
-                        "input_sha256": sha256_file(input_path),
+                        "input_sha256": input_hash,
                         "schema_version": cache_schema,
                     },
                 )
@@ -571,6 +574,7 @@ def _screen_sdf_inner(
             progress=62,
         )
         rescored: list[ScoreRecord] = []
+        deep_exclusions = load_clinical_exclusions(config.clinical_exclusions)
         for mol in eligible:
             if mol.molecule_id not in deep_ids:
                 rescored.append(mol)
@@ -594,7 +598,7 @@ def _screen_sdf_inner(
             clinical_hit = apply_clinical_exclusion_to_score(
                 rescored_mol,
                 record,
-                load_clinical_exclusions(config.clinical_exclusions),
+                deep_exclusions,
             )
             if clinical_hit is not None:
                 clinical_actions.append(clinical_hit)

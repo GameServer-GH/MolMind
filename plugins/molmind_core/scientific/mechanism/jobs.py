@@ -22,7 +22,7 @@ _JOBS: dict[str, dict[str, Any]] = {}
 _CANCEL_EVENTS: dict[str, threading.Event] = {}
 _FUTURES: dict[str, Future[Any]] = {}
 _LEASE_STOPS: dict[str, threading.Event] = {}
-_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mech-pdf")
+_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mech-pdf")
 _JOB_STORE = None
 _BLOB_STORE = None
 

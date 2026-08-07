@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,12 @@ def _load_cases(path: Path) -> list[GoldCase]:
 
 def load_goldset(directory: Path | None = None) -> GoldSet:
     root = directory or GOLDSET_DIR
+    return _load_goldset_cached(str(Path(root).resolve()))
+
+
+@lru_cache(maxsize=4)
+def _load_goldset_cached(root_key: str) -> GoldSet:
+    root = Path(root_key)
     # 合并经典阳性 + NAFLDkb 扩展阳性（去重 by name）
     positives = _load_cases(root / "positives.yaml")
     seen = {c.name.lower() for c in positives}

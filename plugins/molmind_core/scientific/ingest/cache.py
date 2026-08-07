@@ -22,8 +22,18 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def feature_cache_key(input_path: Path, *, schema_version: str) -> str:
-    payload = f"{sha256_file(input_path)}|rdkit={rdBase.rdkitVersion}|schema={schema_version}"
+def sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def feature_cache_key(
+    input_path: Path,
+    *,
+    schema_version: str,
+    content_sha256: str | None = None,
+) -> str:
+    digest = content_sha256 or sha256_file(input_path)
+    payload = f"{digest}|rdkit={rdBase.rdkitVersion}|schema={schema_version}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -32,8 +42,11 @@ def feature_cache_path(
     *,
     cache_dir: Path,
     schema_version: str,
+    content_sha256: str | None = None,
 ) -> Path:
-    return cache_dir / f"{feature_cache_key(input_path, schema_version=schema_version)}.json.gz"
+    return cache_dir / (
+        f"{feature_cache_key(input_path, schema_version=schema_version, content_sha256=content_sha256)}.json.gz"
+    )
 
 
 def _fp_from_bits(n_bits: int, on_bits: list[int]):

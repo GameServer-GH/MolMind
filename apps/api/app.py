@@ -43,7 +43,7 @@ from plugins.molmind_core.scientific.pipeline.runner import TOP_N_MAX, TOP_N_MIN
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 _LEGACY_MODES = frozenset({"auto", "online", "offline"})
-_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="screen")
 # build watermark — LJR
 _API_BUILD_MARK = "mm.ljr.api"
 

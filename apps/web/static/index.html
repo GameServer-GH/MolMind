@@ -890,8 +890,10 @@
       return `/api/screen/stream?top=${top}&use_snapshot=${snap}&allow_live=${live}&nomination_review=${review ? "true" : "false"}`;
     };
     window.MOLMIND_APPLY_REVIEW = "/api/screen/apply-review";
-    window.MOLMIND_MECHANISM_STATUS = (jobId) =>
-      `/api/mechanism/${encodeURIComponent(jobId)}?include_payload=true`;
+    window.MOLMIND_MECHANISM_STATUS = (jobId, includePayload) => {
+      const base = `/api/mechanism/${encodeURIComponent(jobId)}`;
+      return includePayload ? `${base}?include_payload=true` : base;
+    };
   </script>
   <script src="/static/agent/client_identity.js?v=mm-agent-client-switch-3"></script>
   <script src="/static/agent/ui_render.js?v=mm-stop-freeze-1"></script>

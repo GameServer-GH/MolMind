@@ -76,7 +76,7 @@ def test_pipeline_parse_logs_explain_slowness_and_progress() -> None:
     assert "解析耗时主要来自逐分子化学计算" in joined
     assert "互变异构规范化" in joined
     assert "单线程" in joined
-    assert "无特征缓存" in joined
+    assert "特征缓存" in joined
     assert "解析完成" in joined
     assert "耗时" in joined
     assert any("预估约" in line and "条记录" in line for line in zh_logs)
